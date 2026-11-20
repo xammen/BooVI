@@ -279,7 +279,7 @@ bool QmlPlayerBridge::setPreference(const QString& key, const QVariant& value) {
     } else if (key == QLatin1String("guestResolution") || key == QLatin1String("guestReach") || key == QLatin1String("guestMode") || key == QLatin1String("guestFeed")) {
         // Fork, partage (GuestShareModel.h): the most the guest may receive (size, feed), how the
         // guest reaches this PC, who drives the pad.
-        static const QHash<QString, QStringList> choices{{"guestResolution", {"720p", "1080p", "native"}}, {"guestReach", {"tunnel", "quick", "tailnet"}},
+        static const QHash<QString, QStringList> choices{{"guestResolution", {"720p", "1080p", "native"}}, {"guestReach", {"broker", "tailnet"}},
                                                          {"guestMode", {"guest", "together", "watch"}}, {"guestFeed", {"real", "60", "120"}}};
         const QString v = value.toString();
         if (!choices.value(key).contains(v)) return false;

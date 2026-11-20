@@ -283,14 +283,17 @@ inline std::optional<remoteplay::ControllerFeedback> parseFeedbackMessage(std::s
     return f;
 }
 
-// ---- the link a friend pastes: a share, https://play.example.com/?t=<token>, or their own
-// long-lived access, https://play.example.com/?a=<token> (GuestAccess.h); any host's URL ----
+// ---- the link a friend pastes: a share, https://go.example.com/<room>#t=<token>, or their own
+// long-lived access, #a=<token> (GuestAccess.h). The room is the host's on BooVI's broker
+// (GuestRoom.h); a link without one reaches the host's own server (the tailnet), or a broker's
+// legacy room. The secret is read from the fragment, or from the query of an older link. ----
 struct ShareLink {
     bool https = true;
     std::string host;      // DNS name or IPv4
     uint16_t port = 443;
+    std::string room;      // the broker room's id, empty for a host's own server
     std::string token;     // base64url, never logged
-    bool access = false;   // an access (?a=): knock until the host lets it in
+    bool access = false;   // an access (a=): knock until the host lets it in
 };
 
 inline std::optional<ShareLink> parseShareLink(std::string_view text) {
@@ -324,19 +327,32 @@ inline std::optional<ShareLink> parseShareLink(std::string_view text) {
         if (!(std::isalnum(uint8_t(c)) || c == '-' || c == '.')) return std::nullopt;
     link.host.assign(authority);
     for (auto& c : link.host) c = char(std::tolower(uint8_t(c)));
-    // The token: the query's t parameter, before any fragment.
+    // The path: a broker room's id, or nothing.
     std::string_view rest = text.substr(end);
-    rest = rest.substr(0, std::min(rest.find('#'), rest.size()));
-    const size_t query = rest.find('?');
-    if (query == std::string_view::npos) return std::nullopt;
-    std::string_view params = rest.substr(query + 1);
-    while (!params.empty()) {
-        const size_t amp = std::min(params.find('&'), params.size());
-        const std::string_view param = params.substr(0, amp);
-        if (param.starts_with("t=")) { link.token.assign(param.substr(2)); link.access = false; }
-        else if (param.starts_with("a=")) { link.token.assign(param.substr(2)); link.access = true; }
-        params.remove_prefix(std::min(amp + 1, params.size()));
+    const size_t hash = std::min(rest.find('#'), rest.size());
+    const std::string_view fragment = hash < rest.size() ? rest.substr(hash + 1) : std::string_view();
+    rest = rest.substr(0, hash);
+    const size_t query = std::min(rest.find('?'), rest.size());
+    std::string_view path = rest.substr(0, query);
+    while (!path.empty() && path.front() == '/') path.remove_prefix(1);
+    while (!path.empty() && path.back() == '/') path.remove_suffix(1);
+    if (!path.empty()) {
+        if (path.size() != 22) return std::nullopt;
+        for (char c : path) if (!(std::isalnum(uint8_t(c)) || c == '-' || c == '_')) return std::nullopt;
+        link.room.assign(path);
     }
+    // The secret: t= or a= in the fragment, else in the query.
+    auto take = [&](std::string_view params) {
+        while (!params.empty()) {
+            const size_t amp = std::min(params.find('&'), params.size());
+            const std::string_view param = params.substr(0, amp);
+            if (param.starts_with("t=")) { link.token.assign(param.substr(2)); link.access = false; }
+            else if (param.starts_with("a=")) { link.token.assign(param.substr(2)); link.access = true; }
+            params.remove_prefix(std::min(amp + 1, params.size()));
+        }
+    };
+    if (query < rest.size()) take(rest.substr(query + 1));
+    take(fragment);
     if (link.token.size() < 8 || link.token.size() > 128) return std::nullopt;
     for (char c : link.token)
         if (!(std::isalnum(uint8_t(c)) || c == '-' || c == '_')) return std::nullopt;

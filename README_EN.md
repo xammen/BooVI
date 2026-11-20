@@ -63,9 +63,10 @@ the super resolution and frame generation.
 
 The link goes through one of these paths, chosen in **réglages → partage**:
 
+- **Broker** (default): an `https://…/<room>#t=…` link, nothing to install; the picture goes direct between you.
 - **Tailscale**: you are both in the same tailnet.
-- **Quick link**: an account-less Cloudflare tunnel (install `cloudflared` on the sharing PC).
-- **Your own domain**: a named Cloudflare tunnel. See [docs/SHARING.md](docs/SHARING.md).
+
+See [docs/SHARING.md](docs/SHARING.md).
 
 ## Build from source
 

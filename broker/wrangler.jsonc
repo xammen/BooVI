@@ -1,0 +1,47 @@
+// BooVI's share broker (docs/notes/GUEST_BROKER_2026-11-20.md). The custom domain is not named
+// here: scripts/deploy.ps1 passes it with --domain.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "boovi",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": { "enabled": false },
+  // The guest page and its font (scripts/assets.mjs copies them from web/guest and qml/Veyra/fonts).
+  // A room's link (/<room id>) is a page load; only /api/* reaches the Worker's code.
+  "assets": {
+    "directory": "./.assets",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "ROOM", "class_name": "Room" },
+      { "name": "LEDGER", "class_name": "TurnLedger" }
+    ]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room", "TurnLedger"] }],
+  // Per address, per Cloudflare location (approximate, see the Rate Limiting binding's docs).
+  "ratelimits": [
+    { "name": "JOIN_LIMIT", "namespace_id": "4801", "simple": { "limit": 30, "period": 60 } },
+    { "name": "HOST_LIMIT", "namespace_id": "4802", "simple": { "limit": 10, "period": 60 } }
+  ],
+  "vars": {
+    // The monthly TURN budget, in GB (10^9 bytes) of relay egress, counted as the credential's
+    // lifetime times TURN_RATE_MBPS. Cloudflare's free allowance is 1,000 GB a month.
+    "TURN_BUDGET_GB": "900",
+    // The most a share sends: BooVI's highest upload (100 Mb/s) plus 20 % for the link test,
+    // sound, retransmissions and packet headers.
+    "TURN_RATE_MBPS": "120",
+    "TURN_TTL_MAX_S": "14400",
+    "TURN_TTL_MIN_S": "600",
+    // What a revoked credential is still charged for past its revocation.
+    "TURN_GRACE_S": "60",
+    "ROOM_TTL_S": "43200",
+    // The room an old https://<host>/?a=… link opens, empty when there is none.
+    "LEGACY_ROOM": ""
+  }
+  // Secrets (wrangler secret put): OWNER_KEY, TURN_KEY_ID, TURN_KEY_API_TOKEN.
+}

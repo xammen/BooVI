@@ -84,23 +84,12 @@ struct GuestHttp::Impl : std::enable_shared_from_this<GuestHttp::Impl> {
         request.path = target;
         request.source = std::move(peer);
         size_t length = 0;
-        std::string forwarded;
         for (size_t at = lineEnd; at != std::string::npos && at < head.size();) {
             const size_t next = head.find("\r\n", at + 2);
             const std::string header = head.substr(at + 2, (next == std::string::npos ? head.size() : next) - at - 2);
-            if (const size_t colon = header.find(':'); colon != std::string::npos) {
-                const std::string name = lower(header.substr(0, colon));
-                if (name == "content-length") length = size_t(std::strtoull(header.c_str() + colon + 1, nullptr, 10));
-                else if (name == "cf-connecting-ip") forwarded = header.substr(colon + 1);
-            }
+            if (const size_t colon = header.find(':'); colon != std::string::npos && lower(header.substr(0, colon)) == "content-length")
+                length = size_t(std::strtoull(header.c_str() + colon + 1, nullptr, 10));
             at = next;
-        }
-        if (request.source == "127.0.0.1") {
-            // cloudflared connects from loopback and names the real client; only an address's
-            // characters are kept.
-            std::string ip;
-            for (char c : forwarded) if (std::isxdigit(uint8_t(c)) || c == '.' || c == ':') ip.push_back(c);
-            if (!ip.empty() && ip.size() <= 45) request.source = ip;
         }
         HttpResponse response;
         if (length > kMaxBody) response = {413, "text/plain", "too large"};

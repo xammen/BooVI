@@ -5,7 +5,7 @@
 #include <winhttp.h>
 
 #include "veyra/UserDataRoot.h"
-#include "veyra/guest/GuestStreamer.h"
+#include "veyra/guest/GuestRoom.h"
 
 #include <filesystem>
 #include <format>
@@ -19,8 +19,40 @@
 namespace veyra::guest {
 namespace {
 
-std::filesystem::path configPath() {
-    try { return veyra::userdata::root() / L"guest" / L"cloudflare.dpapi"; } catch (const std::exception&) { return {}; }
+std::filesystem::path guestFile(const wchar_t* name) {
+    try { return veyra::userdata::root() / L"guest" / name; } catch (const std::exception&) { return {}; }
+}
+
+// The file's plain text, empty when it is missing or not sealed for this user.
+std::string unseal(const std::filesystem::path& path) {
+    if (path.empty()) return {};
+    std::ifstream file(path, std::ios::binary);
+    if (!file) return {};
+    std::vector<char> sealed((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    if (sealed.empty()) return {};
+    DATA_BLOB in{DWORD(sealed.size()), reinterpret_cast<BYTE*>(sealed.data())}, out{};
+    if (!CryptUnprotectData(&in, nullptr, nullptr, nullptr, nullptr, CRYPTPROTECT_UI_FORBIDDEN, &out)) return {};
+    std::string text(reinterpret_cast<const char*>(out.pbData), out.cbData);
+    SecureZeroMemory(out.pbData, out.cbData);
+    LocalFree(out.pbData);
+    return text;
+}
+
+bool seal(const std::filesystem::path& path, const std::string& text) {
+    DATA_BLOB in{DWORD(text.size()), reinterpret_cast<BYTE*>(const_cast<char*>(text.data()))}, out{};
+    if (path.empty() || !CryptProtectData(&in, L"BooVI", nullptr, nullptr, nullptr, CRYPTPROTECT_UI_FORBIDDEN, &out)) return false;
+    std::error_code ec;
+    std::filesystem::create_directories(path.parent_path(), ec);
+    auto temp = path;
+    temp += L".tmp";
+    bool ok = false;
+    {
+        std::ofstream file(temp, std::ios::binary | std::ios::trunc);
+        ok = file && file.write(reinterpret_cast<const char*>(out.pbData), out.cbData);
+    }
+    LocalFree(out.pbData);
+    if (ok) std::filesystem::rename(temp, path, ec);
+    return ok && !ec;
 }
 
 std::wstring widen(const std::string& s) {
@@ -44,23 +76,21 @@ struct Internet {
 } // namespace
 
 std::optional<CloudflareConfig> loadCloudflareConfig() {
-    const auto path = configPath();
-    if (path.empty()) return std::nullopt;
-    std::ifstream file(path, std::ios::binary);
-    if (!file) return std::nullopt;
-    std::vector<char> sealed((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-    if (sealed.empty()) return std::nullopt;
-    DATA_BLOB in{DWORD(sealed.size()), reinterpret_cast<BYTE*>(sealed.data())}, out{};
-    if (!CryptUnprotectData(&in, nullptr, nullptr, nullptr, nullptr, CRYPTPROTECT_UI_FORBIDDEN, &out)) return std::nullopt;
-    std::string text(reinterpret_cast<const char*>(out.pbData), out.cbData);
-    SecureZeroMemory(out.pbData, out.cbData);
-    LocalFree(out.pbData);
+    std::string text = unseal(guestFile(L"cloudflare.dpapi"));
     const auto json = nlohmann::json::parse(text, nullptr, false);
     SecureZeroMemory(text.data(), text.size());
     auto str = [&](const char* key) { return json.is_object() && json.contains(key) && json[key].is_string() ? json[key].get<std::string>() : std::string(); };
-    CloudflareConfig config{str("hostname"), str("tunnelToken"), str("turnKeyId"), str("turnApiToken")};
-    if (config.hostname.empty() || config.tunnelToken.empty()) return std::nullopt;
+    CloudflareConfig config{str("ownerKey"), str("turnKeyId"), str("turnApiToken")};
+    if (config.ownerKey.empty() && (config.turnKeyId.empty() || config.turnApiToken.empty())) return std::nullopt;
     return config;
+}
+
+std::string loadOrCreateRoomKey() {
+    const auto path = guestFile(L"room.dpapi");
+    if (std::string key = unseal(path); isRoomKey(key)) return key;
+    std::string key = newRoomKey();
+    if (!seal(path, key)) return {};
+    return key;
 }
 
 nlohmann::json fetchTurnIceServers(const CloudflareConfig& config, int ttlSeconds, std::string& error) {
@@ -93,11 +123,6 @@ nlohmann::json fetchTurnIceServers(const CloudflareConfig& config, int ttlSecond
     SecureZeroMemory(reply.data(), reply.size());
     if (!parsed.is_object() || !parsed.contains("iceServers") || !parsed["iceServers"].is_array()) { error = "réponse turn illisible"; return empty; }
     return parsed["iceServers"];
-}
-
-std::string cloudflareHost() {
-    const auto config = loadCloudflareConfig();
-    return config ? config->hostname : std::string();
 }
 
 } // namespace veyra::guest

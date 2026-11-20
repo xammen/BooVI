@@ -30,7 +30,8 @@ try {
     if (-not (Test-Path $linkFile)) { throw 'the app wrote no guest link' }
     $link = @(Get-Content $linkFile)[0].Trim()   # first line: the loopback link
     if ($link -notmatch '^http://127\.0\.0\.1:') { throw 'no loopback link' }
-    if ($Query) { $link += '&' + $Query }
+    # The page's switches go in the query, before the fragment that carries the token.
+    if ($Query) { $at = $link.IndexOf('#'); $link = $link.Substring(0, $at) + '?' + $Query + $link.Substring($at) }
     Start-Sleep -Seconds 3
     $probe = @{ Url = $link; Seconds = $Seconds; Port = $DevtoolsPort; Test = $true }
     if ($Eval) { $probe.Eval = $Eval }

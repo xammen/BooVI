@@ -26,7 +26,7 @@ VPage {
         { id: "pad", label: qsTr("manette"), keys: "manette dualsense gyroscope arrière-plan regarder" },
         { id: "kbm", label: qsTr("clavier-souris"), keys: "clavier souris vitesse caméra sensibilité précision visée fine courbe zone morte touches raccourcis kbm" },
         { id: "captures", label: qsTr("captures"), keys: "captures enregistrement vidéo replay capture d'écran screenshot micro" },
-        { id: "partage", label: qsTr("partage"), keys: "partage partager invité ami distance jouer à deux tailscale cloudflare tunnel lien débit" },
+        { id: "partage", label: qsTr("partage"), keys: "partage partager invité ami distance jouer à deux tailscale cloudflare relais lien débit" },
         { id: "invites", label: qsTr("invités"), keys: "invités invité ami accès permanent lien révoquer accueil absence veille windows plateau notification" },
         { id: "app", label: qsTr("interface"), keys: "interface thème couleurs palette animations langue journal logs version" }
     ]
@@ -995,19 +995,22 @@ VPage {
                         }
                         UiRow {
                             id: reachRow
-                            // The named tunnel's host (GuestShareModel.cloudflareHost), "" when this PC has none.
-                            readonly property string host: typeof vyGuest !== "undefined" && vyGuest ? vyGuest.cloudflareHost : ""
-                            readonly property string reach: veyra.preferences.guestReach || (host.length > 0 ? "tunnel" : "tailnet")
+                            // The broker's host (GuestShareModel.brokerHost), "" when this build has none,
+                            // and where a guest's relay comes from when the direct path fails.
+                            readonly property var g: typeof vyGuest !== "undefined" && vyGuest ? vyGuest : null
+                            readonly property string host: g ? g.brokerHost : ""
+                            readonly property string reach: host.length > 0 && veyra.preferences.guestReach !== "tailnet" ? "broker" : "tailnet"
+                            readonly property string relay: g ? g.relay : "none"
                             title: qsTr("accès")
-                            desc: reach === "tunnel"
-                                  ? (host.length > 0 ? qsTr("lien https sur %1 par un tunnel cloudflare : ton ami n'installe rien. le tunnel s'ouvre avec le partage et se ferme avec lui.").arg(host)
-                                                     : qsTr("aucun tunnel cloudflare n'est configuré sur ce pc : prends le lien rapide."))
-                                  : reach === "quick"
-                                  ? qsTr("lien trycloudflare.com tiré au hasard à chaque partage, sans compte : ton ami n'installe rien.")
+                            desc: reach === "broker"
+                                  ? qsTr("lien https sur %1 : ton ami n'installe rien, l'image va de ton pc au sien.").arg(host) + " "
+                                    + (relay === "owner" ? qsTr("si le direct échoue, le relais cloudflare prend la suite, dans sa limite du mois.")
+                                       : relay === "key" ? qsTr("si le direct échoue, ta clé turn cloudflare sert de relais.")
+                                       : qsTr("pas de relais : si vos deux box bloquent le direct, la connexion ne passe pas."))
                                   : qsTr("ton tailnet : ton ami installe tailscale et tu lui partages ce pc. l'image ne passe que par tailscale.")
                             UiSeg {
-                                options: [{ id: "tunnel", label: reachRow.host.length > 0 ? reachRow.host.substring(reachRow.host.indexOf(".") + 1) : qsTr("mon domaine") },
-                                          { id: "quick", label: qsTr("lien rapide") }, { id: "tailnet", label: qsTr("tailnet") }]
+                                options: reachRow.host.length > 0 ? [{ id: "broker", label: reachRow.host }, { id: "tailnet", label: qsTr("tailnet") }]
+                                                                  : [{ id: "tailnet", label: qsTr("tailnet") }]
                                 current: reachRow.reach
                                 onPicked: id => veyra.setPreference("guestReach", id)
                             }

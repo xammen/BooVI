@@ -727,17 +727,73 @@ void main() {
 
 <script>
 "use strict";
-// ---- token: from the link, then kept for this tab only and taken out of the address bar.
-// A friend's access (?a=, long-lived, revocable by the host) is kept on this browser instead,
-// so coming back to the page is enough to play again.
-const params = new URLSearchParams(location.search);
-const token = params.get("t") || (params.get("a") ? "" : sessionStorage.getItem("boovi-token")) || "";
+// ---- the link: https://<broker>/<room>#t=<token> (or #a=<access>), or the host's own server in
+// its tailnet. The fragment never leaves this browser; the secret goes to the host's PC inside
+// the room's messages. Older links carry it in the query (?t=, ?a=).
+// The token is kept for this tab only, a friend's access (long-lived, revocable by the host) on
+// this browser, both per room, and both are taken out of the address bar.
+const params = new URLSearchParams(location.search), secrets = new URLSearchParams(location.hash.slice(1));
+const given = k => secrets.get(k) || params.get(k) || "";
+let room = (location.pathname.match(/^\/([A-Za-z0-9_-]{22})\/?$/) || [])[1] || "";
+const kept = k => "boovi-" + k + (room ? ":" + room : "");
+const token = given("t") || (given("a") ? "" : sessionStorage.getItem(kept("token"))) || "";
 let access = "";
-try { access = token ? "" : (params.get("a") || localStorage.getItem("boovi-access") || ""); } catch (_) { access = params.get("a") || ""; }
-if (params.get("t")) sessionStorage.setItem("boovi-token", token);
-if (params.get("a")) { try { localStorage.setItem("boovi-access", access); } catch (_) {} }
-if (params.get("t") || params.get("a")) history.replaceState(null, "", location.pathname + (params.get("test") ? "?test=1" : ""));
+try { access = token ? "" : (given("a") || localStorage.getItem(kept("access")) || ""); } catch (_) { access = given("a"); }
+if (given("t")) sessionStorage.setItem(kept("token"), token);
+if (given("a")) { try { localStorage.setItem(kept("access"), access); } catch (_) {} }
+if (given("t") || given("a")) history.replaceState(null, "", location.pathname + (params.get("test") ? "?test=1" : ""));
 const credential = () => access ? { access } : { token };
+
+// ---- signaling: POST to the host's own server, or {id, path, body} through its room on the
+// broker, answered {id, status, body}. The room's socket closes once the answer is in.
+let roomSocket = null, roomNext = 0;
+const roomWaiting = new Map();
+const roomError = why => new Error(why === "offline" ? "ton ami ne partage pas en ce moment" : why === "expired" ? "salon expiré" : why === "busy" ? "salon plein" : "salon injoignable");
+function roomOpen() {
+  if (roomSocket) return roomSocket.ready;
+  const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/api/room/" + room);
+  roomSocket = ws;
+  ws.ready = new Promise((ok, ko) => { ws.onopen = ok; ws.onerror = () => ko(roomError()); });
+  ws.onmessage = e => {
+    let m; try { m = JSON.parse(e.data); } catch (_) { return; }
+    if (m.t === "closed") { ws.why = m.why; return; }
+    const w = roomWaiting.get(m.id);
+    if (w) { roomWaiting.delete(m.id); w.ok(m); }
+  };
+  ws.onclose = () => {
+    if (roomSocket === ws) roomSocket = null;
+    for (const w of roomWaiting.values()) w.ko(roomError(ws.why));
+    roomWaiting.clear();
+  };
+  return ws.ready;
+}
+function roomClose() { if (roomSocket) { const ws = roomSocket; roomSocket = null; try { ws.close(1000); } catch (_) {} } }
+async function signal(path, body) {
+  if (!room) {
+    const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    return { status: r.status, ok: r.ok, j: await r.json().catch(() => ({})) };
+  }
+  await roomOpen();
+  const id = ++roomNext, ws = roomSocket;
+  const reply = await new Promise((ok, ko) => {
+    roomWaiting.set(id, { ok, ko });
+    ws.send(JSON.stringify({ id, path, body }));
+    setTimeout(() => { if (roomWaiting.delete(id)) ko(new Error("l'hôte ne répond pas")); }, 15000);
+  });
+  let j = {};
+  try { j = reply.body ? JSON.parse(reply.body) : {}; } catch (_) {}
+  return { status: reply.status, ok: reply.status >= 200 && reply.status < 300, j };
+}
+// An older link (https://<host>/?a=…) on a broker that keeps a room for it.
+async function findLegacyRoom() {
+  if (room || (!token && !access) || location.protocol !== "https:") return;
+  const r = await fetch("/api/legacy").catch(() => null);
+  const j = r && r.ok ? await r.json().catch(() => ({})) : {};
+  if (!/^[A-Za-z0-9_-]{22}$/.test(j.room || "")) return;
+  room = j.room;
+  history.replaceState(null, "", "/" + room + (params.get("test") ? "?test=1" : ""));
+  try { if (access) localStorage.setItem(kept("access"), access); else sessionStorage.setItem(kept("token"), token); } catch (_) {}
+}
 const autoTest = params.get("test") === "1";
 // relay=1 forces Cloudflare's TURN relay (tests): only relay candidates are gathered.
 const forceRelay = params.get("relay") === "1";
@@ -779,8 +835,7 @@ const visitEnd = {
 async function knock() {
   for (;;) {
     if (stopped) return null;
-    const r = await fetch("/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(credential()) });
-    const j = await r.json().catch(() => ({}));
+    const r = await signal("/session", credential()), j = r.j;
     if (r.status === 200) return { r, j };
     const host = j.host || "ton ami";
     if (r.status === 202 && visitText[j.state]) {
@@ -790,14 +845,26 @@ async function knock() {
       await new Promise(done => setTimeout(done, 1000));
       continue;
     }
-    if (r.status === 403 && (j.state === "invalid" || !j.state)) { try { localStorage.removeItem("boovi-access"); } catch (_) {} }
+    if (r.status === 403 && (j.state === "invalid" || !j.state)) { try { localStorage.removeItem(kept("access")); } catch (_) {} }
     const [state, text] = (visitEnd[j.state] || visitEnd.failed)(host, j.detail);
     fatal(state, text);
     return null;
   }
 }
 
-// ---- connection: the host offers, this page answers (POST /session, POST /answer)
+// ---- connection: the host offers, this page answers (/session, /answer)
+// The browser's own WebRTC set-up can take a second on a cold start: one peer is built, and the
+// room opened, while the friend reads the page. The host's ICE servers come with its offer.
+let sparePeer = null;
+function newPeer() {
+  return new RTCPeerConnection({ bundlePolicy: "max-bundle", iceTransportPolicy: forceRelay ? "relay" : "all",
+                                 encodedInsertableStreams: lab.cfg.render === "webcodecs" });
+}
+function takePeer() { const p = sparePeer || newPeer(); sparePeer = null; return p; }
+function warmUp() {
+  if (room) roomOpen().catch(() => {});
+  try { sparePeer = sparePeer || newPeer(); } catch (_) {}
+}
 async function connect() {
   clearTimeout(reconnectTimer);
   if (stopped) return;
@@ -806,6 +873,7 @@ async function connect() {
   attempt++;
   if (connectedOnce) banner("reconnexion… (" + attempt + ")"); else gate("connexion", "préparation du stream", "busy");
   try {
+    await findLegacyRoom();
     let r, offer;
     if (access) {
       const got = await knock();
@@ -813,13 +881,13 @@ async function connect() {
       ({ r, j: offer } = got);
       if (!connectedOnce) gate("connexion", "préparation du stream", "busy");
     } else {
-      r = await fetch("/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) });
-      offer = await r.json().catch(() => ({}));
+      r = await signal("/session", { token });
+      offer = r.j;
     }
     if (r.status === 403) { fatal("lien invalide ou expiré", "demande un nouveau lien à ton ami"); return; }
     if (!r.ok) throw new Error(offer.error || ("http " + r.status));
-    pc = new RTCPeerConnection({ iceServers: offer.ice || [], bundlePolicy: "max-bundle", iceTransportPolicy: forceRelay ? "relay" : "all",
-                                 encodedInsertableStreams: lab.cfg.render === "webcodecs" });
+    pc = takePeer();
+    pc.setConfiguration({ ...pc.getConfiguration(), iceServers: offer.ice || [] });
     const peer = pc;
     pc.ontrack = e => {
       // No jitter buffer to speak of: the picture shows as soon as it is decoded.
@@ -842,9 +910,10 @@ async function connect() {
       const t = setTimeout(done, 1500);
       pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === "complete") { clearTimeout(t); done(); } };
     });
-    const a = await fetch("/answer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...credential(), id: offer.id, sdp: pc.localDescription.sdp }) });
+    const a = await signal("/answer", { ...credential(), id: offer.id, sdp: pc.localDescription.sdp });
     if (a.status === 403) { fatal("lien invalide ou expiré", "demande un nouveau lien à ton ami"); return; }
-    if (!a.ok) { const j = await a.json().catch(() => ({})); throw new Error(j.error || ("http " + a.status)); }
+    if (!a.ok) throw new Error(a.j.error || ("http " + a.status));
+    roomClose();   // the last message: the stream may already be up
     setTimeout(() => { if (peer === pc && pc.connectionState !== "connected") lost(); }, 12000);
   } catch (err) {
     lost(String(err.message || err));
@@ -1489,7 +1558,10 @@ render();
 if (lab.cfg.sim) lab.startSim();
 else {
   if (!token && !access) gate("lien incomplet", "demande un nouveau lien à ton ami", "err");
-  else if (access) gate("prêt", "clique pour jouer : la ps5 de ton ami s'allume toute seule", "");
+  else {
+    if (access) gate("prêt", "clique pour jouer : la ps5 de ton ami s'allume toute seule", "");
+    warmUp();
+  }
   if (params.get("autojoin") === "1" || autoTest) { $("hud").classList.remove("off"); startJoin(true); }
 }
 </script>

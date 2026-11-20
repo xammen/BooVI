@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 
 # BooVI's version: the one place it is set. The EXE's version resource, the app's
 # about line and the release zip's name (scripts/fork/package.ps1) all read it.
-project(veyra VERSION 1.0.0 LANGUAGES C CXX RC)
+project(veyra VERSION 1.0.1 LANGUAGES C CXX RC)
 # Moonlight/Xbox have C sources independently of the optional PS5 backend.
 # Shown in the EXE's version resource and in the package name. CMake versions
 # must be numeric, so a beta marker goes here instead (-DVEYRA_DISPLAY_VERSION=1.1.0beta).

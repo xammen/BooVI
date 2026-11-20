@@ -13,8 +13,8 @@ namespace veyra::guest {
 
 struct HttpRequest {
     std::string method, path, query, body;
-    // Who asked: the peer's address, or cloudflared's Cf-Connecting-Ip when the peer is
-    // loopback (the tunnel's own connection). Never logged whole.
+    // Who asked: the peer's address, or the guest's as the broker saw it (GuestBroker.h).
+    // Never logged whole.
     std::string source;
 };
 struct HttpResponse {

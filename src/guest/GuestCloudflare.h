@@ -1,7 +1,11 @@
 #pragma once
-// Fork, partage: the user's Cloudflare secrets for sharing (a named tunnel's token and a TURN
-// key), DPAPI-encrypted for the current Windows user in <user data>\guest\cloudflare.dpapi (UserDataRoot.h).
-// scripts\fork\guest-cf-secrets.ps1 writes it. Nothing here is logged.
+// Fork, partage: this PC's sharing secrets, DPAPI-encrypted for the current Windows user under
+// <user data>\guest (UserDataRoot.h). Nothing here is logged.
+//   cloudflare.dpapi   written by scripts\fork\guest-cf-secrets.ps1: the owner key, which lets
+//                      the broker lend its TURN relay (GuestBroker.h), and/or this user's own
+//                      Cloudflare TURN key.
+//   room.dpapi         the room key (GuestRoom.h), made on first use: the broker link and the
+//                      friends' access links (GuestAccess.h) stay the same from share to share.
 #include <optional>
 #include <string>
 
@@ -10,15 +14,17 @@
 namespace veyra::guest {
 
 struct CloudflareConfig {
-    std::string hostname;       // the tunnel's public hostname, e.g. play.example.com
-    std::string tunnelToken;
+    std::string ownerKey;
     std::string turnKeyId, turnApiToken;
 };
 
 std::optional<CloudflareConfig> loadCloudflareConfig();
 
-// Short-lived credentials from Cloudflare's TURN service, as RTCPeerConnection's iceServers
+// Short-lived credentials from the user's own TURN key, as RTCPeerConnection's iceServers
 // ([{urls: [...]}, {urls: [...], username, credential}]). An empty array and `error` on failure.
 nlohmann::json fetchTurnIceServers(const CloudflareConfig& config, int ttlSeconds, std::string& error);
+
+// This PC's room key; empty when it can be neither read nor made.
+std::string loadOrCreateRoomKey();
 
 } // namespace veyra::guest

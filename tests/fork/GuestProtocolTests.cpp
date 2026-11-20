@@ -1,4 +1,5 @@
 #include "veyra/guest/GuestProtocol.h"
+#include "veyra/guest/GuestRoom.h"
 #include <cstdio>
 #include <vector>
 
@@ -176,7 +177,20 @@ int main() {
     expect(!parseShareLink("https://play.example.com:99999/?t=tokentoken"), "link: a port past 65535 is refused");
     const auto access = parseShareLink("https://play.example.com/?a=AbC-d_EfGh1234567890xyzAbC-d_EfGh1234567890xy");
     expect(access && access->access && access->token.size() == 45 && access->host == "play.example.com", "link: a friend's access link");
-    expect(cf && !cf->access, "link: a share link is not an access");
+    expect(cf && !cf->access && cf->room.empty(), "link: a share link is not an access, and an old one names no room");
+    const auto room = parseShareLink("https://go.example.com/BD0Yl_nIfZ9Outt9sJj5xG#t=AbC-d_EfGh1234567890xyz");
+    expect(room && room->room == "BD0Yl_nIfZ9Outt9sJj5xG" && room->token == "AbC-d_EfGh1234567890xyz" && !room->access, "link: a broker room, its token in the fragment");
+    const auto roomAccess = parseShareLink("go.example.com/BD0Yl_nIfZ9Outt9sJj5xG/#a=AbC-d_EfGh1234567890xyzAbC");
+    expect(roomAccess && roomAccess->access && roomAccess->room == "BD0Yl_nIfZ9Outt9sJj5xG", "link: a friend's access to a broker room");
+    expect(!parseShareLink("https://go.example.com/BD0Yl_nIfZ9Outt9sJj5xG"), "link: a room with no secret is refused");
+    expect(!parseShareLink("https://go.example.com/not-a-room#t=AbC-d_EfGh1234567890xyz"), "link: a path that is no room id is refused");
+    const auto tail = parseShareLink("http://100.64.1.2:47800/#t=tokentoken");
+    expect(tail && tail->room.empty() && tail->token == "tokentoken" && !tail->https, "link: a tailnet link with its token in the fragment");
+
+    // ---- the broker room's id, derived as broker/src/ids.ts does (same vector in broker/test/ids.test.ts) ----
+    expect(veyra::guest::roomIdOf("BooVI-room-key-test-vector-0123456789abcdefg") == "BD0Yl_nIfZ9Outt9sJj5xG", "room: id from the key");
+    expect(veyra::guest::isRoomKey(veyra::guest::newRoomKey()), "room: a new key is 44 base64url characters");
+    expect(veyra::guest::newRoomKey() != veyra::guest::newRoomKey(), "room: keys are random");
 
     if (failures) { std::printf("%d FAILED\n", failures); return 1; }
     std::printf("all passed\n");

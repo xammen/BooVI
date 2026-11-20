@@ -10,6 +10,7 @@
 #include <QProcess>
 #include <QStandardPaths>
 #include <QTimer>
+#include <QUrl>
 
 #include <algorithm>
 #include <format>
@@ -36,13 +37,16 @@ guest::ControlMode modeOf(const QString& name) {
     return guest::ControlMode::GuestPlays;
 }
 
-QString tunnelName(guest::TunnelPhase phase) {
+QString brokerName(guest::BrokerPhase phase) {
     switch (phase) {
-    case guest::TunnelPhase::Starting: return QStringLiteral("starting");
-    case guest::TunnelPhase::Connected: return QStringLiteral("connected");
-    case guest::TunnelPhase::Failed: return QStringLiteral("failed");
+    case guest::BrokerPhase::Connecting: return QStringLiteral("connecting");
+    case guest::BrokerPhase::Connected: return QStringLiteral("connected");
     default: return QStringLiteral("off");
     }
+}
+
+QString relayName(guest::Relay relay) {
+    return relay == guest::Relay::Owner ? QStringLiteral("owner") : relay == guest::Relay::OwnKey ? QStringLiteral("key") : QStringLiteral("none");
 }
 
 // The host's maximum (Réglages → partage, and the share panel): what the guest may receive.
@@ -72,29 +76,33 @@ GuestShareModel::GuestShareModel(guest::GuestStreamer& guest, QmlPlayerBridge& b
     connect(timer_, &QTimer::timeout, this, &GuestShareModel::poll);
     connect(&bridge_, &QmlPlayerBridge::preferencesChanged, this, &GuestShareModel::applyPreferences);
     guest_.setMode(modeOf(bridge_.preferences().value(QStringLiteral("guestMode")).toString()));
-    cloudflareHost_ = QString::fromStdString(guest::cloudflareHost());
+    relay_ = relayName(guest::configuredRelay());
     queryTailscale();
+}
+
+QString GuestShareModel::brokerHost() const {
+    return QUrl(QString::fromStdString(guest::brokerUrl())).host();
 }
 
 GuestShareModel::~GuestShareModel() { stop(); }
 
 QString GuestShareModel::localLink() const {
-    if (!active_ || token_.isEmpty()) return {};
-    return QStringLiteral("http://127.0.0.1:%1/?t=%2").arg(port_).arg(token_);
+    if (!active_ || token_.isEmpty() || !port_) return {};
+    return QStringLiteral("http://127.0.0.1:%1/#t=%2").arg(port_).arg(token_);
 }
 
-// The link to give the friend: the Cloudflare URL once cloudflared has it; in the tailnet, https
-// through Tailscale when it is on, the tailnet address otherwise.
+// The link to give the friend: the room's on the broker; in the tailnet, https through Tailscale
+// when it is on, the tailnet address otherwise.
 QString GuestShareModel::link() const {
     if (!active_ || token_.isEmpty()) return {};
-    if (shareReach_ != QLatin1String("tailnet")) return publicUrl_.isEmpty() ? QString() : QStringLiteral("%1/?t=%2").arg(publicUrl_, token_);
-    if (httpsReady_ && !dnsName_.isEmpty()) return QStringLiteral("https://%1:%2/?t=%3").arg(dnsName_).arg(kHttpsPort).arg(token_);
-    if (!tailscaleIp_.isEmpty()) return QStringLiteral("http://%1:%2/?t=%3").arg(tailscaleIp_).arg(port_).arg(token_);
+    if (shareReach_ == QLatin1String("broker")) return publicUrl_.isEmpty() ? QString() : QStringLiteral("%1#t=%2").arg(publicUrl_, token_);
+    if (httpsReady_ && !dnsName_.isEmpty()) return QStringLiteral("https://%1:%2/#t=%3").arg(dnsName_).arg(kHttpsPort).arg(token_);
+    if (!tailscaleIp_.isEmpty()) return QStringLiteral("http://%1:%2/#t=%3").arg(tailscaleIp_).arg(port_).arg(token_);
     return localLink();
 }
 
 QString GuestShareModel::reach() const {
-    if (active_ && shareReach_ != QLatin1String("tailnet")) return shareReach_;
+    if (active_ && shareReach_ == QLatin1String("broker")) return shareReach_;
     if (httpsReady_) return QStringLiteral("tailnet-https");
     if (!tailscaleIp_.isEmpty()) return QStringLiteral("tailnet-http");
     return QStringLiteral("local");
@@ -139,32 +147,34 @@ void GuestShareModel::endVisit() {
 }
 
 QString GuestShareModel::accessLink(const QString& token) const {
-    const QString reach = reachPreference();
-    if (reach == QLatin1String("tunnel") && !cloudflareHost_.isEmpty()) return QStringLiteral("https://%1/?a=%2").arg(cloudflareHost_, token);
-    if (reach != QLatin1String("tailnet")) return {};
+    if (reachPreference() == QLatin1String("broker")) {
+        const QString room = QString::fromStdString(guest::brokerRoomLink());
+        return room.isEmpty() ? QString() : QStringLiteral("%1#a=%2").arg(room, token);
+    }
     const int port = active_ && port_ ? port_ : 47800;
-    if (httpsReady_ && !dnsName_.isEmpty()) return QStringLiteral("https://%1:%2/?a=%3").arg(dnsName_).arg(kHttpsPort).arg(token);
-    if (!tailscaleIp_.isEmpty()) return QStringLiteral("http://%1:%2/?a=%3").arg(tailscaleIp_).arg(port).arg(token);
-    return QStringLiteral("http://127.0.0.1:%1/?a=%2").arg(port).arg(token);
+    if (httpsReady_ && !dnsName_.isEmpty()) return QStringLiteral("https://%1:%2/#a=%3").arg(dnsName_).arg(kHttpsPort).arg(token);
+    if (!tailscaleIp_.isEmpty()) return QStringLiteral("http://%1:%2/#a=%3").arg(tailscaleIp_).arg(port).arg(token);
+    return QStringLiteral("http://127.0.0.1:%1/#a=%2").arg(port).arg(token);
 }
 
-// The named tunnel by default once one is configured on this PC. Tests set VEYRA_GUEST_REACH
-// (scriptsork\guest-latency.ps1 sets tailnet), so a test run never opens the named tunnel.
+// The broker by default when this build has one. Tests set VEYRA_GUEST_REACH
+// (scripts\fork\guest-latency.ps1 sets tailnet).
 QString GuestShareModel::reachPreference() const {
     const QString forced = qEnvironmentVariable("VEYRA_GUEST_REACH");
     const QString wanted = forced.isEmpty() ? bridge_.preferences().value(QStringLiteral("guestReach")).toString() : forced;
-    if (wanted == QLatin1String("tunnel") || wanted == QLatin1String("quick") || wanted == QLatin1String("tailnet")) return wanted;
-    return cloudflareHost_.isEmpty() ? QStringLiteral("tailnet") : QStringLiteral("tunnel");
+    const bool broker = !guest::brokerUrl().empty();
+    if (wanted == QLatin1String("tailnet") || (wanted == QLatin1String("broker") && broker)) return wanted;
+    return broker ? QStringLiteral("broker") : QStringLiteral("tailnet");
 }
 
 void GuestShareModel::start() {
     if (active_) return;
     const auto prefs = bridge_.preferences();
-    cloudflareHost_ = QString::fromStdString(guest::cloudflareHost());
     shareReach_ = reachPreference();
+    relay_ = relayName(guest::configuredRelay());
     guest::ShareSettings settings;
     settings.limit = limitOf(prefs);
-    settings.reach = shareReach_ == QLatin1String("tunnel") ? guest::Reach::Tunnel : shareReach_ == QLatin1String("quick") ? guest::Reach::Quick : guest::Reach::Tailnet;
+    settings.reach = shareReach_ == QLatin1String("broker") ? guest::Reach::Broker : guest::Reach::Tailnet;
     const QString app = QCoreApplication::applicationDirPath();
     settings.webRoot = (app + QStringLiteral("/web/guest")).toStdString();
     settings.fontFile = (app + QStringLiteral("/qml/Veyra/fonts/JetBrainsMono-Regular.ttf")).toStdString();
@@ -199,7 +209,7 @@ void GuestShareModel::stop() {
     timer_->stop();
     token_.clear();
     phase_ = QStringLiteral("off");
-    tunnel_ = QStringLiteral("off");
+    broker_ = QStringLiteral("off");
     publicUrl_.clear();
     linkWritten_.clear();
     stats_.clear();
@@ -328,7 +338,7 @@ void GuestShareModel::poll() {
     accessName_ = QString::fromStdString(s.accessName);
     token_ = QString::fromStdString(s.token);
     port_ = s.port;
-    tunnel_ = tunnelName(s.tunnel);
+    broker_ = brokerName(s.broker);
     publicUrl_ = QString::fromStdString(s.publicUrl);
     if (!s.tailscaleIp.empty()) tailscaleIp_ = QString::fromStdString(s.tailscaleIp);
     if (!s.error.empty()) error_ = QString::fromStdString(s.error);

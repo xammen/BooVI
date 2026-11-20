@@ -200,6 +200,13 @@
    "en": "actions"
   },
   {
+   "fr": "active",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "active"
+  },
+  {
    "fr": "active le hdr dans windows pour l'utiliser ici.",
    "src": [
     "qml/SettingsPage.qml"
@@ -342,6 +349,34 @@
    "en": "anti-aliasing"
   },
   {
+   "fr": "anticipation + interpolation",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "anticipation + interpolation"
+  },
+  {
+   "fr": "anticipation : %1",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "anticipation: %1"
+  },
+  {
+   "fr": "anticipation caméra · partage rejoint",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "camera anticipation · joined share"
+  },
+  {
+   "fr": "anticipation seule",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "anticipation alone"
+  },
+  {
    "fr": "APERÇU · AUCUN FLUX",
    "src": [
     "qml/MinimalPage.qml"
@@ -361,6 +396,13 @@
     "qml/SettingsPage.qml"
    ],
    "en": "saved device, unplugged"
+  },
+  {
+   "fr": "apprend",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "learning"
   },
   {
    "fr": "arrêter l'enregistrement",
@@ -405,13 +447,6 @@
     "qml/Sources.qml"
    ],
    "en": "paired"
-  },
-  {
-   "fr": "aucun tunnel cloudflare n'est configuré sur ce pc : prends le lien rapide.",
-   "src": [
-    "qml/SettingsPage.qml"
-   ],
-   "en": "no cloudflare tunnel is set up on this pc: use the quick link."
   },
   {
    "fr": "aucune",
@@ -495,6 +530,13 @@
    "en": "auto follows the picture's size and frame rate. in Mb/s."
   },
   {
+   "fr": "automatique",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "automatic"
+  },
+  {
    "fr": "autoriser automatiquement",
    "src": [
     "qml/SettingsPage.qml"
@@ -530,11 +572,11 @@
    "en": "beauty"
   },
   {
-   "fr": "BooVI garde l'accès ouvert même sans stream : une icône reste près de l'horloge, et réduire la fenêtre l'y range. ton ami réveille la ps5 avec son lien.",
+   "fr": "BooVI %1 est disponible",
    "src": [
-    "qml/SettingsPage.qml"
+    "qml/UpdateBanner.qml"
    ],
-   "en": "BooVI keeps the door open even with no stream: an icon stays by the clock, and minimizing the window tucks it there. your friend wakes the PS5 with their link."
+   "en": "BooVI %1 is available"
   },
   {
    "fr": "BooVI est en arrière-plan. clique ou appuie sur ps pour reprendre.",
@@ -542,6 +584,13 @@
     "qml/StreamOverlay.qml"
    ],
    "en": "BooVI is in the background. click or press ps to resume."
+  },
+  {
+   "fr": "BooVI garde l'accès ouvert même sans stream : une icône reste près de l'horloge, et réduire la fenêtre l'y range. ton ami réveille la ps5 avec son lien.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "BooVI keeps the door open even with no stream: an icon stays by the clock, and minimizing the window tucks it there. your friend wakes the PS5 with their link."
   },
   {
    "fr": "BooVI s'ouvre dans la zone de notification à l'ouverture de ta session, prêt à accueillir.",
@@ -820,6 +869,13 @@
    "en": "search settings"
   },
   {
+   "fr": "chez un ami : la caméra suit ton stick droit à chaque rafraîchissement de ton écran, sans attendre l'image suivante. seule : pas de frame gen, donc aucune attente, mais les objets bougent au rythme du jeu. avec interpolation : la frame gen lisse aussi les objets et remet son attente (une demi-image à une image). automatique : seule, sur un écran de 100 hz ou plus.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "at a friend's: the camera follows your right stick every refresh of your screen, without waiting for the next picture. alone: no frame gen, so no wait, but objects move at the game's own rate. with interpolation: frame gen smooths objects too and brings its wait back (half a picture to one picture). automatic: alone, on a screen of 100 hz or more."
+  },
+  {
    "fr": "chiffré sur ce pc et envoyé quand la ps5 le demande.",
    "src": [
     "qml/SetupPs5.qml"
@@ -1007,6 +1063,13 @@
     "qml/SetupXbox.qml"
    ],
    "en": "account linked, kept encrypted on this pc."
+  },
+  {
+   "fr": "confiance %1",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "confidence %1"
   },
   {
    "fr": "configurée",
@@ -1402,6 +1465,13 @@
    "en": "movement"
   },
   {
+   "fr": "désactivée",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "off"
+  },
+  {
    "fr": "détection seulement sur carte nvidia.",
    "src": [
     "qml/SettingsPage.qml"
@@ -1520,7 +1590,8 @@
     "qml/PadNotice.qml",
     "qml/SharePanel.qml",
     "qml/StreamOverlay.qml",
-    "qml/UiWindowButtons.qml"
+    "qml/UiWindowButtons.qml",
+    "qml/UpdateBanner.qml"
    ],
    "en": "close"
   },
@@ -1595,6 +1666,13 @@
     "qml/HomePage.qml"
    ],
    "en": "g-sync ready"
+  },
+  {
+   "fr": "gain appris",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "gain learnt"
   },
   {
    "fr": "gamepp détecté",
@@ -1841,6 +1919,13 @@
    "en": "off"
   },
   {
+   "fr": "inactive",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "inactive"
+  },
+  {
    "fr": "installe sunshine sur le pc à streamer, sur le même réseau. il apparaît ici tout seul.",
    "src": [
     "qml/SetupPc.qml"
@@ -2041,6 +2126,13 @@
     "qml/SettingsPage.qml"
    ],
    "en": "the display follows the frame pace."
+  },
+  {
+   "fr": "la caméra est redessinée à chaque rafraîchissement de l'écran selon le stick droit, sans attendre l'image suivante. délai appris : %1 ms. seule la caméra est anticipée : hud, personnages et tirs suivent le flux comme avant.",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "the camera is redrawn every screen refresh from the right stick, without waiting for the next picture. learnt delay: %1 ms. only the camera is anticipated: hud, characters and shots follow the stream as before."
   },
   {
    "fr": "la carte envoie ce que la console sort. ta carte graphique fait le reste. tu pourras changer en jeu.",
@@ -2331,13 +2423,6 @@
    "en": "the stream keeps going behind. resume whenever you like."
   },
   {
-   "fr": "le tunnel cloudflare s'est arrêté",
-   "src": [
-    "qml/SharePanel.qml"
-   ],
-   "en": "the cloudflare tunnel stopped"
-  },
-  {
    "fr": "le viseur, le texte et la minimap restent nets au lieu d'être dédoublés par la frame gen.",
    "src": [
     "qml/SettingsPage.qml"
@@ -2373,18 +2458,11 @@
    "en": "https link in your tailnet: your friend must be in it, or you share this pc with them in tailscale."
   },
   {
-   "fr": "lien https sur %1 par un tunnel cloudflare : ton ami n'installe rien. le tunnel s'ouvre avec le partage et se ferme avec lui.",
+   "fr": "lien https sur %1 : ton ami n'installe rien, l'image va de ton pc au sien.",
    "src": [
     "qml/SettingsPage.qml"
    ],
-   "en": "https link on %1 through a cloudflare tunnel: your friend installs nothing. the tunnel opens with sharing and closes with it."
-  },
-  {
-   "fr": "lien rapide",
-   "src": [
-    "qml/SettingsPage.qml"
-   ],
-   "en": "quick link"
+   "en": "https link on %1: your friend installs nothing, the picture goes from your pc to theirs."
   },
   {
    "fr": "lien reconnu · hôte %1",
@@ -2392,13 +2470,6 @@
     "qml/SetupJoin.qml"
    ],
    "en": "link recognised · host %1"
-  },
-  {
-   "fr": "lien trycloudflare.com tiré au hasard à chaque partage, sans compte : ton ami n'installe rien.",
-   "src": [
-    "qml/SettingsPage.qml"
-   ],
-   "en": "a random trycloudflare.com link for each share, no account: your friend installs nothing."
   },
   {
    "fr": "limite d'images",
@@ -2583,13 +2654,6 @@
    "en": "wheel ↓"
   },
   {
-   "fr": "mon domaine",
-   "src": [
-    "qml/SettingsPage.qml"
-   ],
-   "en": "my domain"
-  },
-  {
    "fr": "mouvements rapides : privilégier la netteté",
    "src": [
     "qml/SettingsPage.qml"
@@ -2740,11 +2804,11 @@
    "en": "forget"
   },
   {
-   "fr": "ouverture du tunnel…",
+   "fr": "ouverture du salon…",
    "src": [
     "qml/SharePanel.qml"
    ],
-   "en": "opening the tunnel…"
+   "en": "opening the room…"
   },
   {
    "fr": "ouvre sunshine sur le pc (https://ip-du-pc:47990), onglet pin, et tape ce code.",
@@ -2825,6 +2889,13 @@
     "qml/SetupPs5.qml"
    ],
    "en": "not listed? ip address"
+  },
+  {
+   "fr": "pas de relais : si vos deux box bloquent le direct, la connexion ne passe pas.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "no relay: if both your routers block the direct path, the connection fails."
   },
   {
    "fr": "pavé tactile",
@@ -2948,7 +3019,8 @@
   {
    "fr": "prête",
    "src": [
-    "qml/HomePage.qml"
+    "qml/HomePage.qml",
+    "qml/StreamOverlay.qml"
    ],
    "en": "ready"
   },
@@ -3319,6 +3391,13 @@
    "en": "their controller sends data but no button has come through: they can set it up from their page."
   },
   {
+   "fr": "salon ouvert sur %1",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "room open on %1"
+  },
+  {
    "fr": "sans fin",
    "src": [
     "qml/SettingsPage.qml"
@@ -3359,6 +3438,20 @@
     "qml/SettingsPage.qml"
    ],
    "en": "alone at the console, they play. if you're in a game, you always get asked."
+  },
+  {
+   "fr": "si le direct échoue, le relais cloudflare prend la suite, dans sa limite du mois.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "if the direct path fails, cloudflare's relay takes over, within its monthly limit."
+  },
+  {
+   "fr": "si le direct échoue, ta clé turn cloudflare sert de relais.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "if the direct path fails, your cloudflare turn key relays it."
   },
   {
    "fr": "si tu joues déjà",
@@ -3798,20 +3891,6 @@
    "en": "you're in the game."
   },
   {
-   "fr": "tunnel cloudflare connecté",
-   "src": [
-    "qml/SharePanel.qml"
-   ],
-   "en": "cloudflare tunnel connected"
-  },
-  {
-   "fr": "tunnel cloudflare en connexion…",
-   "src": [
-    "qml/SharePanel.qml"
-   ],
-   "en": "cloudflare tunnel connecting…"
-  },
-  {
    "fr": "un ami allume ta ps5 et joue avec son propre lien, même quand tu n'es pas là.",
    "src": [
     "qml/SettingsPage.qml"
@@ -3915,6 +3994,13 @@
     "qml/SettingsPage.qml"
    ],
    "en": "camera speed"
+  },
+  {
+   "fr": "voir la version",
+   "src": [
+    "qml/UpdateBanner.qml"
+   ],
+   "en": "see the release"
   },
   {
    "fr": "volume du stream",
@@ -4043,111 +4129,6 @@
     "qml/SettingsPage.qml"
    ],
    "en": "hdr state unknown for now."
-  },
-  {
-   "fr": "anticipation : %1",
-   "src": [
-    "qml/StreamOverlay.qml"
-   ],
-   "en": "anticipation: %1"
-  },
-  {
-   "fr": "inactive",
-   "src": [
-    "qml/StreamOverlay.qml"
-   ],
-   "en": "inactive"
-  },
-  {
-   "fr": "active",
-   "src": [
-    "qml/StreamOverlay.qml"
-   ],
-   "en": "active"
-  },
-  {
-   "fr": "apprend",
-   "src": [
-    "qml/StreamOverlay.qml"
-   ],
-   "en": "learning"
-  },
-  {
-   "fr": "confiance %1",
-   "src": [
-    "qml/StreamOverlay.qml"
-   ],
-   "en": "confidence %1"
-  },
-  {
-   "fr": "gain appris",
-   "src": [
-    "qml/StreamOverlay.qml"
-   ],
-   "en": "gain learnt"
-  },
-  {
-   "fr": "la caméra est redessinée à chaque rafraîchissement de l'écran selon le stick droit, sans attendre l'image suivante. délai appris : %1 ms. seule la caméra est anticipée : hud, personnages et tirs suivent le flux comme avant.",
-   "src": [
-    "qml/StreamOverlay.qml"
-   ],
-   "en": "the camera is redrawn every screen refresh from the right stick, without waiting for the next picture. learnt delay: %1 ms. only the camera is anticipated: hud, characters and shots follow the stream as before."
-  },
-  {
-   "fr": "anticipation caméra · partage rejoint",
-   "src": [
-    "qml/SettingsPage.qml"
-   ],
-   "en": "camera anticipation · joined share"
-  },
-  {
-   "fr": "chez un ami : la caméra suit ton stick droit à chaque rafraîchissement de ton écran, sans attendre l'image suivante. seule : pas de frame gen, donc aucune attente, mais les objets bougent au rythme du jeu. avec interpolation : la frame gen lisse aussi les objets et remet son attente (une demi-image à une image). automatique : seule, sur un écran de 100 hz ou plus.",
-   "src": [
-    "qml/SettingsPage.qml"
-   ],
-   "en": "at a friend's: the camera follows your right stick every refresh of your screen, without waiting for the next picture. alone: no frame gen, so no wait, but objects move at the game's own rate. with interpolation: frame gen smooths objects too and brings its wait back (half a picture to one picture). automatic: alone, on a screen of 100 hz or more."
-  },
-  {
-   "fr": "automatique",
-   "src": [
-    "qml/SettingsPage.qml"
-   ],
-   "en": "automatic"
-  },
-  {
-   "fr": "désactivée",
-   "src": [
-    "qml/SettingsPage.qml"
-   ],
-   "en": "off"
-  },
-  {
-   "fr": "anticipation seule",
-   "src": [
-    "qml/SettingsPage.qml"
-   ],
-   "en": "anticipation alone"
-  },
-  {
-   "fr": "anticipation + interpolation",
-   "src": [
-    "qml/SettingsPage.qml"
-   ],
-   "en": "anticipation + interpolation"
-  },
-  {
-   "fr": "BooVI %1 est disponible",
-   "src": [
-    "qml/UpdateBanner.qml"
-   ],
-   "en": "BooVI %1 is available"
-  },
-  {
-   "fr": "voir la version",
-   "src": [
-    "qml/UpdateBanner.qml"
-   ],
-   "en": "see the release"
   }
  ]
 }

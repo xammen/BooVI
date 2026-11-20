@@ -1,7 +1,7 @@
 // Partager (fork): the stream toolbar's panel for one remote guest (GuestShareModel, `vyGuest`).
 // Start sharing, copy the link, see who is connected and how, choose who drives the pad, kick.
-// Through Cloudflare (the named tunnel or lien rapide) the tunnel opens with the share by itself;
-// in the tailnet, `tailscale serve` only runs from the button here.
+// Through BooVI's broker the room opens with the share by itself; in the tailnet,
+// `tailscale serve` only runs from the button here.
 // `preview` shows sample values without a session (--page stream-preview --share-panel).
 import QtQuick
 import QtQuick.Layouts
@@ -31,10 +31,11 @@ Rectangle {
           + (st.guestFps !== undefined && st.guestFps !== null ? " · " + Math.round(st.guestFps) + " i/s" : "")
     readonly property string linkText: st.link > 0 ? qsTr("sa connexion : %1 · ping %2").arg(mbps(st.link)).arg(ms(st.linkRtt)) + (st.hz ? " · " + qsTr("écran %1 Hz").arg(Math.round(st.hz)) : "")
                                                    : qsTr("sa connexion : test en cours ou pas encore fait")
-    readonly property string reach: preview ? "tunnel" : g ? g.reach : "local"
-    readonly property bool viaCloudflare: reach === "tunnel" || reach === "quick"
-    readonly property string tunnel: preview ? "connected" : g ? g.tunnel : "off"
-    readonly property string link: preview ? "https://play.example.com/?t=••••••••" : g ? g.link : ""
+    readonly property string reach: preview ? "broker" : g ? g.reach : "local"
+    readonly property bool viaBroker: reach === "broker"
+    readonly property string broker: preview ? "connected" : g ? g.broker : "off"
+    readonly property string brokerHost: preview ? "go.example.com" : g ? g.brokerHost : ""
+    readonly property string link: preview ? "https://go.example.com/••••••#t=••••••••" : g ? g.link : ""
     readonly property string mode: preview ? "guest" : g ? g.mode : "guest"
     // The guest's pad as their page reports it, and what is wrong with it.
     readonly property string padText: !st.pad ? qsTr("aucune")
@@ -143,7 +144,7 @@ Rectangle {
                     anchors.leftMargin: 10
                     anchors.rightMargin: 10
                     verticalAlignment: Text.AlignVCenter
-                    text: panel.link.length > 0 ? panel.link : qsTr("ouverture du tunnel…")
+                    text: panel.link.length > 0 ? panel.link : qsTr("ouverture du salon…")
                     color: panel.link.length > 0 ? Theme.accentText : Theme.t3
                     font.family: Theme.fontMono
                     font.pixelSize: Theme.fsMeta
@@ -155,7 +156,7 @@ Rectangle {
         Text {
             visible: panel.active
             Layout.fillWidth: true
-            text: panel.viaCloudflare ? qsTr("ton ami ouvre ce lien dans chrome ou edge, il n'installe rien. quiconque a le lien peut rejoindre tant que le partage dure.")
+            text: panel.viaBroker ? qsTr("ton ami ouvre ce lien dans chrome ou edge, il n'installe rien. quiconque a le lien peut rejoindre tant que le partage dure.")
                 : panel.reach === "tailnet-https" ? qsTr("lien https de ton tailnet : ton ami doit y être, ou tu lui partages ce pc dans tailscale.")
                 : panel.reach === "tailnet-http" ? qsTr("lien http de ton tailnet : l'image passe, mais les navigateurs ne lisent la manette qu'en https.")
                 : qsTr("tailscale est coupé : seul ce pc peut ouvrir ce lien.")
@@ -166,15 +167,13 @@ Rectangle {
             wrapMode: Text.Wrap
         }
         RowLayout {
-            visible: panel.active && panel.viaCloudflare
+            visible: panel.active && panel.viaBroker
             Layout.fillWidth: true
             spacing: 8
-            UiDot { hollow: panel.tunnel !== "connected" && panel.tunnel !== "failed"; tone: panel.tunnel === "failed" ? Theme.err : Theme.ok }
+            UiDot { hollow: panel.broker !== "connected" }
             Text {
                 Layout.fillWidth: true
-                text: panel.tunnel === "connected" ? qsTr("tunnel cloudflare connecté")
-                    : panel.tunnel === "failed" ? qsTr("le tunnel cloudflare s'est arrêté")
-                    : qsTr("tunnel cloudflare en connexion…")
+                text: panel.broker === "connected" ? qsTr("salon ouvert sur %1").arg(panel.brokerHost) : qsTr("ouverture du salon…")
                 color: Theme.t2
                 font.family: Theme.fontMono
                 font.pixelSize: Theme.fsMeta
@@ -182,7 +181,7 @@ Rectangle {
             }
         }
         Flow {
-            visible: panel.active && !panel.preview && !panel.viaCloudflare
+            visible: panel.active && !panel.preview && !panel.viaBroker
             Layout.fillWidth: true
             spacing: 8
             UiButton {

@@ -9,11 +9,12 @@
 #include <nlohmann/json.hpp>
 
 #include "GuestAudio.h"
+#include "GuestBroker.h"
 #include "GuestCloudflare.h"
 #include "GuestHttp.h"
-#include "GuestTunnel.h"
 #include "GuestVideo.h"
 #include "veyra/guest/GuestAccess.h"
+#include "veyra/guest/GuestRoom.h"
 #include "veyra/Log.h"
 #include "veyra/sink/RecordingAudioTap.h"
 
@@ -47,7 +48,8 @@ constexpr size_t kMaxFragment = 1100;  // fits Tailscale's 1280-byte MTU with SR
 constexpr int64_t kConnectTimeoutUs = 20000000;
 constexpr int64_t kSilentUs = 3000000;
 constexpr int64_t kPadSilentUs = 15000000;  // a pad that has sent no button this long is flagged to the host
-constexpr int kTurnTtlSeconds = 4 * 3600;   // TURN credentials last this long; past it, restart the share for a new relay
+constexpr int kTurnTtlSeconds = 4 * 3600;   // the user's own TURN key: credentials last this long; past it, restart the share
+constexpr auto kLeaseWait = std::chrono::milliseconds(3000);   // the broker's TURN lease, before the offer goes without it
 const char* kStunUrl = "stun:stun.l.google.com:19302";
 const char* kPlayoutDelayUri = "http://www.webrtc.org/experiments/rtp-hdrext/playout-delay";
 
@@ -173,7 +175,8 @@ const char* candidateName(rtc::Candidate::Type t) {
     }
 }
 
-const char* reachName(Reach r) { return r == Reach::Tunnel ? "tunnel" : r == Reach::Quick ? "quick" : "tailnet"; }
+const char* reachName(Reach r) { return r == Reach::Broker ? "broker" : "tailnet"; }
+const char* relayName(Relay r) { return r == Relay::Owner ? "owner" : r == Relay::OwnKey ? "own-key" : "none"; }
 
 // The host's own ICE servers: STUN first, then Cloudflare's TURN over UDP (what libjuice relays).
 std::vector<rtc::IceServer> hostIceServers(const json& cloudflare) {
@@ -217,6 +220,8 @@ struct GuestPeer {
     std::shared_ptr<rtc::DataChannel> input, feedback, stats, probe;
     std::atomic<int> state{int(rtc::PeerConnection::State::New)};
     std::atomic<bool> gathered{false};
+    // When each kind of local candidate first came, from createdUs (0: none yet).
+    std::atomic<int64_t> firstSrflxUs{0}, firstRelayUs{0};
     std::atomic<bool> connectedHandled{false};   // set by the control thread once media flow
     std::atomic<bool> retired{false};
     std::atomic<int64_t> heardUs{0};             // last message from the page, any channel
@@ -226,6 +231,10 @@ struct GuestPeer {
     int64_t createdUs = 0;
     std::string remote, candidate;               // written before connectedHandled
     bool relayed = false;
+    // The broker's TURN lease for this guest, handed back once the relay is not needed.
+    std::mutex leaseMutex;
+    std::string lease;
+    std::string takeLease() { std::lock_guard lock(leaseMutex); return std::exchange(lease, {}); }
 };
 
 struct GuestStreamer::Impl {
@@ -238,7 +247,8 @@ struct GuestStreamer::Impl {
     ShareSettings settings;
     bool active = false, stopping = false, kickRequested = false;
     std::string token, tailscaleIp, error;
-    json cloudflareIce = json::array();   // short-lived TURN credentials; never logged
+    Relay relay = Relay::None;
+    json cloudflareIce = json::array();   // the user's own TURN key's credentials; never logged
     std::shared_ptr<GuestPeer> peer;
     SourceLimiter limiter;
     std::atomic<AccessDesk*> desk{nullptr};
@@ -290,7 +300,7 @@ struct GuestStreamer::Impl {
     json report;                        // the page's last latency report
 
     // Last: destroyed first, so no thread of theirs outlives the state above.
-    GuestTunnel tunnel;
+    GuestBroker broker;
     GuestHttp http;
     GuestAudio audio{[this](const std::vector<uint8_t>& packet, uint32_t ts) { sendAudio(packet, ts); }};
     GuestVideo video{[this](EncodedFrame&& frame) { sendVideo(std::move(frame)); }};
@@ -397,24 +407,39 @@ struct GuestStreamer::Impl {
         } else if (!tokenOk(in["token"].get<std::string>(), source)) return {403, "application/json", R"({"error":"lien invalide ou expiré"})"};
         // A BooVI client says so; it then gets real pictures only and sends the extended pad.
         const bool native = in.contains("client") && in["client"] == "boovi";
-        auto p = createPeer(native, access);
-        if (!p) return {503, "application/json", R"({"error":"impossible de préparer la connexion"})"};
+        // The relay is lent only once the guest has shown its token or access.
+        const auto [reach, relayFrom] = [&] { std::lock_guard lock(m); return std::pair{settings.reach, relay}; }();
+        TurnLease lease;
+        json ice = json::array();
+        if (reach == Reach::Broker && relayFrom == Relay::Owner) {
+            const int64_t asked = nowUs();
+            lease = broker.requestTurn(kLeaseWait);
+            ice = lease.iceServers;
+            veyra::log::info("guest", std::format("turn lease {} in {:.0f} ms", lease.id.empty() ? "refused (" + lease.why + ")" : std::string("granted"),
+                                                  double(nowUs() - asked) / 1000.0));
+        } else if (reach == Reach::Broker) {
+            std::lock_guard lock(m);
+            ice = cloudflareIce;
+        }
+        auto p = createPeer(native, access, ice, lease.id);
+        if (!p) { broker.endTurn(lease.id); return {503, "application/json", R"({"error":"impossible de préparer la connexion"})"}; }
         {
             std::unique_lock lock(gatherMutex);
             gatherCv.wait_for(lock, std::chrono::seconds(3), [&] { return p->gathered.load() || p->retired.load(); });
         }
+        veyra::log::info("guest", std::format("peer {} offer after {:.0f} ms (gathering {}; first srflx {:.0f} ms, relay {:.0f} ms)", p->id,
+            double(nowUs() - p->createdUs) / 1000.0, p->gathered.load() ? "complete" : "cut at 3 s",
+            double(p->firstSrflxUs.load()) / 1000.0, double(p->firstRelayUs.load()) / 1000.0));
         if (currentPeer() != p) return {409, "application/json", R"({"error":"une autre connexion a pris la place"})"};
         const auto local = p->pc->localDescription();
         if (!local) return {503, "application/json", R"({"error":"pas d'offre"})"};
         json out{{"id", p->id}, {"sdp", std::string(*local)}, {"mode", modeName(mode.load())}, {"input", kExtendedVersion}};
         if (AccessDesk* d = desk.load(); d && !access.empty()) out["host"] = d->hostName();
-        {
-            // STUN first: the browser keeps a direct path when there is one, the relay is the fallback.
-            std::lock_guard lock(m);
-            if (settings.reach != Reach::Tailnet) {
-                out["ice"] = json::array({json{{"urls", kStunUrl}}});
-                for (const auto& server : cloudflareIce) out["ice"].push_back(server);
-            } else out["ice"] = json::array();
+        // STUN first: the browser keeps a direct path when there is one, the relay is the fallback.
+        out["ice"] = json::array();
+        if (reach == Reach::Broker) {
+            out["ice"].push_back(json{{"urls", kStunUrl}});
+            for (const auto& server : ice) out["ice"].push_back(server);
         }
         return {200, "application/json", out.dump()};
     }
@@ -451,15 +476,15 @@ struct GuestStreamer::Impl {
         return {204, "text/plain", ""};
     }
 
-    std::shared_ptr<GuestPeer> createPeer(bool native, const std::string& access) {
+    std::shared_ptr<GuestPeer> createPeer(bool native, const std::string& access, const json& ice, const std::string& lease) {
         initRtcLogOnce();
-        ShareSettings s; std::string bindIp; json ice;
+        ShareSettings s; std::string bindIp;
         {
             std::lock_guard lock(m);
-            s = settings; bindIp = tailscaleIp; ice = cloudflareIce;
+            s = settings; bindIp = tailscaleIp;
         }
         rtc::Configuration config;
-        if (s.reach != Reach::Tailnet) config.iceServers = hostIceServers(ice);
+        if (s.reach == Reach::Broker) config.iceServers = hostIceServers(ice);
         else config.bindAddress = bindIp.empty() ? std::string("127.0.0.1") : bindIp;
         config.mtu = 1280;
         config.disableAutoNegotiation = true;
@@ -467,6 +492,7 @@ struct GuestStreamer::Impl {
         p->id = randomToken().substr(0, 12);
         p->native = native;
         p->access = access;
+        p->lease = lease;
         p->createdUs = nowUs();
         try {
             p->pc = std::make_shared<rtc::PeerConnection>(config);
@@ -477,6 +503,14 @@ struct GuestStreamer::Impl {
             p->pc->onGatheringStateChange([this, weak](rtc::PeerConnection::GatheringState state) {
                 if (state != rtc::PeerConnection::GatheringState::Complete) return;
                 if (auto self = weak.lock()) { self->gathered = true; std::lock_guard lock(gatherMutex); gatherCv.notify_all(); }
+            });
+            p->pc->onLocalCandidate([weak](rtc::Candidate candidate) {
+                auto self = weak.lock();
+                const auto type = candidate.type();
+                if (!self || type == rtc::Candidate::Type::Host) return;
+                auto& first = type == rtc::Candidate::Type::Relayed ? self->firstRelayUs : self->firstSrflxUs;
+                int64_t none = 0;
+                first.compare_exchange_strong(none, std::max<int64_t>(1, nowUs() - self->createdUs));
             });
 
             rtc::Description::Video videoMedia("video", rtc::Description::Direction::SendOnly);
@@ -592,6 +626,7 @@ struct GuestStreamer::Impl {
     // Any thread but a libdatachannel callback.
     void retirePeer(const std::shared_ptr<GuestPeer>& p, const char* why) {
         if (!p || p->retired.exchange(true)) return;
+        broker.endTurn(p->takeLease());
         { std::lock_guard lock(gatherMutex); gatherCv.notify_all(); }
         probeStop = true;
         if (p->connectedHandled) {
@@ -766,6 +801,8 @@ struct GuestStreamer::Impl {
             p->candidate = candidateName(remote.type());
             p->relayed = remote.type() == rtc::Candidate::Type::Relayed || local.type() == rtc::Candidate::Type::Relayed;
         }
+        // A direct path: the lease goes back now, and the rest of it is refunded.
+        if (!p->relayed) broker.endTurn(p->takeLease());
         {
             std::lock_guard lock(statsMutex);
             presentToSent.clear(); encode.clear(); decodedToSent.clear(); decodedReal.clear(); decodedSmooth.clear(); report = json();
@@ -866,22 +903,23 @@ engine::EarlyCapture& GuestStreamer::capture() { return p_->video; }
 bool GuestStreamer::start(const ShareSettings& settings, std::string& error) {
     auto& p = *p_;
     if (active()) return true;
-    std::optional<CloudflareConfig> cloudflare;
-    if (settings.reach != Reach::Tailnet) cloudflare = loadCloudflareConfig();
-    if (settings.reach == Reach::Tunnel && !cloudflare) {
-        error = "aucun tunnel cloudflare configuré sur ce pc";
+    const bool viaBroker = settings.reach == Reach::Broker;
+    const auto cloudflare = viaBroker ? loadCloudflareConfig() : std::nullopt;
+    const Relay relay = !cloudflare ? Relay::None : !cloudflare->ownerKey.empty() ? Relay::Owner : Relay::OwnKey;
+    std::string roomKey = viaBroker ? loadOrCreateRoomKey() : std::string();
+    const std::string url = brokerUrl();
+    if (viaBroker && (url.empty() || roomKey.empty())) {
+        error = url.empty() ? "cette version n'a pas de broker : choisis le tailnet" : "clé de salon illisible";
         std::lock_guard lock(p.m); p.error = error; return false;
     }
-    // Through Cloudflare, cloudflared is the only client: loopback is enough.
     const std::string ip = tailscaleAddress();
-    std::vector<std::string> addresses{"127.0.0.1"};
-    if (!ip.empty() && settings.reach == Reach::Tailnet) addresses.push_back(ip);
     {
         std::lock_guard lock(p.m);
         p.settings = settings;
         p.tailscaleIp = ip;
         p.token = randomToken();
         p.error.clear();
+        p.relay = relay;
         p.cloudflareIce = json::array();
     }
     p.testLimit = TestLimit::fromEnvironment();
@@ -892,22 +930,25 @@ bool GuestStreamer::start(const ShareSettings& settings, std::string& error) {
         p.rate.setLimit(settings.limit);
     }
     p.video.setQuality(1080, 60, false, defaultKbps(Feed::Real, Size::P1080));
-    // The first free port from the configured one, so a second BooVI still shares; the named
-    // tunnel's ingress points at the configured port only.
-    const uint16_t lastPort = settings.reach == Reach::Tunnel ? settings.port : uint16_t(settings.port + 9);
-    bool listening = false;
-    for (uint16_t port = settings.port; port <= lastPort && !listening; ++port)
-        listening = p.http.start(addresses, port, [impl = p_.get()](const HttpRequest& r) { return impl->handle(r); }, error);
-    if (!listening) { std::lock_guard lock(p.m); p.error = error; p.token.clear(); return false; }
-    const bool tunnelOk = settings.reach == Reach::Tunnel ? p.tunnel.startNamed(cloudflare->tunnelToken, cloudflare->hostname, error)
-                        : settings.reach == Reach::Quick ? p.tunnel.startQuick(p.http.port(), error) : true;
-    if (!tunnelOk) { p.http.stop(); std::lock_guard lock(p.m); p.error = error; p.token.clear(); return false; }
+    auto handler = [impl = p_.get()](const HttpRequest& r) { return impl->handle(r); };
+    if (viaBroker) {
+        const bool opened = p.broker.start(url, roomKey, relay == Relay::Owner ? cloudflare->ownerKey : std::string(), handler, error);
+        SecureZeroMemory(roomKey.data(), roomKey.size());
+        if (!opened) { std::lock_guard lock(p.m); p.error = error; p.token.clear(); return false; }
+    } else {
+        // The first free port from the configured one, so a second BooVI still shares.
+        std::vector<std::string> addresses{"127.0.0.1"};
+        if (!ip.empty()) addresses.push_back(ip);
+        bool listening = false;
+        for (uint16_t port = settings.port; port <= settings.port + 9 && !listening; ++port) listening = p.http.start(addresses, port, handler, error);
+        if (!listening) { std::lock_guard lock(p.m); p.error = error; p.token.clear(); return false; }
+    }
     {
         std::lock_guard lock(p.m);
         p.active = true; p.stopping = false; p.kickRequested = false;
-        p.settings.port = p.http.port();
+        p.settings.port = viaBroker ? 0 : p.http.port();
     }
-    if (cloudflare && !cloudflare->turnKeyId.empty()) {
+    if (relay == Relay::OwnKey) {
         p.turnFetch = std::thread([impl = p_.get(), config = *cloudflare] {
             SetThreadDescription(GetCurrentThread(), L"Guest turn");
             std::string why;
@@ -919,11 +960,11 @@ bool GuestStreamer::start(const ShareSettings& settings, std::string& error) {
         });
     }
     p.control = std::thread([impl = p_.get()] { impl->controlLoop(); });
-    const auto bound = p.http.bound();
     std::string where;
-    for (const auto& a : bound) where += (where.empty() ? "" : ",") + a;
-    veyra::log::info("guest", std::format("sharing started port={} listen={} tailscale={} reach={} max feed={} size={} kbps={}",
-        p.http.port(), where, ip.empty() ? "down" : "up", reachName(settings.reach), feedName(settings.limit.feed), sizeName(settings.limit.size), settings.limit.kbps));
+    for (const auto& a : p.http.bound()) where += (where.empty() ? "" : ",") + a;
+    veyra::log::info("guest", std::format("sharing started reach={} relay={} port={} listen={} tailscale={} max feed={} size={} kbps={}",
+        reachName(settings.reach), relayName(relay), p.http.port(), where.empty() ? "-" : where, ip.empty() ? "down" : "up",
+        feedName(settings.limit.feed), sizeName(settings.limit.size), settings.limit.kbps));
     return true;
 }
 
@@ -939,9 +980,10 @@ void GuestStreamer::stop() {
     p.controlCv.notify_all();
     if (p.control.joinable()) p.control.join();
     if (p.turnFetch.joinable()) p.turnFetch.join();
-    p.tunnel.stop();
-    p.http.stop();
+    // The last guest's lease goes back before the room closes.
     p.retirePeer(last, "sharing stopped");
+    p.broker.stop();
+    p.http.stop();
     {
         // After the peer is closed: no page can ask for another link test.
         std::lock_guard lock(p.probeMutex);
@@ -961,6 +1003,21 @@ void GuestStreamer::stop() {
 }
 
 bool GuestStreamer::active() const { std::lock_guard lock(p_->m); return p_->active; }
+
+std::string brokerRoomLink() {
+    const std::string url = brokerUrl();
+    if (url.empty()) return {};
+    std::string key = loadOrCreateRoomKey();
+    if (key.empty()) return {};
+    const std::string id = roomIdOf(key);
+    SecureZeroMemory(key.data(), key.size());
+    return (url.ends_with('/') ? url : url + "/") + id;
+}
+
+Relay configuredRelay() {
+    const auto config = loadCloudflareConfig();
+    return !config ? Relay::None : !config->ownerKey.empty() ? Relay::Owner : Relay::OwnKey;
+}
 
 void GuestStreamer::kick() {
     { std::lock_guard lock(p_->m); if (!p_->active) return; p_->kickRequested = true; }
@@ -991,7 +1048,7 @@ ShareStatus GuestStreamer::status() const {
     {
         std::lock_guard lock(p.m);
         out.token = p.token; out.port = p.settings.port; out.tailscaleIp = p.tailscaleIp; out.error = p.error;
-        out.reach = p.settings.reach; out.turnReady = !p.cloudflareIce.empty();
+        out.reach = p.settings.reach; out.relay = p.relay;
         peer = p.peer;
         out.phase = !p.active ? Phase::Off : !peer ? Phase::Waiting : peer->connectedHandled ? Phase::Connected : Phase::Connecting;
         if (!p.active) out.port = 0;
@@ -1003,9 +1060,8 @@ ShareStatus GuestStreamer::status() const {
         out.linkKbps = p.rate.testedKbps(); out.linkRttMs = p.linkRtt; out.linkLossPercent = p.linkLoss < 0 ? -1 : p.linkLoss * 100;
         out.targetKbps = out.quality.kbps;
     }
-    out.tunnel = p.tunnel.phase();
-    out.publicUrl = p.tunnel.publicUrl();
-    if (out.error.empty() && out.tunnel == TunnelPhase::Failed) out.error = p.tunnel.error();
+    out.broker = p.broker.phase();
+    if (out.reach == Reach::Broker && out.phase != Phase::Off) out.publicUrl = p.broker.roomLink();
     if (peer && peer->connectedHandled.load()) {
         out.remote = peer->remote; out.candidate = peer->candidate; out.relayed = peer->relayed; out.nativeClient = peer->native;
         out.accessName = peer->access;

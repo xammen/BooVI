@@ -64,9 +64,10 @@ super résolution et la génération d'images.
 
 Le lien passe par l'un de ces chemins, au choix dans **réglages → partage** :
 
+- **Broker** (par défaut) : un lien `https://…/<salon>#t=…`, rien à installer ; l'image passe en direct entre vous deux.
 - **Tailscale** : vous êtes tous les deux dans le même tailnet.
-- **Lien rapide** : un tunnel Cloudflare sans compte (installe `cloudflared` sur le PC qui partage).
-- **Ton propre domaine** : un tunnel Cloudflare nommé. Voir [docs/SHARING.md](docs/SHARING.md).
+
+Voir [docs/SHARING.md](docs/SHARING.md).
 
 ## Compiler
 

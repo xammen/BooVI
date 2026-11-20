@@ -14,17 +14,19 @@
 // - Data channels: "input" (unordered, no retransmission) carries the guest's pad
 //   (GuestProtocol.h), "feedback" the rumble, "stats" the clock-sync pings, per-frame
 //   timings and the page's latency reports.
-// - Signaling: the guest page and its offer/answer over a small HTTP server on loopback
-//   (and the Tailscale address for Reach::Tailnet), guarded by a random token per share
-//   session, or by a friend's long-lived access (GuestAccess.h) once the AccessDesk lets
+// - Signaling: the guest's offer/answer (/session, /answer), guarded by a random token per
+//   share session, or by a friend's long-lived access (GuestAccess.h) once the AccessDesk lets
 //   their visit in: until then /session answers 202 with the visit's state. Wrong
 //   credentials lock out their source address only (SourceLimiter). One guest at a time: a
 //   new guest with the token replaces the previous connection; kick() disconnects and
 //   changes the token.
-// - Through Cloudflare (Reach::Tunnel, Reach::Quick): cloudflared brings the page and the
-//   signaling to a public https URL (GuestTunnel.h); media stay peer to peer, found with
-//   STUN, with Cloudflare's TURN relay as the fallback (short-lived credentials fetched at
-//   start, handed to the page through the token-gated signaling).
+// - Reach::Broker (default): BooVI's broker (GuestBroker.h, broker/) serves the page over
+//   https from Cloudflare's edge and relays the signaling through this PC's room, which the
+//   host opens outbound. Media stay peer to peer, found with STUN; the relay when the direct
+//   path fails is Cloudflare TURN, lent per guest by the broker to the owner key's holder, or
+//   the user's own TURN key; without either, direct only.
+// - Reach::Tailnet: a small HTTP server on loopback and the Tailscale address serves the page
+//   and the signaling (GuestHttp.h).
 //
 // The input thread (RemotePlayInput.cpp) reads guestState() every 1 ms and merges it with
 // the host's pad per mode(); the engine hands capture() each real picture, before frame
@@ -44,21 +46,28 @@ namespace veyra::guest {
 class AccessDesk;
 
 enum class Phase : uint8_t { Off, Waiting, Connecting, Connected };
-// How the guest reaches this PC. Tailnet: the guest is in (or shares) the host's tailnet,
-// media bind the Tailscale address. Tunnel: the user's named Cloudflare tunnel
-// (https://<their hostname>). Quick: an account-less trycloudflare.com URL.
-enum class Reach : uint8_t { Tailnet, Tunnel, Quick };
-enum class TunnelPhase : uint8_t { Off, Starting, Connected, Failed };
+// How the guest reaches this PC. Broker: https://<broker>/<room id>, the guest installs
+// nothing. Tailnet: the guest is in (or shares) the host's tailnet, media bind the Tailscale
+// address.
+enum class Reach : uint8_t { Broker, Tailnet };
+enum class BrokerPhase : uint8_t { Off, Connecting, Connected };
+// Where a guest's relay comes from when the direct path fails.
+enum class Relay : uint8_t { None, Owner, OwnKey };
 
-// The hostname of the named tunnel configured on this PC, empty when there is none.
-std::string cloudflareHost();
+// The broker this build shares through (BOOVI_BROKER_URL), or VEYRA_GUEST_BROKER's; empty: none.
+std::string brokerUrl();
+// The broker link of this PC's room (https://<broker>/<room id>, the room key made on first
+// use), empty when this build has no broker. A friend's access link adds #a=<token> to it.
+std::string brokerRoomLink();
+// What a share through the broker would relay with (the config in GuestCloudflare.h).
+Relay configuredRelay();
 
 struct ShareSettings {
     Limit limit;                 // the most the guest may receive: feed, size, the host's upload
     Reach reach = Reach::Tailnet;
-    uint16_t port = 47800;
-    std::string webRoot;         // folder holding index.html (the guest page)
-    std::string fontFile;        // JetBrains Mono, served at /font.ttf
+    uint16_t port = 47800;       // tailnet: the local server's
+    std::string webRoot;         // tailnet: the folder holding index.html (the guest page)
+    std::string fontFile;        // tailnet: JetBrains Mono, served at /font.ttf
 };
 
 struct ShareStatus {
@@ -68,9 +77,9 @@ struct ShareStatus {
     uint16_t port = 0;
     std::string tailscaleIp;     // empty when Tailscale is not up
     Reach reach = Reach::Tailnet;
-    TunnelPhase tunnel = TunnelPhase::Off;
-    std::string publicUrl;       // https://host of the Cloudflare tunnel, empty until known
-    bool turnReady = false;      // Cloudflare TURN credentials in hand
+    BrokerPhase broker = BrokerPhase::Off;
+    std::string publicUrl;       // broker: https://<broker>/<room id>
+    Relay relay = Relay::None;
     std::string remote;          // guest's address as ICE selected it
     std::string candidate;       // remote candidate type: "host", "srflx", "prflx", "relay"
     bool relayed = false;        // either end of the selected pair is a TURN relay

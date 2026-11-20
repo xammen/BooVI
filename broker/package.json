@@ -1,0 +1,26 @@
+{
+  "name": "boovi-broker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "assets": "node scripts/assets.mjs",
+    "test": "vitest run",
+    "dev": "node scripts/assets.mjs && wrangler dev",
+    "deploy": "node scripts/assets.mjs && wrangler deploy",
+    "types": "wrangler types",
+    "pretest": "node scripts/assets.mjs",
+    "check": "wrangler types && tsc"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.8.5",
+    "typescript": "5.9.3",
+    "vitest": "5.1.1",
+    "wrangler": "4.165.0"
+  },
+  "allowScripts": {
+    "workerd@1.20260815.1": true,
+    "workerd@1.20261118.1": true,
+    "esbuild@0.28.1": true,
+    "esbuild@0.28.2": true
+  }
+}

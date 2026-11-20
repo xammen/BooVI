@@ -1,54 +1,81 @@
-# Sharing a session through your own domain
+# Sharing a session with a friend
 
-BooVI shares a session with a friend over one of three paths, picked in **réglages → partage →
-accès**:
+BooVI shares a session over one of two paths, picked in **réglages → partage → accès**:
 
 | Path | What the sharing PC needs | Link |
 |---|---|---|
+| Broker (default) | nothing: the build names a broker | `https://<broker>/<room>#t=…` |
 | Tailscale | Tailscale, both PCs in the same tailnet | `https://<pc>.<tailnet>.ts.net:<port>/?t=…` |
-| Lien rapide | `cloudflared` installed, no account | `https://<random>.trycloudflare.com/?t=…` |
-| Named tunnel | `cloudflared` and your own Cloudflare tunnel, set up below | `https://<your host>/?t=…` |
 
-Nothing in the source names a domain, a tunnel or a Cloudflare account. Without the settings
-below, BooVI offers Tailscale and the quick link only.
+The friend opens the link in Chrome or Edge, or pastes it in BooVI (**accueil → rejoindre un
+partage**). Nothing to install on either side.
 
-## What a named tunnel needs
+## How the broker path works
 
-In your Cloudflare account, once:
+```
+ friend's browser / BooVI                 broker (Cloudflare Worker "boovi")          your BooVI
+ ───────────────────────                  ──────────────────────────────────          ──────────
+ GET https://<broker>/<room> ───────────▶ static guest page (edge cache)
+ WebSocket /api/room/<room>  ◀──────────▶ Room (Durable Object) ◀──────────▶ WebSocket /api/host/<room>
+   offer / answer / ICE, and the            relays text, reads nothing            (outbound, opened when
+   link's secret, inside messages                                                  sharing starts)
+                                          TurnLedger (Durable Object)  ◀── owner key: a TURN lease per guest
+ media: WebRTC, direct (STUN) ◀════════════════════════════════════════════════════▶ media
+        or through Cloudflare TURN when the host is entitled and the direct path fails
+```
 
-1. A remotely managed tunnel, and a public hostname for it (for example `play.example.com`,
-   a proxied CNAME to `<tunnel id>.cfargotunnel.com`).
-2. Its ingress: forward `/`, `/index.html`, `/font.ttf`, `/session` and `/answer` to
-   `http://127.0.0.1:47800`, and answer 404 to everything else.
-3. A Realtime TURN key, so a friend behind a strict NAT still connects through Cloudflare's
-   relay. Its API token is shown once, at creation.
+- **The room.** Your BooVI keeps a 264-bit room key on this PC (`guest\room.dpapi`, DPAPI). The
+  room id in links is a hash of it (132 bits), so only your PC can open your room. The Worker
+  checks the key, then relays the guest's messages to your BooVI without reading them.
+- **The secret stays in the fragment.** `#t=` (a share's one-shot token) and `#a=` (a permanent
+  access) are never sent to the broker by the browser. The page carries the secret to your
+  BooVI inside the room, and BooVI checks it as it always did: one-shot token, hashed permanent
+  access, the approval card, per-IP lockout after wrong secrets.
+- **Limits.** The broker limits room joins (30 a minute) and room openings (10 a minute) per IP.
+  A room closes when your BooVI leaves, and after 12 hours at most.
+- **Media never goes through the Worker.** The picture, sound and controller travel by WebRTC,
+  direct when the two networks allow it.
 
-## Storing the settings on the sharing PC
+## The relay (TURN)
 
-The tunnel token, the TURN key id and its API token never go in the repository, the logs or
-the app's preferences. `scripts\fork\guest-cf-secrets.ps1` reads them as JSON on stdin and writes
-`%LOCALAPPDATA%\BooVI\guest\cloudflare.dpapi`, encrypted with DPAPI for the current Windows user:
+When the direct path fails (two strict NATs), a TURN relay carries the stream. Two ways to have
+one, set with `scripts\fork\guest-cf-secrets.ps1` (DPAPI, never in the repository or the logs):
+
+- **The broker's owner key.** A host that proves it (`ownerKey`) gets a short-lived Cloudflare
+  TURN credential per guest, from the broker, within a monthly cap. The broker's own TURN key
+  stays a Worker secret.
+- **Your own Cloudflare TURN key** (`turnKeyId`, `turnApiToken`), used directly by your BooVI.
+
+Without either, sharing works direct-only (STUN): **accès** says so.
 
 ```powershell
-Get-Content my-tunnel.json | powershell -NoProfile -File scripts\fork\guest-cf-secrets.ps1
-Remove-Item my-tunnel.json
+# the owner key that broker\scripts\put-secrets.ps1 sealed:
+powershell -NoProfile -File scripts\fork\guest-cf-secrets.ps1 -OwnerKeyFile <owner-key.dpapi>
+# or your own TURN key, as JSON on stdin:
+'{"turnKeyId": "…", "turnApiToken": "…"}' | powershell -NoProfile -File scripts\fork\guest-cf-secrets.ps1
 ```
-
-with `my-tunnel.json`:
-
-```json
-{"hostname": "play.example.com", "tunnelToken": "…", "turnKeyId": "…", "turnApiToken": "…"}
-```
-
-The script prints the hostname and the encrypted size, nothing secret. Restart BooVI: the named
-tunnel becomes the default path, and **accès** shows your hostname.
 
 Each Windows user, and each PC, needs its own copy, since DPAPI ties the file to the user.
-`cloudflared tunnel token <tunnel id>` gives the tunnel token again on a new PC; the TURN API
-token does not come back, so a new PC takes a new TURN key.
+
+## Running your own broker
+
+`broker/` is the Worker (`boovi`): one Durable Object class per room, one for the TURN ledger,
+the guest page as static assets. On a Cloudflare account with a zone:
+
+```powershell
+cd broker; npm ci; npm test
+powershell -File scripts\deploy.ps1 -Domain go.example.com
+powershell -File scripts\put-secrets.ps1 -Zone example.com -OwnerKeyFile <path> -Config <cloudflare.dpapi with your TURN key>
+```
+
+Then build BooVI with `scripts\fork\build.ps1 … -Broker https://go.example.com`. The domain is
+never written in the repository. The cap and TTLs are Worker vars (`wrangler.jsonc`, or
+`deploy.ps1 -Var TURN_BUDGET_GB:500`); `GET /api/turn` with the owner key shows the month's ledger.
+Design notes and measurements: [notes/GUEST_BROKER_2026-11-20.md](notes/GUEST_BROKER_2026-11-20.md).
 
 ## Moving from Veyra
 
 A PC that already shared through Veyra keeps its settings: on its first start, BooVI copies
 `%LOCALAPPDATA%\Veyra\guest` (and the PS5, Moonlight and Xbox pairings) to `%LOCALAPPDATA%\BooVI`.
-The Veyra folder is left as it was.
+The Veyra folder is left as it was. A tunnel token stored by an older BooVI is ignored, and
+dropped the next time `guest-cf-secrets.ps1` runs.

@@ -2,11 +2,12 @@
 // Fork, partage: the stream toolbar's "partager" panel and the settings section talk to the
 // remote guest (GuestStreamer.h) through this object, exposed to QML as `vyGuest`.
 //
-// Reachability (Réglages → partage → accès, `guestReach`): "tunnel" is the user's named
-// Cloudflare tunnel (https://<cloudflareHost>), "quick" an account-less trycloudflare.com
-// link, both opened by GuestStreamer with the share session; "tailnet" goes through
-// Tailscale, where reading its state happens on its own and `tailscale serve` (an https link
-// inside the tailnet) runs only when the host clicks the button, undone when sharing stops.
+// Reachability (Réglages → partage → accès, `guestReach`): "broker" (default when the build has
+// one) is this PC's room on BooVI's broker, https://<brokerHost>/<room id>#t=<token>, opened by
+// GuestStreamer with the share session; "tailnet" goes through Tailscale, where reading its
+// state happens on its own and `tailscale serve` (an https link inside the tailnet) runs only
+// when the host clicks the button, undone when sharing stops. The token rides in the link's
+// fragment, which no browser sends to a server.
 //
 // The friends' gateway (GuestAccessModel.h) holds the share session open while it welcomes
 // guests: "arrêter le partage" then only disconnects the guest and changes the share link.
@@ -35,8 +36,9 @@ class GuestShareModel : public QObject {
     Q_PROPERTY(QString reach READ reach NOTIFY changed)
     Q_PROPERTY(bool tailscaleUp READ tailscaleUp NOTIFY changed)
     Q_PROPERTY(bool httpsReady READ httpsReady NOTIFY changed)
-    Q_PROPERTY(QString tunnel READ tunnel NOTIFY changed)
-    Q_PROPERTY(QString cloudflareHost READ cloudflareHost NOTIFY changed)
+    Q_PROPERTY(QString broker READ broker NOTIFY changed)
+    Q_PROPERTY(QString brokerHost READ brokerHost CONSTANT)
+    Q_PROPERTY(QString relay READ relay NOTIFY changed)
     Q_PROPERTY(bool busy READ busy NOTIFY changed)
     Q_PROPERTY(QString mode READ mode NOTIFY changed)
     Q_PROPERTY(QString error READ error NOTIFY changed)
@@ -54,8 +56,9 @@ public:
     QString reach() const;
     bool tailscaleUp() const { return !tailscaleIp_.isEmpty(); }
     bool httpsReady() const { return httpsReady_; }
-    QString tunnel() const { return tunnel_; }   // "off", "starting", "connected", "failed"
-    QString cloudflareHost() const { return cloudflareHost_; }
+    QString broker() const { return broker_; }   // the room: "off", "connecting", "connected"
+    QString brokerHost() const;                  // "" when this build has no broker
+    QString relay() const { return relay_; }     // when the direct path fails: "owner", "key", "none"
     bool busy() const { return busy_; }
     QString mode() const;
     QString error() const { return error_; }
@@ -68,8 +71,7 @@ public:
     void setHeld(bool held);
     void applyVisit(guest::ControlMode mode, guest::Feed feedCap);
     void endVisit();
-    // https://<the named tunnel>/?a=<token>, or this PC's tailnet address; empty when no address
-    // outlives a share session (a quick tunnel's URL changes each time).
+    // https://<broker>/<this PC's room>#a=<token>, or this PC's tailnet address.
     QString accessLink(const QString& token) const;
 
     Q_INVOKABLE void start();
@@ -101,7 +103,7 @@ private:
     bool held_ = false, visiting_ = false;
     QString accessName_;
     QString phase_ = QStringLiteral("off"), error_, token_, tailscaleIp_, dnsName_;
-    QString shareReach_ = QStringLiteral("tailnet"), tunnel_ = QStringLiteral("off"), publicUrl_, cloudflareHost_, linkWritten_;
+    QString shareReach_ = QStringLiteral("tailnet"), broker_ = QStringLiteral("off"), relay_, publicUrl_, linkWritten_;
     int port_ = 0, ticks_ = 0;
     QVariantMap stats_;
     QVariantMap peers_;           // tailscale IP -> "direct" or the DERP region it relays through

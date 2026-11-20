@@ -21,12 +21,16 @@ extern "C" {
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <deque>
 #include <format>
+#include <mutex>
 #include <numbers>
+#include <thread>
 #include <vector>
 
 #include "veyra/Log.h"
+#include "veyra/guest/BrokerSocket.h"
 #include "veyra/guest/GuestProtocol.h"
 #include "veyra/pipeline/ColorMetadata.h"
 #include "veyra/sink/AudioFormat.h"
@@ -107,15 +111,15 @@ bool startsDecoding(const std::vector<uint8_t>& unit) {
     return false;
 }
 
-// One JSON POST to the host's signaling, http or https (WinHTTP: the system's roots and proxy).
+// One request to the host's own server, http or https (WinHTTP: the system's roots and proxy).
 struct HttpResult { int status = 0; std::string body; std::string error; };
-HttpResult postJson(const guest::ShareLink& link, const wchar_t* path, const std::string& body) {
+HttpResult httpRequest(const guest::ShareLink& link, const wchar_t* method, const wchar_t* path, const std::string& body) {
     HttpResult out;
     HINTERNET session = WinHttpOpen(L"BooVI", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
     if (!session) { out.error = std::format("winhttp open {}", GetLastError()); return out; }
     WinHttpSetTimeouts(session, 5000, 5000, 8000, 8000);
     HINTERNET connection = WinHttpConnect(session, widen(link.host).c_str(), link.port, 0);
-    HINTERNET request = connection ? WinHttpOpenRequest(connection, L"POST", path, nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
+    HINTERNET request = connection ? WinHttpOpenRequest(connection, method, path, nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
                                                         link.https ? WINHTTP_FLAG_SECURE : 0) : nullptr;
     const wchar_t* headers = L"Content-Type: application/json\r\n";
     if (!request || !WinHttpSendRequest(request, headers, DWORD(-1), const_cast<char*>(body.data()), DWORD(body.size()), DWORD(body.size()), 0) ||
@@ -140,6 +144,74 @@ HttpResult postJson(const guest::ShareLink& link, const wchar_t* path, const std
     if (connection) WinHttpCloseHandle(connection);
     WinHttpCloseHandle(session);
     return out;
+}
+
+// The host's signaling (/session, /answer): its own server, or its room on BooVI's broker
+// (GuestRoom.h), where each request goes as {id, path, body} and its reply comes back as
+// {id, status, body}. The room's socket stays open from the first request to the last.
+class Signaling {
+public:
+    explicit Signaling(const guest::ShareLink& link) : link_(link) {}
+    ~Signaling() { socket_.close(); }
+
+    HttpResult call(const wchar_t* path, const std::string& body) {
+        if (link_.room.empty()) return httpRequest(link_, L"POST", path, body);
+        HttpResult out;
+        if (!open_ && !open(out)) return out;
+        const int id = ++next_;
+        const std::string name = path == std::wstring(L"/session") ? "/session" : "/answer";
+        if (!socket_.send(json{{"id", id}, {"path", name}, {"body", json::parse(body, nullptr, false)}}.dump())) { out.error = "room closed"; return out; }
+        // The host answers at once, or after its ICE gathering (3 s at most): past 15 s, the room is dead.
+        std::mutex m;
+        std::condition_variable cv;
+        bool done = false;
+        std::thread watchdog([&] { std::unique_lock lock(m); if (!cv.wait_for(lock, std::chrono::seconds(15), [&] { return done; })) socket_.close(); });
+        std::string text;
+        uint16_t code = 0;
+        while (socket_.receive(text, code)) {
+            const json in = json::parse(text, nullptr, false);
+            if (!in.is_object()) continue;
+            if (in.contains("t") && in["t"] == "closed") { out.error = in.value("why", std::string("closed")); break; }
+            if (in.value("id", 0) != id) continue;
+            out.status = in.value("status", 0);
+            out.body = in.value("body", std::string());
+            break;
+        }
+        if (out.status == 0 && out.error.empty()) out.error = code == 4404 ? "offline" : code == 4429 ? "busy" : std::format("room closed ({})", code);
+        { std::lock_guard lock(m); done = true; }
+        cv.notify_all();
+        watchdog.join();
+        if (!out.error.empty()) open_ = false;
+        return out;
+    }
+
+private:
+    bool open(HttpResult& out) {
+        int status = 0;
+        if (!socket_.open(widen(link_.host), link_.port, link_.https, widen("/api/room/" + link_.room), L"", status, out.error)) {
+            out.status = status;
+            return false;
+        }
+        open_ = true;
+        return true;
+    }
+
+    guest::ShareLink link_;
+    guest::BrokerSocket socket_;
+    bool open_ = false;
+    int next_ = 0;
+};
+
+// An older link (https://<host>/?a=…) that a broker now answers: the room its host keeps for it.
+void findLegacyRoom(guest::ShareLink& link) {
+    if (!link.room.empty() || !link.https) return;
+    const auto reply = httpRequest(link, L"GET", L"/api/legacy", std::string());
+    const json in = json::parse(reply.body, nullptr, false);
+    if (reply.status != 200 || !in.is_object() || !in.contains("room") || !in["room"].is_string()) return;
+    const std::string room = in["room"].get<std::string>();
+    if (room.size() != 22 || room.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_") != std::string::npos) return;
+    link.room = room;
+    log::info("guest-client", "the link's host answers through its broker room");
 }
 
 // The host's /session "ice" list: STUN, then Cloudflare's TURN over UDP (what libjuice relays).
@@ -387,14 +459,17 @@ void GuestClientSource::run(GuestClientDesc desc) {
     if (!link) { fail(L"lien de partage invalide"); return; }
     p.link = *link;
     { std::lock_guard lock(mutex_); stats_.host = link->host; stats_.message = L"connexion à l'hôte…"; }
-    log::info("guest-client", std::format("joining {}://{}:{} as a BooVI client", link->https ? "https" : "http", link->host, link->port));
+    findLegacyRoom(p.link);
+    log::info("guest-client", std::format("joining {}://{}:{}{} as a BooVI client", p.link.https ? "https" : "http", p.link.host, p.link.port,
+                                          p.link.room.empty() ? "" : " through the broker"));
+    Signaling signaling(p.link);
 
     // 1. Offer from the host. A friend's access knocks until the host's PC lets the visit in
     //    (202 with its state: asking the host, waking the PS5, connecting).
     const char* credentialKey = p.link.access ? "access" : "token";
     HttpResult session;
     for (;;) {
-        session = postJson(p.link, L"/session", json{{credentialKey, p.link.token}, {"client", "boovi"}, {"input", guest::kExtendedVersion}, {"feed", "real"}}.dump());
+        session = signaling.call(L"/session", json{{credentialKey, p.link.token}, {"client", "boovi"}, {"input", guest::kExtendedVersion}, {"feed", "real"}}.dump());
         if (cancelled() || !p.link.access || session.status != 202 || !session.error.empty()) break;
         const json wait = json::parse(session.body, nullptr, false);
         const std::string state = wait.is_object() && wait.contains("state") && wait["state"].is_string() ? wait["state"].get<std::string>() : "";
@@ -416,7 +491,11 @@ void GuestClientSource::run(GuestClientDesc desc) {
            : state == "ended" ? std::wstring(L"visite terminée par l'hôte") : std::wstring(L"lien invalide ou révoqué"));
         return;
     }
-    if (!session.error.empty()) { log::warn("guest-client", "session request failed: " + session.error); fail(L"l'hôte ne répond pas (lien expiré ou partage arrêté ?)"); return; }
+    if (!session.error.empty()) {
+        log::warn("guest-client", "session request failed: " + session.error);
+        fail(session.error == "offline" ? L"l'hôte n'est pas en ligne (partage arrêté ?)" : L"l'hôte ne répond pas (lien expiré ou partage arrêté ?)");
+        return;
+    }
     const json offer = json::parse(session.body, nullptr, false);
     if (session.status != 200 || !offer.is_object() || !offer.contains("sdp") || !offer["sdp"].is_string() || !offer.contains("id") || !offer["id"].is_string()) {
         log::warn("guest-client", std::format("session refused status={}", session.status));
@@ -550,7 +629,7 @@ void GuestClientSource::run(GuestClientDesc desc) {
     if (!local) { fail(L"pas de réponse locale"); return; }
 
     // 3. The answer, every candidate in it (the host does not trickle either).
-    const auto answer = postJson(p.link, L"/answer", json{{p.link.access ? "access" : "token", p.link.token}, {"id", p.peerId}, {"sdp", std::string(*local)}}.dump());
+    const auto answer = signaling.call(L"/answer", json{{p.link.access ? "access" : "token", p.link.token}, {"id", p.peerId}, {"sdp", std::string(*local)}}.dump());
     if (!answer.error.empty() || (answer.status != 204 && answer.status != 200)) {
         log::warn("guest-client", std::format("answer refused status={} error={}", answer.status, answer.error));
         const json reply = json::parse(answer.body, nullptr, false);

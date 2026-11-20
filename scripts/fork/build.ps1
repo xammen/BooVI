@@ -1,12 +1,14 @@
 # Configures and builds the fork (QML app with PS5 Remote Play, PC and Xbox streaming) with the toolchain from
 # setup-dev.ps1 and the libraries from build-rp-deps.ps1, then stages a runnable app folder.
-# Usage: scripts\fork\build.ps1 -Base <Veyra-2.1.9 portable dir> [-Out <app dir>] [-Repo <owner/name>]
+# Usage: scripts\fork\build.ps1 -Base <Veyra-2.1.9 portable dir> [-Out <app dir>] [-Repo <owner/name>] [-Broker <https://host>]
 # -Base supplies the prebuilt runtime (Qt, NVIDIA, AMD and Intel DLLs): see docs/DEVELOPMENT.md.
 # -Repo is BooVI's GitHub repository, for update checks; without it the build checks nothing.
+# -Broker is BooVI's share broker (broker/, docs/SHARING.md); without it sharing is tailnet only.
 param([Parameter(Mandatory)][string]$Base,
       [string]$Out = (Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'out\app'),
       [string]$Dev = (Join-Path $env:USERPROFILE 'dev'),
-      [string]$Repo = '')
+      [string]$Repo = '',
+      [string]$Broker = '')
 $ErrorActionPreference = 'Stop'
 $fork = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $vsenv = Join-Path $PSScriptRoot 'vsenv.cmd'
@@ -54,7 +56,8 @@ $defs = @(
     "-DVEYRA_RP_CHIAKI_SOURCE_DIR=`"$Dev\chiaki-stage`"", "-DVEYRA_RP_CHIAKI_VERIFY_DIR=`"$Dev\chiaki-ng`"",
     "-DPROTOC=`"$Dev\deps\protoc\bin\protoc.exe`"", "-DPKG_CONFIG_EXECUTABLE=`"$pyScripts\pkgconf.exe`"",
     "-DOPENSSL_ROOT_DIR=`"$Dev\Qt\Tools\OpenSSLv3\Win_x64`"",
-    "-DBOOVI_GITHUB_REPO=$Repo")
+    "-DBOOVI_GITHUB_REPO=$Repo",
+    "-DBOOVI_BROKER_URL=$Broker")
 Push-Location $fork
 try {
     cmd /c "`"$vsenv`" cmake --preset x64-release -B out\build\fork $($defs -join ' ') 2>&1"

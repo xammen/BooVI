@@ -4,7 +4,7 @@ setlocal
 if not exist build-fork mkdir build-fork
 set "FLAGS=/nologo /std:c++20 /EHsc /W4 /WX /utf-8 /DNOMINMAX /DWIN32_LEAN_AND_MEAN /DUNICODE /D_UNICODE /Iinclude /Fo:build-fork\"
 set FAILED=0
-for %%T in (PadPolicyTests PadPresenceTests ControllerQueueTests KbmMapperTests FocusReparentTest LoginPinStoreTests StreamCadenceTests GuestProtocolTests GuestQualityTests CloudflaredLogTests GuestAccessTests CameraAnticipationTests UserDataMigrationTests) do (
+for %%T in (PadPolicyTests PadPresenceTests ControllerQueueTests KbmMapperTests FocusReparentTest LoginPinStoreTests StreamCadenceTests GuestProtocolTests GuestQualityTests GuestAccessTests CameraAnticipationTests UserDataMigrationTests) do (
   call "%~dp0vsenv.cmd" cl %FLAGS% tests\fork\%%T.cpp /Fe:build-fork\%%T.exe user32.lib crypt32.lib bcrypt.lib >build-fork\%%T.build.txt 2>&1 || (echo BUILD FAILED %%T & type build-fork\%%T.build.txt & set FAILED=1)
   if exist build-fork\%%T.exe (
     echo === %%T
