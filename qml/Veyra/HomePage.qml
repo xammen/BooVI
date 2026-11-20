@@ -1,429 +1,329 @@
-// 首页, rebuilt from the design (pages-a.js PAGES.home + pages.css .home).
-//
-// The design is: a large logo, a two-line greeting, a 4-up grid of source cards
-// (164x124 each), a "continue last capture" row, and a row of recent chips.
-// The logo in the dock returns here; there is no other home affordance.
+// Accueil (2026-11 mockup Main.dc.html): one sentence about what is ready, the sources that
+// are set up as rows with their play button, a link to add another, and three facts about
+// the pad, the picture and the screen. The dither horizon breathes along the bottom.
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import QtQuick.Effects
+import QtQuick.Window
 
 VPage {
     id: root
     signal requestPage(string page)
-    // The coffee line under the title: Main opens 设置 → 赞助作者.
-    signal requestSponsor()
-    // Main.qml keeps the dusk wordmark hidden while the startup intro (DuskIntro.qml) flies a
-    // copy of it in, and aims that copy at this item.
-    property bool introHold: false
-    readonly property Item wordmarkItem: wordmark
+    signal requestSetup(string source)
+    dragStripHeight: 0
 
-    ColumnLayout {
-        anchors.centerIn: parent
-        spacing: 24
+    Sources { id: sources }
+    StreamPresets { id: presets }
+    readonly property var rows: sources.rows
+    readonly property string lead: rows.length > 0 ? rows[0] : ""
+    readonly property bool padOn: (veyra.ps5 || {}).controller === true
+    readonly property string padName: ((veyra.ps5 || {}).pad || "").toLowerCase()
+    readonly property string presetLabel: { const o = presets.options.find(x => x.id === presets.current); return o ? o.label : qsTr("réglage perso") }
 
-        // .home .mark: 128px wide, drop-shadow(0 0 20px rgba(255,255,255,.35)) and the
-        // 4.5s "breathe" loop: at 50% the glow is 30px at .55 and the mark scales 1.02.
-        // MultiEffect blur is 0..1 of blurMax (32px): 20px = .625, 30px = .94.
-        // The layer is padded 40px on every side so the glow has room (a layer on the
-        // bare image clips the shadow to the image's own bounds). Negative margins
-        // keep the layout the same as a plain 128px image.
-        Item {
-            id: mark
-            visible: !Theme.dusk
-            Layout.alignment: Qt.AlignHCenter
-            Layout.topMargin: -40
-            Layout.bottomMargin: -40
-            implicitWidth: logoImg.implicitWidth + 80
-            implicitHeight: logoImg.implicitHeight + 80
-            property real breath: 0
-            scale: 1 + 0.02 * breath
-            // Only while the home page shows: running behind other pages it redrew the whole
-            // window every vsync during playback (~300 presents/s on a 320 Hz screen), which
-            // cost GPU time and kept OBS game capture on the UI instead of the video.
-            SequentialAnimation on breath {
-                running: !Theme.reduced && mark.visible
-                loops: Animation.Infinite
-                NumberAnimation { to: 1; duration: Theme.d(2250); easing.type: Easing.InOutSine }
-                NumberAnimation { to: 0; duration: Theme.d(2250); easing.type: Easing.InOutSine }
-            }
-            Image {
-                id: logoImg
-                anchors.centerIn: parent
-                source: Theme.logoImage
-                sourceSize.width: 128
-                fillMode: Image.PreserveAspectFit
-            }
-            // A sibling MultiEffect, not layer.effect: Qt recreates a layer's effect item on
-            // a screen DPI change while it walks the parent's children, and the walk then touched
-            // the deleted item (crash moving the window to a 200 % monitor, field 2026-10-01).
-            MultiEffect {
-                source: logoImg
-                anchors.fill: logoImg
-                shadowEnabled: true
-                // The dusk logo carries its own neon glow; the breath adds a pink one to it.
-                shadowColor: Theme.dusk ? "#F396CE" : "#FFFFFF"
-                shadowHorizontalOffset: 0
-                shadowVerticalOffset: 0
-                blurMax: 64
-                shadowBlur: 0.625 + 0.3125 * mark.breath
-                shadowOpacity: (Theme.dusk ? 0.22 : 0.35) + 0.2 * mark.breath
-            }
-        }
+    function play(id) {
+        if (sources.live === id) { requestPage("min"); return }
+        if (sources.play(id)) requestPage("min")
+        else requestSetup(id)
+    }
+    function sentence() {
+        if (sources.live.length > 0) return qsTr("le stream continue derrière. reprends quand tu veux.")
+        if (lead.length === 0) return qsTr("ajoute une ps5, une xbox, un pc ou une carte de capture. ça prend une minute.")
+        const what = ({ ps5: qsTr("ta ps5 est associée"), pc: qsTr("ton pc est associé"),
+                        xbox: qsTr("ta xbox est reliée à ton compte"), capture: qsTr("ta carte de capture est prête"),
+                        join: qsTr("colle le lien d'un ami qui partage") })[lead]
+        return what + (padOn ? qsTr(" et ta manette est branchée") : "") + qsTr(". un clic et tu es en jeu, en %1.").arg(presetLabel)
+    }
 
-        // 日落: the user's wordmark (tools/qt_probe/make-wordmark-dusk.py) in place of the gamepad
-        // and the title, a baked glow breathing behind it (the software scene graph draws no
-        // MultiEffect). 0.24 of the page height, 130..210 px, so short windows keep the cards.
-        Item {
-            id: duskMark
-            visible: Theme.dusk
-            Layout.alignment: Qt.AlignHCenter
-            implicitWidth: wordmark.width
-            implicitHeight: wordmark.height
-            property real breath: 0
-            // Only while it shows, as the gamepad's breath (see above).
-            SequentialAnimation on breath {
-                running: !Theme.reduced && duskMark.visible && !root.introHold
-                loops: Animation.Infinite
-                NumberAnimation { to: 1; duration: Theme.d(2250); easing.type: Easing.InOutSine }
-                NumberAnimation { to: 0; duration: Theme.d(2250); easing.type: Easing.InOutSine }
-            }
-            Image {
-                // wordmark-dusk-glow.png is the wordmark's box grown by 186/1164 of its width.
-                readonly property real pad: wordmark.width * 186 / 1164
-                x: -pad
-                y: -pad
-                width: wordmark.width + 2 * pad
-                height: wordmark.height + 2 * pad
-                source: "wordmark-dusk-glow.png"
-                opacity: root.introHold ? 0 : 0.16 + 0.14 * duskMark.breath
-            }
-            Image {
-                id: wordmark
-                objectName: "home-wordmark"
-                height: Math.round(Math.max(130, Math.min(210, root.height * 0.24)))
-                width: Math.round(height * 1164 / 969)
-                source: "wordmark-dusk.png"
-                sourceSize: Qt.size(width, height)
-                opacity: root.introHold ? 0 : 1
-            }
-        }
+    UiDither {
+        id: horizon
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        // The band (and its stars) starts under the last line of content.
+        readonly property real contentBottom: column.y + column.height - scroller.contentY
+        height: Math.max(0, Math.min(320, root.height - contentBottom - 8))
+        mode: "horizon"
+        opacity: 0
+        NumberAnimation on opacity { id: horizonIn; running: false; to: 1; duration: 1200; easing.type: Easing.OutCubic }
+    }
+    // The saved PS5 is read from disk (no network), so its row shows from the first frame.
+    onEnter: veyra.ps5Load()
+    Component.onCompleted: { veyra.ps5Load(); horizon.opacity = 1 }
+    // The staged entrance plays once, when the app opens on this page. Coming back here
+    // from another page is only the page's own fade: it happens too often to stage.
+    QtObject { id: launch; signal enter() }
+    function intro() {
+        launch.enter()
+        horizon.opacity = Theme.reduced ? 1 : 0
+        if (!Theme.reduced) horizonIn.restart()
+    }
 
-        // .hello: .h1 plus a muted line. The line asks for a coffee; the whole of it
-        // opens the sponsor section of 设置.
+    Flickable {
+        id: scroller
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        contentWidth: width
+        contentHeight: column.implicitHeight + column.y + 64
+        boundsBehavior: Flickable.StopAtBounds
+        clip: true
+        ScrollBar.vertical: VScrollBar {}
+
         ColumnLayout {
-            id: hello
-            Layout.alignment: Qt.AlignHCenter
-            spacing: 6
-            Text {
-                Layout.alignment: Qt.AlignHCenter
-                visible: !Theme.dusk                    // the dusk wordmark says it
-                text: "Veyra NR Video"
-                color: Theme.t1
-                font.family: Theme.fontUi
-                font.pixelSize: Theme.fsH1
-                font.weight: Font.DemiBold; font.variableAxes: Theme.axesDemiBold
-            }
-            Item {
-                id: sponsorLine
-                objectName: "home-sponsor"
-                Layout.alignment: Qt.AlignHCenter
-                implicitWidth: sponsorRow.implicitWidth
-                implicitHeight: sponsorRow.implicitHeight
-                Row {
-                    id: sponsorRow
-                    spacing: 5
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: qsTr("本软件开源免费，如果对你有帮助，你可以 →")
-                        color: sponsorHover.hovered ? Theme.t1 : Theme.t2
-                        font.family: Theme.fontUi
-                        font.pixelSize: Theme.fsBody
-                    }
-                    VIcon {
-                        anchors.verticalCenter: parent.verticalCenter
-                        name: "coffee"
-                        size: 14
-                        color: Theme.accent
-                    }
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: qsTr("请作者喝杯咖啡")
-                        color: Theme.accent
-                        font.family: Theme.fontUi
-                        font.pixelSize: Theme.fsBody
-                        font.weight: Font.Medium
-                        font.underline: sponsorHover.hovered
-                    }
+            id: column
+            width: Math.min(720, scroller.width - 48)
+            x: Math.round((scroller.width - width) / 2)
+            y: Math.round(Math.max(32, Math.min(96, (scroller.height - implicitHeight) / 3)))
+            spacing: 48
+
+            ColumnLayout {
+                id: hero
+                Layout.fillWidth: true
+                spacing: 16
+                Text {
+                    Layout.fillWidth: true
+                    visible: text.length > 0
+                    text: root.lead.length > 0 ? sources.kindLabel(root.lead) + (veyra.gpuMonitorName ? " · " + veyra.gpuMonitorName.split(" ")[0].toUpperCase() : "") : ""
+                    color: Theme.t3
+                    font.family: Theme.fontMono
+                    font.pixelSize: Theme.fsMeta
+                    font.letterSpacing: 0.9
+                    elide: Text.ElideRight
                 }
-                HoverHandler { id: sponsorHover; cursorShape: Qt.PointingHandCursor }
-                TapHandler {
-                    onTapped: {
-                        veyra.logUi("ui-sponsor", "home link")
-                        root.requestSponsor()
-                    }
+                Text {
+                    Layout.fillWidth: true
+                    text: sources.live.length > 0 ? qsTr("tu es en jeu.") : root.lead.length > 0 ? qsTr("prêt à jouer.") : qsTr("rien à lancer.")
+                    color: Theme.t1
+                    font.family: Theme.fontMono
+                    font.pixelSize: Theme.fsHero
+                    font.letterSpacing: -1.7
+                    lineHeight: 1.04
+                    wrapMode: Text.Wrap
+                }
+                Text {
+                    Layout.fillWidth: true
+                    Layout.maximumWidth: 480
+                    text: root.sentence()
+                    color: Theme.t2
+                    font.family: Theme.fontUi
+                    font.pixelSize: Theme.fsLead
+                    lineHeight: 1.6
+                    wrapMode: Text.Wrap
                 }
             }
-        }
 
-        VButton {
-            objectName: "home-playlist"
-            Layout.alignment: Qt.AlignHCenter
-            text: qsTr("播放列表 · 导入文件夹"); iconName: "list"
-            onClicked: veyra.showPlaylist()
-        }
-
-        // .srcgrid: 164px cards, gap 12. Six cards since PC and Xbox streaming (1044 wide,
-        // fits a 1280 window); a narrower window wraps them onto a second row.
-        Flow {
-            id: srcGrid
-            Layout.alignment: Qt.AlignHCenter
-            Layout.preferredWidth: Math.min(1044, root.width - 48)
-            spacing: 12
-            // Subtitles name what is really there: the device of the last capture
-            // session and the saved PS5 host; generic wording when there is none.
-            // Only the subtitle follows the live state. The cards themselves are a fixed
-            // list: when the whole array was one binding, every Xbox / PC state change
-            // (polling after sign-in) destroyed and rebuilt all six cards, and a click
-            // landing during the rebuild was lost (field report 2026-10-02).
-            function cardSub(act) {
-                switch (act) {
-                case "file": return qsTr("MP4 · MKV · 图片")
-                case "capture": return veyra.hasCaptureSession ? veyra.captureSessionSummary.split(" · ")[0] : qsTr("HDMI 采集设备")
-                case "ps5": return veyra.remotePlayHost.length > 0 ? qsTr("已保存主机 ") + veyra.remotePlayHost : qsTr("局域网串流")
-                case "moonlight": return veyra.moonlight && veyra.moonlight.state.lastLabel ? veyra.moonlight.state.lastLabel : qsTr("Sunshine 主机")
-                case "xbox": return veyra.xbox && veyra.xbox.state.lastLabel ? veyra.xbox.state.lastLabel : qsTr("账号登录 · 实验")
-                default: return qsTr("窗口或显示器")
-                }
-            }
-            Repeater {
-                model: [
-                    { glyph: "folder", title: qsTr("打开视频"), act: "file" },
-                    { glyph: "video", title: qsTr("采集卡"), act: "capture" },
-                    { glyph: "gamepad", title: qsTr("PS5 串流"), act: "ps5" },
-                    { glyph: "cast", title: qsTr("PC 串流"), act: "moonlight" },
-                    { glyph: "gamepad", title: qsTr("Xbox 串流"), act: "xbox" },
-                    { glyph: "monitor", title: qsTr("屏幕捕获"), act: "screen" }
-                ]
-                // The layout owns the slot's position, so the card inside it is free to
-                // move its own y for the hover lift (a y set on a layout child is
-                // overwritten); the entrance rise goes on the slot.
-                delegate: Item {
-                    id: slot
-                    required property var modelData
-                    required property int index
-                    implicitWidth: 164
-                    implicitHeight: 124
-                    VRise { page: root; target: slot; d: 2 + slot.index }
-                  Rectangle {
-                    id: srcCard
-                    readonly property var modelData: slot.modelData
-                    // .srccard: 164x124, radius 14, content pinned top and bottom.
-                    width: 164
-                    height: 124
-                    radius: Theme.rCard
-                    color: cardHover.hovered ? Theme.card2 : Theme.card
-                    border.width: 1
-                    border.color: cardHover.hovered ? Theme.stroke2 : Theme.stroke
-                    // .srccard:hover { transform: translateY(-4px) }
-                    y: cardHover.hovered ? -4 : 0
-                    Behavior on y { NumberAnimation { duration: Theme.d(500); easing.bezierCurve: Theme.spring } }
-                    scale: cardTap.pressed ? 0.97 : 1.0
-                    Behavior on scale { NumberAnimation { duration: Theme.d(500); easing.bezierCurve: Theme.spring } }
-
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: 14
-                        spacing: 0
+            ColumnLayout {
+                id: consoles
+                Layout.fillWidth: true
+                spacing: 0
+                Accessible.name: qsTr("sources")
+                Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.line }
+                Repeater {
+                    model: root.rows
+                    delegate: Item {
+                        id: row
+                        required property string modelData
+                        required property int index
+                        readonly property bool live: sources.live === modelData
+                        readonly property string st: sources.state(modelData)
+                        Layout.fillWidth: true
+                        implicitHeight: 80
                         Rectangle {
-                            // .srccard .ico: 34x34, radius 10, translucent plate.
-                            implicitWidth: 34
-                            implicitHeight: 34
-                            radius: 10
-                            color: Qt.rgba(1, 1, 1, 0.06)
+                            anchors.fill: parent
+                            anchors.leftMargin: -12
+                            anchors.rightMargin: -12
+                            anchors.topMargin: row.index > 0 ? 1 : 0
+                            radius: Theme.rMd
+                            color: rowHover.hovered ? Theme.rowHover : "transparent"
+                            Behavior on color { ColorAnimation { duration: Theme.d(150) } }
+                        }
+                        Rectangle { visible: row.index > 0; anchors.top: parent.top; width: parent.width; height: 1; color: Theme.line }
+                        HoverHandler { id: rowHover }
+                        RowLayout {
+                            anchors.fill: parent
+                            spacing: 16
+                            Rectangle {
+                                implicitWidth: 48
+                                implicitHeight: 48
+                                radius: Theme.rMd
+                                color: "transparent"
+                                border.width: 1
+                                border.color: Theme.line2
+                                VIcon { anchors.centerIn: parent; name: sources.icon(row.modelData); size: 20; strokeWidth: 1.5; color: Theme.accentText }
+                            }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 4
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: sources.title(row.modelData)
+                                    color: Theme.t1
+                                    font.family: Theme.fontUi
+                                    font.pixelSize: 16
+                                    font.weight: Font.DemiBold
+                                    elide: Text.ElideRight
+                                }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+                                    UiDot { hollow: row.st === "idle" }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: [sources.detail(row.modelData), row.index === 0 ? root.presetLabel : ""].filter(x => x.length).join(" · ")
+                                        color: Theme.t3
+                                        font.family: Theme.fontMono
+                                        font.pixelSize: Theme.fsMeta
+                                        font.features: { "tnum": 1 }
+                                        elide: Text.ElideRight
+                                    }
+                                }
+                            }
+                            UiButton {
+                                text: qsTr("modifier")
+                                kind: "ghost"
+                                onClicked: root.requestSetup(row.modelData)
+                            }
+                            UiButton {
+                                Layout.preferredWidth: 128
+                                text: row.live ? qsTr("reprendre") : qsTr("jouer")
+                                kind: row.index === 0 ? "solid" : "ghost"
+                                size: row.index === 0 ? 48 : 40
+                                iconName: "play"
+                                iconFilled: true
+                                iconSize: 12
+                                hoverNudge: 2
+                                onClicked: root.play(row.modelData)
+                            }
+                        }
+                    }
+                }
+                AbstractButton {
+                    id: addRow
+                    Layout.fillWidth: true
+                    implicitHeight: 48
+                    hoverEnabled: true
+                    Accessible.name: qsTr("ajouter une source")
+                    onClicked: root.requestSetup("")
+                    background: Item {
+                        Rectangle { visible: root.rows.length > 0; anchors.top: parent.top; width: parent.width; height: 1; color: Theme.line }
+                        Rectangle {
+                            anchors.fill: parent
+                            anchors.leftMargin: -12
+                            anchors.rightMargin: -12
+                            anchors.topMargin: 1
+                            radius: Theme.rMd
+                            color: addRow.hovered ? Theme.rowHover : "transparent"
+                            border.width: addRow.visualFocus ? 2 : 0
+                            border.color: Theme.focusRing
+                            Behavior on color { ColorAnimation { duration: Theme.d(150) } }
+                        }
+                    }
+                    contentItem: RowLayout {
+                        spacing: 16
+                        Item {
+                            implicitWidth: 48
+                            implicitHeight: 24
                             VIcon {
                                 anchors.centerIn: parent
-                                name: modelData.glyph
+                                name: "plus"
+                                size: 16
+                                strokeWidth: 1.5
+                                color: addRow.hovered ? Theme.t1 : Theme.t2
+                                rotation: addRow.hovered ? 90 : 0
+                                Behavior on rotation { NumberAnimation { duration: Theme.d(250); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.ease } }
                             }
-                        }
-                        Item { Layout.fillHeight: true }
-                        ColumnLayout {
-                            spacing: 3
-                            Text {
-                                text: modelData.title
-                                color: Theme.t1
-                                font.family: Theme.fontUi
-                                font.pixelSize: Theme.fsBody
-                                font.weight: Font.Medium
-                            }
-                            Text {
-                                text: srcGrid.cardSub(modelData.act)
-                                color: Theme.t3
-                                font.family: Theme.fontUi
-                                font.pixelSize: Theme.fsSmall
-                            }
-                        }
-                    }
-                    // PS5 手柄控制 is switched on for the capture card.
-                    VTag {
-                        anchors.top: parent.top
-                        anchors.right: parent.right
-                        anchors.margins: 12
-                        visible: modelData.act === "capture" && veyra.ps5Control.enabled === true
-                        text: qsTr("PS5 手柄")
-                        kind: "acc"
-                    }
-                    HoverHandler { id: cardHover; cursorShape: Qt.PointingHandCursor }
-                    TapHandler {
-                        id: cardTap
-                        onTapped: {
-                            veyra.logUi("ui-source", "home card act=" + modelData.act)
-                            switch (modelData.act) {
-                            case "file": veyra.openFileDialog(); break
-                            case "capture": veyra.openCaptureDialog(); break
-                            case "ps5": veyra.openPs5Dialog(); break
-                            case "moonlight": veyra.openMoonlightDialog(); break
-                            case "xbox": veyra.openXboxDialog(); break
-                            case "screen": veyra.openScreenCaptureDialog(); break
-                            }
-                        }
-                    }
-                  }
-                }
-            }
-        }
-
-        VButton {
-            objectName: "home-network"
-            Layout.alignment: Qt.AlignHCenter
-            text: qsTr("播放地址…")
-            iconName: "cast"
-            onClicked: veyra.openNetworkDialog()
-        }
-
-        // .resume: 692 wide, an accent-tinted gradient plate, shown only when a
-        // capture session was actually used before. Nothing invented: the text is
-        // the recorded session, and the row is absent when there is none.
-        Rectangle {
-            id: resume
-            objectName: "home-resume"
-            Layout.alignment: Qt.AlignHCenter
-            // The last source actually used: capture card, PS5 or screen capture.
-            readonly property var last: veyra.lastSource
-            visible: last.kind !== undefined
-            implicitWidth: srcGrid.width
-            implicitHeight: 54
-            radius: 14
-            border.width: 1
-            border.color: Theme.stroke
-            gradient: Gradient {
-                orientation: Gradient.Horizontal
-                GradientStop { position: 0.0; color: Theme.accentSoft }
-                GradientStop { position: 1.0; color: Qt.rgba(1, 1, 1, 0.03) }
-            }
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 14
-                anchors.rightMargin: 10
-                spacing: 14
-                Rectangle {
-                    implicitWidth: 34; implicitHeight: 34; radius: 10
-                    color: Theme.accentSoft
-                    VIcon {
-                        anchors.centerIn: parent
-                        name: resume.last.kind === "screen" ? "monitor" : resume.last.kind === "capture" ? "video" : "gamepad"
-                        color: Theme.accent
-                    }
-                }
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 2
-                    Text {
-                        text: qsTr("继续上次")
-                        color: Theme.t1
-                        font.family: Theme.fontUi
-                        font.pixelSize: Theme.fsBody
-                        font.weight: Font.DemiBold; font.variableAxes: Theme.axesDemiBold
-                    }
-                    Text {
-                        Layout.fillWidth: true
-                        text: resume.last.summary || ""
-                        color: Theme.t2
-                        font.family: Theme.fontUi
-                        font.pixelSize: 12
-                        elide: Text.ElideRight
-                    }
-                }
-                VButton {
-                    text: qsTr("开始")
-                    iconName: "play"
-                    primary: true
-                    onClicked: veyra.resumeLastSource()
-                }
-            }
-        }
-
-        // .recent: 692 wide, left-aligned, wrapping; "最近" in --v-t3 then 28px chips
-        // with a film/image icon. Present only when there are recent files; a chip
-        // whose file is gone is dimmed and does nothing (clicking it cannot open it).
-        Flow {
-            id: recent
-            Layout.alignment: Qt.AlignHCenter
-            Layout.preferredWidth: srcGrid.width
-            visible: veyra.recentFiles.length > 0
-            spacing: 8
-            Text {
-                height: 28
-                verticalAlignment: Text.AlignVCenter
-                text: qsTr("最近")
-                color: Theme.t3
-                font.family: Theme.fontUi
-                font.pixelSize: 12
-            }
-            Repeater {
-                model: veyra.recentFiles
-                delegate: Rectangle {
-                    id: chip
-                    required property var modelData
-                    readonly property bool isImage: /\.(png|jpe?g|bmp|webp|tiff?)$/i.test(modelData.path)
-                    width: chipRow.implicitWidth + 22
-                    height: 28
-                    radius: 99
-                    opacity: modelData.exists ? 1 : 0.45
-                    color: chipHover.hovered && modelData.exists ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(1, 1, 1, 0.04)
-                    border.width: 1
-                    border.color: Theme.stroke
-                    Row {
-                        id: chipRow
-                        anchors.centerIn: parent
-                        spacing: 7
-                        VIcon {
-                            anchors.verticalCenter: parent.verticalCenter
-                            name: chip.isImage ? "image" : "film"
-                            size: 14
-                            color: chipText.color
                         }
                         Text {
-                            id: chipText
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: modelData.label
-                            color: chipHover.hovered && modelData.exists ? Theme.t1 : Theme.t2
-                            font.family: Theme.fontUi
-                            font.pixelSize: 12
+                            Layout.fillWidth: true
+                            text: root.rows.length > 0 ? qsTr("ajouter une source") : qsTr("ajouter une ps5, une xbox, un pc ou une carte de capture")
+                            color: addRow.hovered ? Theme.t1 : Theme.t2
+                            font.family: Theme.fontMono
+                            font.pixelSize: Theme.fsCtl
+                            elide: Text.ElideRight
+                            Behavior on color { ColorAnimation { duration: Theme.d(150) } }
                         }
                     }
-                    ToolTip.visible: chipHover.hovered && !modelData.exists
-                    ToolTip.text: qsTr("文件已不存在")
-                    HoverHandler { id: chipHover; cursorShape: modelData.exists ? Qt.PointingHandCursor : Qt.ArrowCursor }
-                    TapHandler { onTapped: if (modelData.exists) veyra.openPath(modelData.path) }
+                    HoverHandler { cursorShape: Qt.PointingHandCursor }
+                }
+                Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.line }
+            }
+
+            GridLayout {
+                id: facts
+                Layout.fillWidth: true
+                columns: 3
+                columnSpacing: 0
+                Repeater {
+                    model: [
+                        { label: qsTr("MANETTE"),
+                          main: root.padOn ? (root.padName || qsTr("manette branchée")) : qsTr("aucune manette"),
+                          sub: root.padOn ? ((veyra.ps5 || {}).gyro === true ? qsTr("gyro · prête") : qsTr("prête")) : qsTr("branche-la en usb ou bluetooth"),
+                          accent: root.padOn },
+                        { label: qsTr("IMAGE"),
+                          main: root.presetLabel,
+                          sub: presets.summary(presets.current),
+                          accent: true },
+                        { label: qsTr("ÉCRAN"),
+                          main: [String(Screen.model || Screen.name).trim().toLowerCase(), veyra.displayRefreshHz > 1 ? Math.round(veyra.displayRefreshHz) + " hz" : ""].filter(x => x.length).join(" · "),
+                          sub: [veyra.vrrState >= 4 ? qsTr("g-sync actif") : veyra.vrrState === 3 ? qsTr("g-sync prêt") : "",
+                                veyra.displayHdr > 0 ? qsTr("hdr actif") : "",
+                                Math.round(Screen.width * Screen.devicePixelRatio) + "×" + Math.round(Screen.height * Screen.devicePixelRatio)].filter(x => x.length).join(" · "),
+                          accent: true }
+                    ]
+                    delegate: Item {
+                        id: fact
+                        required property var modelData
+                        required property int index
+                        Layout.fillWidth: true
+                        Layout.preferredWidth: 1
+                        implicitHeight: factCol.implicitHeight
+                        Rectangle { visible: fact.index > 0; width: 1; height: parent.height; color: Theme.line }
+                        ColumnLayout {
+                            id: factCol
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.leftMargin: fact.index > 0 ? 24 : 0
+                            anchors.rightMargin: 24
+                            spacing: 8
+                            Text { text: fact.modelData.label; color: Theme.t3; font.family: Theme.fontMono; font.pixelSize: Theme.fsLabel; font.letterSpacing: 0.8 }
+                            Text { Layout.fillWidth: true; text: fact.modelData.main; color: Theme.t1; font.family: Theme.fontUi; font.pixelSize: Theme.fsText; elide: Text.ElideRight }
+                            Text {
+                                Layout.fillWidth: true
+                                text: fact.modelData.sub
+                                color: fact.modelData.accent ? Theme.accentText : Theme.t3
+                                font.family: Theme.fontMono
+                                font.pixelSize: Theme.fsMeta
+                                font.features: { "tnum": 1 }
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 
-    // [data-in] entrance order from pages-a.js (the source cards rise from their delegate, --d 2-5).
-    VRise { target: mark; d: 0 }
-    VRise { target: hello; d: 1 }
-    VRise { target: resume; d: 6 }
-    VRise { target: recent; d: 7 }
+    Rectangle {
+        anchors.left: parent.left
+        anchors.bottom: parent.bottom
+        anchors.leftMargin: 16
+        anchors.bottomMargin: 12
+        width: credits.implicitWidth + 16
+        height: credits.implicitHeight + 8
+        radius: Theme.rMd
+        color: Qt.rgba(Theme.bgOuter.r, Theme.bgOuter.g, Theme.bgOuter.b, 0.85)
+        Text {
+            id: credits
+            anchors.centerIn: parent
+            text: qsTr("BooVI · gpl-3.0 · basé sur veyra et chiaki-ng")
+            color: Theme.t2
+            font.family: Theme.fontMono
+            font.pixelSize: Theme.fsLabel
+        }
+    }
+
+    UiEnter { target: hero; order: 0; page: launch }
+    UiEnter { target: consoles; order: 1; page: launch }
+    UiEnter { target: facts; order: 2; page: launch }
 }

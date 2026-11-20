@@ -23,7 +23,8 @@ public:
 
 class InputRouter {
 public:
-    explicit InputRouter(InputSink& sink) : sink_(sink) {}
+    // keysHotkey: Ctrl+M is also reserved (the PS5 capture, where it shows the bindings).
+    explicit InputRouter(InputSink& sink, bool keysHotkey = false) : sink_(sink), keysHotkey_(keysHotkey) {}
 
     // True when the message was consumed (it must not reach the UI underneath).
     bool message(UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -52,6 +53,29 @@ public:
     // Relative movement from a WM_INPUT mouse report.
     void rawMouse(long dx, long dy) { sink_.mouseMove(int(dx), int(dy)); }
 
+    // A whole WM_INPUT report, for a reader that gets no window messages (the PS5 input
+    // thread): mouse movement, buttons and wheel, and keys through the same hotkey filter.
+    void raw(const RAWINPUT& in) {
+        if (in.header.dwType == RIM_TYPEMOUSE) {
+            const RAWMOUSE& m = in.data.mouse;
+            if ((m.usFlags & MOUSE_MOVE_ABSOLUTE) == 0 && (m.lLastX || m.lLastY)) rawMouse(m.lLastX, m.lLastY);
+            static constexpr struct { USHORT down, up; int button; } buttons[] = {
+                {RI_MOUSE_LEFT_BUTTON_DOWN, RI_MOUSE_LEFT_BUTTON_UP, 1}, {RI_MOUSE_MIDDLE_BUTTON_DOWN, RI_MOUSE_MIDDLE_BUTTON_UP, 2},
+                {RI_MOUSE_RIGHT_BUTTON_DOWN, RI_MOUSE_RIGHT_BUTTON_UP, 3}, {RI_MOUSE_BUTTON_4_DOWN, RI_MOUSE_BUTTON_4_UP, 4},
+                {RI_MOUSE_BUTTON_5_DOWN, RI_MOUSE_BUTTON_5_UP, 5}};
+            for (const auto& b : buttons) {
+                if (m.usButtonFlags & b.down) sink_.mouseButton(b.button, true);
+                if (m.usButtonFlags & b.up) sink_.mouseButton(b.button, false);
+            }
+            if (m.usButtonFlags & RI_MOUSE_WHEEL) sink_.scroll(short(m.usButtonData), false);
+            if (m.usButtonFlags & RI_MOUSE_HWHEEL) sink_.scroll(short(m.usButtonData), true);
+        } else if (in.header.dwType == RIM_TYPEKEYBOARD) {
+            const RAWKEYBOARD& k = in.data.keyboard;
+            if ((k.Flags & RI_KEY_E1) || k.VKey == 0xFF || k.MakeCode == 0) return;   // Pause, overrun, fake keys
+            key(k.VKey, k.MakeCode, (k.Flags & RI_KEY_E0) != 0, (k.Flags & RI_KEY_BREAK) == 0);
+        }
+    }
+
     // Set when the last key press was one of the app's own hotkeys; cleared by taking it.
     Reserved takeReserved() {
         const Reserved r = reserved_;
@@ -60,17 +84,20 @@ public:
     }
 
     // Forget what is held (capture ended; the session releases the host side itself).
-    void reset() { held_.clear(); reserved_ = Reserved::None; }
+    void reset() { held_.clear(); reserved_ = Reserved::None; swallowedUp_ = 0; }
 
 private:
     bool key(WPARAM wParam, LPARAM lParam, bool down) {
-        const uint32_t vk = uint32_t(wParam);
-        const uint32_t scan = uint32_t((lParam >> 16) & 0xFF);
-        const bool extended = ((lParam >> 24) & 1) != 0;
+        return key(uint32_t(wParam), uint32_t((lParam >> 16) & 0xFF), ((lParam >> 24) & 1) != 0, down);
+    }
+
+    bool key(uint32_t vk, uint32_t scan, bool extended, bool down) {
         const HostKey host = hostKey(vk, scan, extended);
         if (down) {
+            if (swallowedUp_ == vk) return true;   // a hotkey's auto-repeat acts once
             if (vk != 0x10 && vk != 0x11 && vk != 0x12) {   // a modifier alone is never a hotkey
-                const Reserved r = reservedHotkey(vk, held_.modifiers());
+                Reserved r = reservedHotkey(vk, held_.modifiers());
+                if (r == Reserved::None && keysHotkey_ && vk == 'M' && held_.modifiers() == kModCtrl) r = Reserved::ShowKeys;
                 if (r != Reserved::None) { reserved_ = r; swallowedUp_ = vk; return true; }
             }
             held_.press(host.code, host.modifier);
@@ -88,6 +115,7 @@ private:
     }
 
     InputSink& sink_;
+    bool keysHotkey_;
     HeldKeys held_;
     Reserved reserved_ = Reserved::None;
     uint32_t swallowedUp_ = 0;

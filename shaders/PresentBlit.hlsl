@@ -15,7 +15,7 @@ cbuffer PresentBlitConstants : register(b0)
     // encode. See veyra/engine/HdrOutputTuning.h for the contract; every field is
     // a no-op at its default (lift 0, mid 203, start 0, cap 0).
     float4 curve0;  // x=shadow lift EV, y=shadow range nits, z=mid-gray nits, w=highlight start nits
-    float4 curve1;  // x=roll-off scale nits, y=peak cap nits (0 = off)
+    float4 curve1;  // x=roll-off scale nits, y=peak cap nits (0 = off), z/w=picture offset (flags 512, 1024)
 };
 
 // Lift the shadows without touching the highlights, move the mid-gray reference
@@ -109,14 +109,32 @@ float4 psMain(VSOut input) : SV_Target
 {
     // zoom==0 retains the original contract for diagnostic harness callers.
     float2 uv=input.uv;
+    uint flags=uint(srcDims.z+0.5);
+    // Fork, camera anticipation (512): the picture is drawn displaced by curve1.zw (picture
+    // fractions, +x right, +y down). Where that uncovers the picture's edge, the border is
+    // stretched, blurred along the edge and dimmed.
+    float past=0;float2 along=0;
     if(srcDims.w>0){
         float fit=min(dstDims.x/srcDims.x,dstDims.y/srcDims.y)*srcDims.w;
         uv=(input.uv-.5)*dstDims.xy/(srcDims.xy*fit)+dstDims.zw;
-        if(any(uv<0)||any(uv>1))return float4(0,0,0,(uint(srcDims.z+0.5)&256)?0:1);
+        if(any(uv<0)||any(uv>1))return float4(0,0,0,(flags&256)?0:1);
+        if(flags&512){
+            uv-=curve1.zw;
+            const float2 inside=saturate(uv),over=abs(uv-inside);
+            past=max(over.x,over.y);along=over.x>=over.y?float2(0,1):float2(1,0);uv=inside;
+        }
     }
-    uint flags=uint(srcDims.z+0.5);
+    // Fork, the anticipation bench's simulated game (1024): the picture as a panorama, wrapped.
+    if(flags&1024)uv=frac(uv+curve1.zw);
     uv=PresentationSourceUv(uv,(flags>>6)&3);
     float4 color=(flags&2)?FineSample(uv):sourceTex.SampleLevel(linearClamp,uv,0);
+    if(past>0){
+        const float radius=min(0.04,0.004+past*0.3);
+        const float2 inward=(0.5-uv)*float2(along.y,along.x)*radius;
+        color=0;
+        [unroll]for(int i=-4;i<=4;++i)color+=sourceTex.SampleLevel(linearClamp,saturate(uv+along*radius*(i/4.0)+inward*abs(i)*0.5),0);
+        color/=9.0;color.rgb*=1.0-0.45*smoothstep(0.0,0.08,past);
+    }
     if((flags&256)&&color.a>1e-6)color.rgb/=color.a;
     if(flags&32)color.rgb=HdrDecodePq(color.rgb);
     if(flags&8)color.rgb*=203.0/80.0; // SDR comparison white in an HDR output.

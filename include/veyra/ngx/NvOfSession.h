@@ -29,6 +29,9 @@ public:
     NvOfSession() = default;
     ~NvOfSession();
 
+    // False when this build has no Optical Flow SDK (every session then fails to initialize).
+    static bool sdkAvailable();
+
     NvOfSession(const NvOfSession&) = delete;
     NvOfSession& operator=(const NvOfSession&) = delete;
 

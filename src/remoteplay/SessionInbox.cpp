@@ -13,6 +13,7 @@ struct SessionInbox::Shared {
     uint64_t decodedFrames=0,receivedBytes=0,framesLost=0,referenceRecoveryEvents=0;
     bool hardwareDecode=false,decodeFallback=false,decodeConfirmed=false;
     VideoProfile requestedProfile;
+    std::function<void()> videoWake;
     struct Sample {HostTime time;double value;};
     std::deque<Sample> received,decoded,decodeTimes,ingressWait;
     static void add(std::deque<Sample>& q,HostTime now,double value){
@@ -61,6 +62,7 @@ SessionInbox::Snapshot SessionInbox::snapshot()const{
     };
     aggregate(s.decodeTimes,result.decodeMeanMs,&result.decodeP95Ms);aggregate(s.ingressWait,result.ingressWaitMeanMs,nullptr);return result;
 }
+void SessionInbox::setVideoWake(std::function<void()> wake){auto& s=*shared_;std::lock_guard l(s.mutex);s.videoWake=std::move(wake);}
 void SessionInbox::decodeStarted(HostTime now,HostTime arrival){auto& s=*shared_;std::lock_guard l(s.mutex);s.decodeStart=now;if(arrival>0&&now>=arrival)Shared::add(s.ingressWait,now,double(now-arrival)/10000);}
 void SessionInbox::decodeFinished(HostTime now){auto& s=*shared_;std::lock_guard l(s.mutex);if(s.decodeStart>0&&now>=s.decodeStart)Shared::add(s.decodeTimes,now,double(now-s.decodeStart)/10000);s.decodeStart=0;}
 void SessionInbox::frameDecoded(HostTime now){auto& s=*shared_;std::lock_guard l(s.mutex);s.lastDecoded=now;++s.decodedFrames;Shared::add(s.decoded,now,1);}
@@ -68,7 +70,9 @@ bool SessionInbox::Token::video(VideoSample sample)const noexcept{
     try{auto s=shared_.lock();if(!s)return false;std::lock_guard l(s->mutex);if(!s->current(generation_))return false;
         if(sample.generation!=generation_)return false;
         if(sample.kind==SampleKind::AccessUnit){s->lastVideo=monotonic100ns();s->receivedBytes+=sample.payload.bytes().size();s->framesLost+=std::max(0,sample.framesLost);s->referenceRecoveryEvents+=sample.referenceRecovered?1:0;Shared::add(s->received,s->lastVideo,double(sample.payload.bytes().size()));}
-        const auto r=s->video.push(std::move(sample),monotonic100ns());return r==PushStatus::Accepted||r==PushStatus::ConfigStored;
+        const auto r=s->video.push(std::move(sample),monotonic100ns());
+        if(r==PushStatus::Accepted&&s->videoWake)s->videoWake();
+        return r==PushStatus::Accepted||r==PushStatus::ConfigStored;
     }catch(...){failed(-1001);return false;}
 }
 bool SessionInbox::Token::audio(PcmBlock block)const noexcept{

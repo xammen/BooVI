@@ -23,6 +23,7 @@
 #include <QSGRendererInterface>
 #include <QKeyEvent>
 #include <QTimer>
+#include <QElapsedTimer>
 #include <atomic>
 #include <QPointer>
 #include <QVariantMap>
@@ -43,22 +44,33 @@
 #include <dbghelp.h>
 #include <d3d12.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <format>
 #include <memory>
+#include <vector>
 
 #include "veyra/Log.h"
 #include "veyra/RuntimePaths.h"
 #include "veyra/engine/EngineController.h"
+#ifdef VEYRA_ENABLE_GUEST
+#include "veyra/guest/GuestStreamer.h"
+#include "veyra/ui/GuestShareModel.h"
+#include "veyra/ui/GuestAccessModel.h"
+#endif
+#ifdef VEYRA_ENABLE_GUEST_CLIENT
+#include "veyra/ui/GuestJoinModel.h"
+#endif
 #include "veyra/engine/ExportJobManager.h"
 #include "veyra/engine/PresentationGeometry.h"
 #include "veyra/gfx/PresentationHooks.h"
 #include "veyra/pipeline/AmdHipPreflight.h"
 #include "veyra/ui/InterfaceRenderer.h"
 #include "veyra/ui/QmlDataDirectory.h"
+#include "veyra/UserDataRoot.h"
 #include "veyra/ui/QmlDiskCache.h"
 #include "veyra/ui/QmlPlayerBridge.h"
 #include "veyra/ui/StartupMusic.h"
@@ -109,7 +121,10 @@ bool g_videoHiddenByProbe = false;
 // Set while a new source is opening: the window keeps the previous session's last
 // frame until the new one presents, so its region is emptied instead. A slow PS5
 // connect after a capture card left the card's last frame up for 20 s and the
-// window looked frozen (field report 2026-10-01).
+// window looked frozen (field report 2026-10-01). It stays empty until the new
+// session has put a frame through (snapshot frames, reset at every open): the
+// window is shown and the source runs before its first present, and in between
+// the old session's frame flashed on a PS5 reconnect.
 bool g_videoBlanked = false;
 
 void blankVideo(const char* why) {
@@ -184,7 +199,10 @@ HWND createVideoWindow() {
     // work: Windows refuses with ERROR_CANNOT_MAKE (1406), which is what left the
     // video window invalid and the swapchain at 1x1. WS_POPUP with no WS_VISIBLE
     // creates cleanly; SetParent plus the child style below turns it into a child.
-    HWND created = CreateWindowExW(WS_EX_NOPARENTNOTIFY | WS_EX_TOOLWINDOW, cls, L"",
+    // WS_EX_NOACTIVATE: while it was still a popup, reparenting made this window the
+    // foreground window on the first stream open, so the QML window lost focus and
+    // the controller was paused until the user clicked the picture.
+    HWND created = CreateWindowExW(WS_EX_NOPARENTNOTIFY | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, cls, L"",
                                    WS_POPUP | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
                                    0, 0, 16, 16, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
     if (created == nullptr) {
@@ -669,11 +687,36 @@ static int runApplication(int argc, char** argv, QString& restartProgram, QStrin
     };
     static NoKeyMenuFilter noKeyMenu;
     app.installNativeEventFilter(&noKeyMenu);
-    app.setApplicationName(QStringLiteral("Veyra"));
-    app.setOrganizationName(QStringLiteral("Veyra"));
-    veyra::log::info("app", "Veyra QML session started");
+    // Qt appends the display name to window titles that do not already end with it, so the
+    // main window's title is just "BooVI". No organization: nothing of Qt's lands outside
+    // the user data folder (UserDataRoot.h).
+    app.setApplicationName(QStringLiteral("BooVI"));
+    app.setApplicationDisplayName(QStringLiteral("BooVI"));
+    veyra::log::info("app", "BooVI session started");
+    // The pairings and secrets of the Veyra-era app, copied once before anything opens them.
+    if (!veyra::userdata::overridden()) {
+        try {
+            std::string error;
+            const auto migration = veyra::userdata::migrateLegacyUserData(
+                veyra::userdata::legacyRoot(), veyra::userdata::root(), error);
+            if (migration == veyra::userdata::Migration::Copied)
+                veyra::log::info("app", "user data copied from the Veyra folder");
+            else if (migration == veyra::userdata::Migration::Failed)
+                veyra::log::error("app", "user data copy from the Veyra folder failed: " + error);
+        } catch (const std::exception& e) {
+            veyra::log::error("app", std::string("user data folder: ") + e.what());
+        }
+    }
 
+#ifdef VEYRA_ENABLE_GUEST
+    // Fork, partage: a remote guest (GuestStreamer.h). Declared before the engine, so it
+    // outlives the presenter that feeds it.
+    guest::GuestStreamer guestStreamer;
+#endif
     engine::EngineController controller;
+#ifdef VEYRA_ENABLE_GUEST
+    controller.setEarlyCapture(guestStreamer.capture());
+#endif
 
     // The window exists before QML loads so the engine can be handed a valid
     // HWND as soon as the user opens something.
@@ -708,6 +751,12 @@ static int runApplication(int argc, char** argv, QString& restartProgram, QStrin
     }
     ui::QmlPlayerBridge bridge(controller, dataDirectory);
     bridge.attachVideoWindow(reinterpret_cast<qulonglong>(g_video));
+#ifdef VEYRA_ENABLE_GUEST
+    bridge.setGuest(&guestStreamer);
+    ui::GuestShareModel guestShare(guestStreamer, bridge);
+    // Fork, invités: friends' accesses and the gateway that welcomes them (GuestAccessModel.h).
+    ui::GuestAccessModel guestAccess(guestStreamer, guestShare, bridge);
+#endif
 
     // Qt reports QML failures through its own message handler. Routing them to
     // the log is the difference between "it did not load" and why.
@@ -730,7 +779,7 @@ static int runApplication(int argc, char** argv, QString& restartProgram, QStrin
         const QString testRoot = qEnvironmentVariable("VEYRA_TEST_QML_CACHE_ROOT");
         const auto cache = ui::chooseQmlDiskCache(
             QCoreApplication::applicationDirPath() + QStringLiteral("/qml/Veyra"),
-            testRoot.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::CacheLocation) : testRoot,
+            testRoot.isEmpty() ? QString::fromStdWString((veyra::userdata::root() / L"cache").wstring()) : testRoot,
             qgetenv("QML_DISK_CACHE_PATH"), qgetenv("QML_DISABLE_DISK_CACHE"));
         QString outcome = cache.note;
         if (!cache.directory.isEmpty()) {
@@ -766,6 +815,13 @@ static int runApplication(int argc, char** argv, QString& restartProgram, QStrin
     engine.addImportPath(QCoreApplication::applicationDirPath() + "/qml");
     engine.rootContext()->setContextProperty(QStringLiteral("veyra"), &bridge);
     engine.rootContext()->setContextProperty(QStringLiteral("vyMusic"), &startupMusic);
+#ifdef VEYRA_ENABLE_GUEST
+    engine.rootContext()->setContextProperty(QStringLiteral("vyGuest"), &guestShare);
+    engine.rootContext()->setContextProperty(QStringLiteral("vyAccess"), &guestAccess);
+#else
+    engine.rootContext()->setContextProperty(QStringLiteral("vyGuest"), QVariant());
+    engine.rootContext()->setContextProperty(QStringLiteral("vyAccess"), QVariant());
+#endif
     bridge.setQmlEngine(&engine);   // Qt.uiLanguage drives the per-language font (Theme.qml)
 
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
@@ -791,17 +847,37 @@ static int runApplication(int argc, char** argv, QString& restartProgram, QStrin
     //   --data-dir <path>       presets and session history from that folder (read before the bridge exists)
     //   --import-1.4.4-data <path>  read-only legacy settings source for first 2.0.0 launch
     //   --motion-probe <name>   dock | page | switch | seg | menu: start that motion, log its value per frame
+    //   --play-last             (fork) start the last source, like the home page's Play button
+    //   --wake-ps5              (fork) wake the saved PS5 from rest mode
+    //   --login-pin-file <path> (fork) answer the console's login PIN request from a file
+    //   --sleep-ps5-on-exit     (fork) put the PS5 in rest mode when the app closes mid-stream
+    //   --gateway-tray          (fork) start in the tray, welcoming invited friends (démarrer avec Windows)
+    //   --join-file <path>      (fork) join the share whose link is in that file (rejoindre un partage)
+    //   --preset <id>           (fork) performance | balanced | fluid once the first source plays
+    //   --nav-probe <p1,p2,..>  (fork) go to each page in turn, 1.5 s apart, and log the
+    //                           frames of each switch (ui-nav-probe)
+    //   --ps5-kbm               (fork) capture the keyboard and mouse once the PS5 picture shows
+    //   --reconnect <quitMs>,<playMs>  (fork) leave the stream quitMs after start, as the toolbar's
+    //                           quit does, and play the same console again playMs later (muted)
+    //   --switch-language <code>[@ms]  (fork) set the interface language N ms after start (3000
+    //                           by default), as the settings choice does, to check it applies live
+    //   --fg-backend <id>       (fork) frame generation backend set before --preset (tests)
+    //   --fg-motion <zero|flow> (fork) frame generation motion set before --preset (tests)
     //   --exit-after <ms>       quit the app by itself after N ms, so a test run ends
     //                           through the engine's own teardown instead of a kill
     //   --video-probe <normal|hidden|no-region|covers-only>  native-window diagnosis
     const QStringList args = QCoreApplication::arguments();
     QString openPath;
     QVariantMap testOptions;
+    bool playLast = false, wakePs5 = false, sleepPs5OnExit = false, ps5Kbm = false, gatewayTray = false;
+    QString loginPinFile, joinFile;
     if(qEnvironmentVariableIsSet("VEYRA_TEST_DISABLE_PAUSED_UI_IDLE"))
         testOptions.insert(QStringLiteral("disablePausedUiIdle"),true);
     QSize testSize;
     // --exit-after: see the switch table. 0 means "run until closed".
     int exitAfterMs = 0;
+    QStringList navProbePages;
+    QString switchLanguage;
     for (int i = 1; i < args.size(); ++i) {
         const QString& a = args.at(i);
         const bool hasValue = i + 1 < args.size();
@@ -837,6 +913,12 @@ static int runApplication(int argc, char** argv, QString& restartProgram, QStrin
             testOptions.insert(QStringLiteral("motionProbe"), args.at(++i));
         } else if (a == QLatin1String("--exit-after") && hasValue) {
             exitAfterMs = args.at(++i).toInt();
+        } else if (a == QLatin1String("--reconnect") && hasValue) {
+            testOptions.insert(QStringLiteral("reconnect"), args.at(++i));
+        } else if (a == QLatin1String("--switch-language") && hasValue) {
+            switchLanguage = args.at(++i);
+        } else if (a == QLatin1String("--nav-probe") && hasValue) {
+            navProbePages = args.at(++i).split(QLatin1Char(','), Qt::SkipEmptyParts);
         } else if (a == QLatin1String("--video-probe") && hasValue) {
             const QString mode = args.at(++i);
             if (mode == QLatin1String("hidden")) g_videoProbe = VideoProbeMode::Hidden;
@@ -847,6 +929,44 @@ static int runApplication(int argc, char** argv, QString& restartProgram, QStrin
                 return 2;
             }
             g_videoHiddenByProbe = g_videoProbe == VideoProbeMode::Hidden;
+        } else if (a == QLatin1String("--play-last")) {
+            // Fork: what the home page's Play button does, from a shortcut or a script.
+            playLast = true;
+        } else if (a == QLatin1String("--login-pin-file") && hasValue) {
+            // Fork: the PS5 login PIN, read from a file, sent when the console asks for it.
+            loginPinFile = args.at(++i);
+        } else if (a == QLatin1String("--wake-ps5")) {
+            // Fork: wake the saved PS5 from rest mode (the dialog's Wake button).
+            wakePs5 = true;
+        } else if (a == QLatin1String("--sleep-ps5-on-exit")) {
+            sleepPs5OnExit = true;
+        } else if (a == QLatin1String("--gateway-tray")) {
+            // Fork: started with Windows for the friends' gateway: no window, nothing resumed.
+            gatewayTray = true;
+        } else if (a == QLatin1String("--ps5-kbm")) {
+            ps5Kbm = true;
+        } else if (a == QLatin1String("--share-panel")) {
+            // Fork: the stream toolbar's "partager" panel open (screenshots, tests).
+            testOptions.insert(QStringLiteral("sharePanel"), true);
+        } else if (a == QLatin1String("--share-kick-after") && hasValue) {
+            // Fork: kick the guest this many seconds after sharing starts (tests).
+            testOptions.insert(QStringLiteral("shareKickAfter"), args.at(++i).toInt());
+        } else if (a == QLatin1String("--preset") && hasValue) {
+            // Fork: performance, balanced or fluid, applied once the first source plays (tests).
+            testOptions.insert(QStringLiteral("preset"), args.at(++i));
+        } else if (a == QLatin1String("--join-file") && hasValue) {
+            // Fork: join the share whose link is in this file, once the window is up (tests;
+            // the link holds a token, so it never goes on a command line).
+            joinFile = args.at(++i);
+        } else if (a == QLatin1String("--fg-motion") && hasValue) {
+            // Fork: frame generation motion, "zero" or "flow" (tests).
+            testOptions.insert(QStringLiteral("fgMotion"), args.at(++i));
+        } else if (a == QLatin1String("--fg-backend") && hasValue) {
+            // Fork: the frame generation backend (dlss, fsr3, vfg...) set before --preset (tests).
+            testOptions.insert(QStringLiteral("fgBackend"), args.at(++i));
+        } else if (a == QLatin1String("--share")) {
+            // Fork: start sharing once the window is up (tests; VEYRA_GUEST_LINK_FILE gets the link).
+            testOptions.insert(QStringLiteral("share"), true);
         } else if (a == QLatin1String("--reduced-motion")) {
             testOptions.insert(QStringLiteral("reducedMotion"), true);
         } else if (a == QLatin1String("--slow-animations") && hasValue) {
@@ -869,9 +989,58 @@ static int runApplication(int argc, char** argv, QString& restartProgram, QStrin
                                             testSize.width(), testSize.height()));
     veyra::log::info("qml-window", std::format("probe mode={}", videoProbeName()));
     engine.rootContext()->setContextProperty(QStringLiteral("vyTest"), testOptions);
+    if (wakePs5) QTimer::singleShot(600, &bridge, [&bridge] { bridge.ps5Load(); bridge.ps5Wake(); });
+#ifdef VEYRA_ENABLE_GUEST
+    if (testOptions.value(QStringLiteral("share")).toBool()) QTimer::singleShot(800, &guestShare, [&guestShare] { guestShare.start(); });
+    if (const int kickAfter = testOptions.value(QStringLiteral("shareKickAfter")).toInt(); kickAfter > 0)
+        QTimer::singleShot(800 + kickAfter * 1000, &guestShare, [&guestShare] { guestShare.kick(); });
+#endif
+#ifdef VEYRA_ENABLE_GUEST_CLIENT
+    if (!joinFile.isEmpty()) {
+        // Retried while the file is still empty (the host writes it once its link is known).
+        auto* joinTimer = new QTimer(&bridge);
+        QObject::connect(joinTimer, &QTimer::timeout, &bridge, [&bridge, joinFile, joinTimer] {
+            QFile file(joinFile);
+            // The first line: the host's link file also lists its tailnet link.
+            const QString link = file.open(QIODevice::ReadOnly) ? QString::fromUtf8(file.readLine()).trimmed() : QString();
+            auto* join = qobject_cast<ui::GuestJoinModel*>(bridge.joinModel());
+            if (!join || !join->setLink(link)) return;
+            joinTimer->stop();
+            if (!join->join()) veyra::log::warn("guest-client-ui", "--join-file: the join did not start");
+        });
+        joinTimer->start(500);
+    }
+#endif
+    if (ps5Kbm) {
+        // Retried until it holds: the capture needs the stream's window and the foreground.
+        auto* kbmTimer = new QTimer(&bridge);
+        QObject::connect(kbmTimer, &QTimer::timeout, &bridge, [&bridge, kbmTimer] {
+            if (bridge.ps5().value(QStringLiteral("kbm")).toBool()) { kbmTimer->stop(); return; }
+            if (bridge.ps5().value(QStringLiteral("active")).toBool()) bridge.ps5Kbm(true);
+        });
+        kbmTimer->start(500);
+    }
+    if (!loginPinFile.isEmpty()) {
+        QFile pinFile(loginPinFile);
+        QString pin = pinFile.open(QIODevice::ReadOnly) ? QString::fromUtf8(pinFile.readAll()).trimmed() : QString();
+        if (pin.isEmpty()) veyra::log::warn("remoteplay-ui", "login PIN file unreadable or empty");
+        else {
+            auto* pinTimer = new QTimer(&bridge);
+            QObject::connect(pinTimer, &QTimer::timeout, &bridge, [&bridge, pin, pinTimer]() mutable {
+                if (!bridge.ps5().value(QStringLiteral("pinRequired")).toBool()) return;
+                veyra::log::info("remoteplay-ui", "login PIN sent from file");
+                bridge.ps5SendLoginPin(pin);
+                pin.fill(QLatin1Char('0')); pin.clear();
+                pinTimer->stop();
+            });
+            pinTimer->start(500);
+        }
+    }
     if (!openPath.isEmpty()) {
         QTimer::singleShot(600, &bridge, [&bridge, openPath] { bridge.openPath(openPath); });
-    } else {
+    } else if (playLast) {
+        QTimer::singleShot(600, &bridge, [&bridge] { bridge.resumeLastSource(); });
+    } else if (!gatewayTray) {
         QTimer::singleShot(600, &bridge, [&bridge] { bridge.autoResumeLastSource(); });
     }
 
@@ -889,6 +1058,11 @@ static int runApplication(int argc, char** argv, QString& restartProgram, QStrin
     }
     if (testSize.isValid()) window->resize(testSize);
     bridge.attachMainWindow(static_cast<qulonglong>(window->winId()));
+#ifdef VEYRA_ENABLE_GUEST
+    guestAccess.attachWindow(window, gatewayTray);
+#else
+    (void)gatewayTray;
+#endif
 
     // Fullscreen must own the whole monitor. Without telling the shell, the taskbar
     // stayed above the fullscreen picture on some systems (field report with the
@@ -931,7 +1105,16 @@ static int runApplication(int argc, char** argv, QString& restartProgram, QStrin
     // explicit handler is to close it and exit on the last window, which does run
     // teardown; this makes it explicit so a harness can also ask for a clean exit
     // with --exit-after and get the same, complete log either way.
-    QObject::connect(window, &QQuickWindow::closing, &app, [](QQuickCloseEvent*) {
+    QObject::connect(window, &QQuickWindow::closing, &app, [sleepPs5OnExit, &controller](QQuickCloseEvent*) {
+#ifdef VEYRA_ENABLE_REMOTEPLAY
+        if (sleepPs5OnExit) {
+            const bool sent = controller.remotePlayGotoBed();
+            veyra::log::info("remoteplay-ui", std::format("sleep-ps5-on-exit: rest mode {}", sent ? "requested" : "not requested (no live session)"));
+            if (sent) Sleep(300);   // chiaki's control thread sends the queued request
+        }
+#else
+        (void)sleepPs5OnExit; (void)controller;
+#endif
         veyra::log::info("qml", "closing: quitting the application loop");
         // Flush before quitting: the file sink is a 64 KB _IOFBF buffer, so a run
         // that ends without this loses its last lines (the exact ones a headless
@@ -947,6 +1130,79 @@ static int runApplication(int argc, char** argv, QString& restartProgram, QStrin
             veyra::log::info("qml", "exit-after elapsed: closing the window");
             window->close();
         });
+    }
+    if (!switchLanguage.isEmpty()) {
+        const QStringList parts = switchLanguage.split(QLatin1Char('@'));
+        const int afterMs = parts.size() > 1 ? parts.at(1).toInt() : 3000;
+        QTimer::singleShot(afterMs, &app, [&bridge, code = parts.at(0)] {
+            veyra::log::info("qml", std::format("switch-language {} accepted={}", code.toStdString(), bridge.setPreference(QStringLiteral("language"), code)));
+        });
+    }
+    // --nav-probe: each switch goes through Main.qml's goPage, like a click on the top bar.
+    // While the switch moves (Main.qml `navigating`; the first 800 ms on a build without
+    // it): the frames presented, the wait for the first one, the gaps between presents and
+    // each frame's cost from sync to present, in ms; then the same gaps for the rest of
+    // the 1.5 s, once the page is at rest ("idle").
+    if (!navProbePages.isEmpty()) {
+        struct NavProbe {
+            QStringList pages;
+            int at = 0;
+            QElapsedTimer clock;
+            qint64 switchedAt = -1, lastSwap = -1, syncAt = -1, settledAt = -1;
+            bool moved = false;
+            std::vector<double> gaps, costs, idle;
+            QString label;
+        };
+        auto probe = std::make_shared<NavProbe>();
+        probe->pages = navProbePages;
+        probe->clock.start();
+        constexpr qint64 windowNs = 800'000'000;
+        QObject::connect(window, &QQuickWindow::beforeSynchronizing, &app, [probe] {
+            probe->syncAt = probe->clock.nsecsElapsed();
+        }, Qt::DirectConnection);
+        QObject::connect(window, &QQuickWindow::frameSwapped, &app, [probe, window] {
+            const qint64 now = probe->clock.nsecsElapsed();
+            const QVariant navigating = window->property("navigating");
+            const bool moving = navigating.isValid() ? navigating.toBool() || probe->moved : now - probe->switchedAt < windowNs;
+            probe->moved = navigating.toBool();
+            if (probe->switchedAt >= 0 && probe->settledAt < 0 && !moving) probe->settledAt = now;
+            if (probe->switchedAt >= 0 && probe->settledAt < 0) {
+                probe->gaps.push_back((now - probe->lastSwap) / 1e6);
+                if (probe->syncAt >= probe->lastSwap) probe->costs.push_back((now - probe->syncAt) / 1e6);
+            } else if (probe->switchedAt >= 0) {
+                probe->idle.push_back((now - probe->lastSwap) / 1e6);
+            }
+            probe->lastSwap = now;
+        }, Qt::DirectConnection);
+        auto* stepper = new QTimer(&app);
+        QObject::connect(stepper, &QTimer::timeout, &app, [probe, window, stepper] {
+            const auto pick = [](std::vector<double> v, double q) {
+                if (v.empty()) return 0.0;
+                std::sort(v.begin(), v.end());
+                return v[std::min(v.size() - 1, size_t(q * (v.size() - 1) + 0.5))];
+            };
+            if (!probe->label.isEmpty()) {
+                const double first = probe->gaps.empty() ? 0.0 : probe->gaps.front();
+                std::vector<double> rest(probe->gaps.begin() + (probe->gaps.empty() ? 0 : 1), probe->gaps.end());
+                veyra::log::info("ui-nav-probe", std::format(
+                    "{} moving={:.0f} frames={} first={:.1f} gap median={:.1f} p95={:.1f} max={:.1f} cost median={:.1f} p95={:.1f} max={:.1f}"
+                    " idle frames={} gap median={:.1f} p95={:.1f} max={:.1f}",
+                    probe->label.toStdString(), probe->settledAt < 0 ? -1.0 : (probe->settledAt - probe->switchedAt) / 1e6, probe->gaps.size(), first, pick(rest, 0.5), pick(rest, 0.95), pick(rest, 1.0),
+                    pick(probe->costs, 0.5), pick(probe->costs, 0.95), pick(probe->costs, 1.0),
+                    probe->idle.size(), pick(probe->idle, 0.5), pick(probe->idle, 0.95), pick(probe->idle, 1.0)));
+            }
+            if (probe->at >= probe->pages.size()) { stepper->stop(); return; }
+            const QString from = window->property("page").toString(), to = probe->pages.at(probe->at++);
+            probe->label = from + QStringLiteral("->") + to;
+            probe->gaps.clear();
+            probe->costs.clear();
+            probe->idle.clear();
+            probe->switchedAt = probe->lastSwap = probe->clock.nsecsElapsed();
+            probe->settledAt = -1;
+            probe->moved = true;
+            QMetaObject::invokeMethod(window, "goPage", Q_ARG(QVariant, QVariant(to)));
+        });
+        stepper->start(1500);
     }
 
     // Focus changes are diagnostic only: they never pause playback, change the
@@ -975,7 +1231,7 @@ static int runApplication(int argc, char** argv, QString& restartProgram, QStrin
     // signals alone were not enough: the first layout pass can leave the host at its
     // default 0x0 with no change to observe, which is how the engine once built a
     // swapchain from a 1x1 window. The native calls only run when a value changed.
-    auto follow = [window, &bridge] {
+    auto follow = [window, &bridge, &controller] {
         if (!g_video) return;
         syncVideoCursor(window->property("fullscreenCursorHidden").toBool());
         // Only the pre-open hook attaches the popup and converts it to WS_CHILD.
@@ -1010,7 +1266,7 @@ static int runApplication(int argc, char** argv, QString& restartProgram, QStrin
             veyra::log::info("qml", std::format("video host geometry {}x{} at {},{}",
                                                 w, h, int(host->x()), int(host->y())));
         }
-        if (syncVideoGeometry(window, host))
+        if (syncVideoGeometry(window, host) && !(g_videoBlanked && controller.snapshot().frames == 0))
             syncVideoCovers(window, host, sceneInsetFraction(window));
     };
     // Hold-to-compare (V by default) is the bridge's application event filter:
@@ -1086,6 +1342,8 @@ static int runApplication(int argc, char** argv, QString& restartProgram, QStrin
     // Before every open, place the native window and force the pending layout to
     // be applied so the client size the presenter reads is the real one.
     bridge.setPreOpenHook([window, &bridge] {
+        // Emptied before the window is placed and shown below, not on the next frame.
+        blankVideo("opening");
         auto* host = window->findChild<QQuickItem*>(QStringLiteral("videoHost"));
         veyra::log::info("qml", std::format("pre-open: host={} size={}x{} contentChildren={}",
                                             host != nullptr,
@@ -1097,12 +1355,13 @@ static int runApplication(int argc, char** argv, QString& restartProgram, QStrin
         // on a later timer tick, is what lets the geometry below take effect.
         if (GetParent(g_video) == nullptr) {
             const HWND parent = reinterpret_cast<HWND>(window->winId());
-            SetParent(g_video, parent);
-            // SetParent alone leaves the popup style in place; a child style is what
-            // makes the window clip to its parent and behave as part of the layout.
+            // The child style goes on before SetParent, as the SetParent documentation
+            // requires for a window moving from the desktop to a parent. Done after, the
+            // window was briefly a parented popup and Windows activated it.
             const LONG_PTR style = GetWindowLongPtrW(g_video, GWL_STYLE);
             SetWindowLongPtrW(g_video, GWL_STYLE,
                               (style & ~(WS_POPUP)) | WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN);
+            SetParent(g_video, parent);
         }
         const bool validHost = host && syncVideoGeometry(window, host);
         if (!validHost) {
@@ -1170,7 +1429,7 @@ int main(int argc, char** argv) {
     if (result != 42) return result;
     // Player, QML engine and QApplication have all been destroyed.
     if (QProcess::startDetached(program, arguments)) return 0;
-    MessageBoxW(nullptr, L"设置已保存，但自动重启失败。请重新打开软件。\nSettings saved. Automatic restart failed; please reopen Veyra.",
-                L"Veyra", MB_OK | MB_ICONERROR);
+    MessageBoxW(nullptr, L"设置已保存，但自动重启失败。请重新打开软件。\nSettings saved. Automatic restart failed; please reopen BooVI.",
+                L"BooVI", MB_OK | MB_ICONERROR);
     return 1;
 }

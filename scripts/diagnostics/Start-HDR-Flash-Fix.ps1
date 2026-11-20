@@ -13,7 +13,7 @@ function File-Sha256([string]$Path) {
     finally { $hasher.Dispose();$stream.Dispose() }
 }
 $app = [IO.Path]::GetFullPath($AppDirectory)
-$player = Join-Path $app 'veyra_qml_ui.exe'
+$player = Join-Path $app 'BooVI.exe'
 foreach ($required in @($player,(Join-Path $app 'qt.conf'),(Join-Path $app 'Qt6Core.dll'),(Join-Path $app 'qml/Veyra/Main.qml'))) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) { throw 'Place this overlay in a complete Veyra 2.0.6 NVIDIA folder first. Back up the original EXE.' }
 }
@@ -22,7 +22,7 @@ if (Test-Path -LiteralPath $manifest -PathType Leaf) {
     $expected = (Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json).executableSha256
     if ((File-Sha256 $player) -ne $expected) { throw 'The EXE is not the matching HDR flash candidate. Runtime DLL replacement remains allowed.' }
 }
-if (@(Get-Process -Name 'veyra_qml_ui','veyra-flash-diagnostic','veyra-hdr-flash-fix','flash-pixel-probe' -ErrorAction SilentlyContinue).Count -gt 0) { throw 'Close other Veyra players before this test.' }
+if (@(Get-Process -Name 'BooVI','veyra-flash-diagnostic','veyra-hdr-flash-fix','flash-pixel-probe' -ErrorAction SilentlyContinue).Count -gt 0) { throw 'Close other Veyra players before this test.' }
 if ([string]::IsNullOrWhiteSpace($ProfileSource)) { $ProfileSource = Join-Path $app 'runtime_local/user-data-2.0.0' }
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) { $OutputDirectory = Join-Path $app ('logs/hdr-flash-' + $Variant + '-' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff')) }
 $output = [IO.Path]::GetFullPath($OutputDirectory)
@@ -75,7 +75,7 @@ foreach ($item in $copied) {
     if (-not (Test-Path -LiteralPath $item.path -PathType Leaf) -or (File-Sha256 $item.path) -ne $item.sha256) { $unchanged=$false }
 }
 $receipt=[pscustomobject]@{
-    exit=$result;forcedStop=$forcedStop;variant=$Variant;executable=$player;fileName='veyra_qml_ui.exe';
+    exit=$result;forcedStop=$forcedStop;variant=$Variant;executable=$player;fileName='BooVI.exe';
     executableSha256=(File-Sha256 $player);
     privateProfile=$profile;sourceProfileUnchanged=$unchanged;durationLimitSeconds=$DurationSeconds;
     qmlDiskCacheInherited=[Environment]::GetEnvironmentVariable('QML_DISABLE_DISK_CACHE','Process');

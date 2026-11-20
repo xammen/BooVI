@@ -200,7 +200,7 @@ QVariantList QmlPlayerBridge::captureAudioInputs() const {
                                {"label", d.hasEmbeddedAudio ? tr("视频设备内置音频（已检测）") : tr("尝试视频设备内置音频")}};
     for (size_t i = 0; i < impl_->captureAudio.size(); ++i) {
         const auto& device = impl_->captureAudio[i];
-        const auto label = device.virtualSpeaker ? tr("Veyra 虚拟扬声器 · %1").arg(utf8Of(device.name))
+        const auto label = device.virtualSpeaker ? tr("BooVI 虚拟扬声器 · %1").arg(utf8Of(device.name))
             : QStringLiteral("[%1] %2").arg(device.wasapi ? QStringLiteral("WASAPI") : QStringLiteral("DirectShow"), utf8Of(device.name));
         out << QVariantMap{{"id", int(i)}, {"label", label}};
     }
@@ -683,7 +683,7 @@ bool QmlPlayerBridge::startScreenCapture() {
     if (game && value.kind == source::ScreenTargetKind::Window) {
         source::vdesk::Placement desktop;
         if (source::vdesk::Lookup{}.otherDesktop(reinterpret_cast<void*>(value.target), desktop)) {
-            emit notice(tr("游戏模式需要窗口和 Veyra 在同一个虚拟桌面：请把窗口移到当前桌面，或关闭游戏模式后直接捕获"), true);
+            emit notice(tr("游戏模式需要窗口和 BooVI 在同一个虚拟桌面：请把窗口移到当前桌面，或关闭游戏模式后直接捕获"), true);
             return false;
         }
     }

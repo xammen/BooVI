@@ -782,6 +782,7 @@ bool requiresGraphRebuild(const EnhancementSettings& savedPrevious, const Enhanc
     if (previous.amdFlowHalfResolution != next.amdFlowHalfResolution) return true;
     if (previous.fgMotionRefine != next.fgMotionRefine) return true;
     if (previous.dlssgLite != next.dlssgLite) return true;
+    if (previous.fgHudGuard != next.fgHudGuard || previous.fgFastGuard != next.fgFastGuard) return true;
     if (previous.vfgAutoRegulate != next.vfgAutoRegulate) return true;
     if (previous.flow != next.flow) return true;
     if (previous.captureCompatible != next.captureCompatible) return true;

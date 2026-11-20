@@ -1,27 +1,20 @@
-// 极简模式, rebuilt from the design (pages-a.js PAGES.min + pages.css .min/.cine-bar).
-//
-// The design's whole point here: the window snaps to the film's aspect ratio (no
-// letterbox bars), and a large rounded control pill straddles the bottom edge of
-// the picture - half on the picture, half below it. The pill is a 3-column grid
-// (230px | 1fr | 230px) at min(860px, 100% - 48px), 92px tall, radius 30.
-//
-// The window resize itself is Main.qml's job (it owns the window); this page only
-// reports the film aspect and draws the bar.
+// The stream page: the picture, edge to edge. Main.qml sizes the window to the stream's
+// aspect and places the native video window over this page; the floating controls live in
+// StreamOverlay.qml. This page only draws what sits under the picture: black, the
+// "connecting" pill while a source opens, and the preview's dither when there is no stream.
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Layouts
 
 VPage {
     id: root
     signal requestPage(string page)
+    signal requestAspect(real aspect)
+    signal requestFullscreen()
+    property bool preview: false
+    dragStripHeight: 0
 
-    // cineIn (pages.css @keyframes cineIn, plan M21 "上下各 12% 裁切展开 | 子窗口区域"):
-    // the stage opens from inset(12% 0 12% 0 round 8px) to inset(0). The picture is a
-    // native window above this scene, so a QML clip would not touch it - main.cpp
-    // reads this item and insets the video window's REGION instead (no resize, so no
-    // swapchain churn). It carries the value only: invisible, 0x0, never drawn. The
-    // C++ walk does not filter on visibility (unlike the cover walk, which must), so
-    // an invisible carrier still reaches it.
+    // cineIn: the stage opens from inset(12% 0) to inset(0) over 800 ms. The picture is a
+    // native window, so main.cpp reads this carrier and insets the video window's region.
     Item {
         id: cineIn
         objectName: "videoInset"
@@ -30,151 +23,65 @@ VPage {
         width: 0
         height: 0
     }
-    // The animation itself: 12% -> 0 over .8s --spring-soft, started when the page
-    // shows through an animated switch (VPage.enter). A cold start (first open) has
-    // nothing to animate from, so it goes straight to 0.
     NumberAnimation {
         id: cineInAnim
         target: cineIn
         property: "frac"
         to: 0
         duration: Theme.d(800)
-        easing.bezierCurve: Theme.springSoft
+        easing.type: Easing.BezierSpline
+        easing.bezierCurve: Theme.ease
     }
-    onEnter: { cineIn.frac = 0.12; cineInAnim.restart() }
+    onEnter: { cineIn.frac = Theme.reduced ? 0 : 0.12; cineInAnim.restart() }
 
-    // The independent pill extends below this window; no opaque spacer is needed.
     readonly property real pictureHeight: parent ? parent.height : 0
 
-    // --- the picture ------------------------------------------------------
-    // .min .stage: full width, the picture height, radius 8 (the window radius),
-    // pure black behind. The native video window is placed here by main.cpp; the
-    // radius applies to the black plate, never to the video, because rounding the
-    // picture crops it.
     Rectangle {
         id: stage
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.top: parent.top
-        height: root.pictureHeight
-        radius: Theme.rWindow
-        color: Theme.videoBlack
-        clip: true
+        anchors.fill: parent
+        color: root.preview ? Theme.bgStage : Theme.videoBlack
 
+        UiDither {
+            visible: root.preview
+            anchors.fill: parent
+            mode: "stage"
+        }
         Text {
+            visible: root.preview
             anchors.centerIn: parent
-            visible: stageTap.enabled
-            text: qsTr("点击画面选择片源")
+            text: qsTr("APERÇU · AUCUN FLUX")
             color: Theme.t3
-            font.family: Theme.fontUi
-            font.pixelSize: Theme.fsH3
+            font.family: Theme.fontMono
+            font.pixelSize: Theme.fsMeta
+            font.letterSpacing: 0.9
         }
-        // Nothing open: a click on the empty picture opens the source menu where it
-        // was clicked (the same menu as the professional page's 片源 button).
-        Item { id: menuAnchor; width: 1; height: 1 }
-        TapHandler {
-            id: stageTap
-            enabled: !veyra.hasSource && veyra.liveOpeningText.length === 0
-            onTapped: eventPoint => {
-                menuAnchor.x = eventPoint.position.x
-                menuAnchor.y = eventPoint.position.y
-                sourceMenu.openAt(menuAnchor, "at")
-            }
-        }
-        // A PS5 / capture session that is still connecting: a pill in the
-        // middle of the (still black) picture, cut out of the native video.
+        // A stream still connecting: a pill in the middle of the black picture.
         Rectangle {
             objectName: "min-live-opening"
             readonly property bool videoCover: true
-            property real coverRadius: height / 2
-            visible: veyra.liveOpeningText.length > 0
+            property real coverRadius: Theme.rLg
+            visible: veyra.liveOpeningText.length > 0 && !root.preview
             anchors.centerIn: parent
             width: openingRow.implicitWidth + 32
             height: 40
-            radius: height / 2
-            color: Theme.shade(22, 22, 26, 0.92)
+            radius: Theme.rLg
+            color: Theme.card
             border.width: 1
-            border.color: Theme.stroke2
-            Row {
+            border.color: Theme.stroke
+            RowLayout {
                 id: openingRow
                 anchors.centerIn: parent
-                spacing: 10
-                VSpinner { anchors.verticalCenter: parent.verticalCenter }
+                spacing: 12
+                UiNote { busy: true; Layout.fillWidth: false }
                 Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: veyra.liveOpeningText
+                    text: veyra.liveOpeningText.toLowerCase()
                     color: Theme.t1
-                    font.family: Theme.fontUi
-                    font.pixelSize: Theme.fsBody
-                }
-            }
-        }
-        // A network or server source that is paused to buffer, or reconnecting (#48): the
-        // picture stays up and says why it waits, instead of ending in an error and a black screen.
-        Rectangle {
-            id: bufferingPill
-            objectName: "min-network-buffering"
-            readonly property bool videoCover: true
-            property real coverRadius: 16
-            // The picture's width bounds the sentence; the pill never sizes the text back.
-            readonly property real maxTextWidth: Math.max(120, parent.width - 48 - 32 - 22 - 10)
-            visible: veyra.networkHolding && veyra.networkNotice.length > 0
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: 96
-            width: bufferingRow.implicitWidth + 32
-            height: Math.max(40, bufferingText.height + 20)
-            radius: coverRadius
-            color: Theme.shade(22, 22, 26, 0.92)
-            border.width: 1
-            border.color: Theme.stroke2
-            Row {
-                id: bufferingRow
-                anchors.centerIn: parent
-                spacing: 10
-                VSpinner { anchors.verticalCenter: parent.verticalCenter }
-                Text {
-                    id: bufferingText
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: Math.min(implicitWidth, bufferingPill.maxTextWidth)
-                    wrapMode: Text.WordWrap
-                    text: veyra.networkNotice
-                    color: Theme.t1
-                    font.family: Theme.fontUi
-                    font.pixelSize: Theme.fsBody
+                    font.family: Theme.fontMono
+                    font.pixelSize: Theme.fsMeta
                 }
             }
         }
     }
 
-    VMenu {
-        id: sourceMenu
-        objectName: "min-source-menu"
-        title: qsTr("片源")
-        items: [{ label: qsTr("打开文件…"), icon: "folder", act: "file" },
-                { label: qsTr("播放地址…"), icon: "cast", act: "network" },
-                { label: qsTr("PS5 串流…"), icon: "gamepad", act: "ps5" },
-                { label: qsTr("PC 串流…"), icon: "cast", act: "moonlight" },
-                { label: qsTr("Xbox 串流…"), icon: "gamepad", act: "xbox" },
-                { label: qsTr("屏幕捕获…"), icon: "monitor", act: "screen" },
-                { sep: true },
-                { label: qsTr("采集卡设置…"), icon: "settings", act: "capture" }]
-        onPicked: (i, o) => {
-            if (o.act === "file") veyra.openFileDialog()
-            else if (o.act === "network") veyra.openNetworkDialog()
-            else if (o.act === "ps5") veyra.openPs5Dialog()
-            else if (o.act === "moonlight") veyra.openMoonlightDialog()
-            else if (o.act === "xbox") veyra.openXboxDialog()
-            else if (o.act === "screen") veyra.openScreenCaptureDialog()
-            else if (o.act === "capture") veyra.openCaptureDialog()
-        }
-    }
-    readonly property bool sourceMenuOpen: sourceMenu.visible
-    function closeSourceMenu() { sourceMenu.close() }
-    function openSourceMenuForTest() { menuAnchor.x = width / 2; menuAnchor.y = pictureHeight / 2; sourceMenu.openAt(menuAnchor, "at") }
-
-    // Report the film aspect upward so the window can snap to it.
     onPictureHeightChanged: if (veyra.previewAspect > 0.2) root.requestAspect(veyra.previewAspect)
-    signal requestAspect(real aspect)
-    signal requestFullscreen()
 }

@@ -79,15 +79,37 @@ QStringList piecesOf(const QString& translation) {
     return translation.split(slot);
 }
 
-std::unique_ptr<CatalogTranslator> load(const QString& code) {
-    QFile file(QStringLiteral(":/i18n/catalog.json"));
+QJsonArray entriesOf(const QString& resource) {
+    QFile file(resource);
     if (!file.open(QIODevice::ReadOnly)) {
-        veyra::log::warn("i18n", "catalog resource missing; interface stays in the source language");
-        return nullptr;
+        veyra::log::warn("i18n", std::format("catalog resource {} missing", resource.toStdString()));
+        return {};
     }
-    const auto doc = QJsonDocument::fromJson(file.readAll());
+    return QJsonDocument::fromJson(file.readAll()).object().value(QStringLiteral("entries")).toArray();
+}
+
+// The fork's QML is written in French (i18n/fork.json, keyed on the French text). French shows
+// it as written; every other language takes its own column, or the English when it has none,
+// so the interface never drops back to French.
+void addFork(CatalogTranslator& t, const QString& code) {
+    if (code == QStringLiteral("fr")) return;
+    for (const auto value : entriesOf(QStringLiteral(":/i18n/fork.json"))) {
+        const auto e = value.toObject();
+        const QString source = e.value(QStringLiteral("fr")).toString();
+        QString translated = e.value(code).toString();
+        if (translated.isEmpty()) translated = e.value(QStringLiteral("en")).toString();
+        if (source.isEmpty() || translated.isEmpty()) continue;
+        const QString context = e.value(QStringLiteral("ctx")).toString();
+        t.exact.insert(context.isEmpty() ? source : source + QChar(0x4) + context, translated);
+    }
+}
+
+std::unique_ptr<CatalogTranslator> load(const QString& code) {
     auto t = std::make_unique<CatalogTranslator>();
-    for (const auto value : doc.object().value(QStringLiteral("entries")).toArray()) {
+    addFork(*t, code);
+    // Simplified Chinese is the main catalog's source language: nothing to look up there.
+    const QJsonArray entries = code == QStringLiteral("zh-CN") ? QJsonArray() : entriesOf(QStringLiteral(":/i18n/catalog.json"));
+    for (const auto value : entries) {
         const auto e = value.toObject();
         const QString source = e.value(QStringLiteral("zh")).toString();
         const QString translated = e.value(code).toString();
@@ -150,7 +172,7 @@ QString translatePieces(const CatalogTranslator& t, const QString& s, int depth)
             part.replace(trimmed, done);
         }
         // Full-width separators read oddly between Latin sentences.
-        const QString glue = sep == QStringLiteral("；") && currentCode == QStringLiteral("en") ? QStringLiteral("; ") : sep;
+        const QString glue = sep == QStringLiteral("；") && (currentCode == QStringLiteral("en") || currentCode == QStringLiteral("fr")) ? QStringLiteral("; ") : sep;
         return parts.join(glue);
     }
     return s;
@@ -159,7 +181,7 @@ QString translatePieces(const CatalogTranslator& t, const QString& s, int depth)
 } // namespace
 
 QString resolve(const QString& preference) {
-    static const QStringList known{QStringLiteral("zh-CN"), QStringLiteral("zh-TW"), QStringLiteral("en"), QStringLiteral("ja")};
+    static const QStringList known{QStringLiteral("zh-CN"), QStringLiteral("zh-TW"), QStringLiteral("en"), QStringLiteral("ja"), QStringLiteral("fr")};
     if (known.contains(preference)) return preference;
     const QLocale system = QLocale::system();
     if (system.language() == QLocale::Chinese) {
@@ -169,6 +191,7 @@ QString resolve(const QString& preference) {
         return traditional ? QStringLiteral("zh-TW") : QStringLiteral("zh-CN");
     }
     if (system.language() == QLocale::Japanese) return QStringLiteral("ja");
+    if (system.language() == QLocale::French) return QStringLiteral("fr");   // fork
     return QStringLiteral("en");
 }
 
@@ -177,9 +200,8 @@ bool apply(const QString& code) {
     if (active) { QCoreApplication::removeTranslator(active.get()); active.reset(); }
     cache.clear();
     currentCode = QStringLiteral("zh-CN");
-    if (code == QStringLiteral("zh-CN")) { veyra::log::info("i18n", "interface language zh-CN (source)"); return true; }
     active = load(code);
-    if (!active) return false;
+    if (!active) return code == QStringLiteral("zh-CN");
     QCoreApplication::installTranslator(active.get());
     currentCode = code;
     veyra::log::info("i18n", std::format("interface language {}", code.toStdString()));
@@ -193,7 +215,7 @@ QString current() {
 
 QString text(const QString& source) {
     std::lock_guard guard(lock);
-    if (!active || source.isEmpty() || !hasHan(source)) return source;
+    if (!active || currentCode == QStringLiteral("zh-CN") || source.isEmpty() || !hasHan(source)) return source;
     if (const auto it = cache.constFind(source); it != cache.constEnd()) return *it;
     const QString out = translatePieces(*active, source, 0);
     if (cache.size() > 4096) cache.clear();

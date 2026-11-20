@@ -13,6 +13,17 @@ enum class OutputRateMode : unsigned { Off, FollowDisplay, Custom };
 enum class NvidiaLowLatency : unsigned { Off=0, On=1 };
 // Legacy value 2 selected On + Boost; keep the opt-in, but never enable Boost.
 constexpr NvidiaLowLatency savedNvidiaLowLatency(int value){return value==1||value==2?NvidiaLowLatency::On:NvidiaLowLatency::Off;}
+// Fork, a joined share ("anticipation caméra", docs/CAMERA_ANTICIPATION_2026-11-20.md): each picture
+// is redrawn every screen refresh, shifted by what the friend's stick has asked for since.
+// Only: no frame generation, so a picture never waits for the next one. WithInterpolation: frame
+// generation stays for the motion of objects, and its wait with it. Auto: Only on a joined share
+// shown on a screen of 100 Hz or more, else Off.
+enum class CameraAnticipationMode : uint8_t { Auto, Off, Only, WithInterpolation };
+constexpr CameraAnticipationMode resolveCameraAnticipation(CameraAnticipationMode requested,bool joinedShare,double refreshHz){
+    if(!joinedShare)return CameraAnticipationMode::Off;
+    if(requested==CameraAnticipationMode::Auto)return refreshHz>=100.0?CameraAnticipationMode::Only:CameraAnticipationMode::Off;
+    return requested;
+}
 struct PresentationSettings {
     // Low-latency queue: DXGI maximum frame latency 1 instead of 3.
     // Native NVIDIA Reflex is selected separately below. Reduces queueing,
@@ -29,8 +40,15 @@ struct PresentationSettings {
     // explicit Vsync (G-SYNC/FreeSync + V-SYNC, see presentationVsync below).
     bool variableRefresh=false;
     NvidiaLowLatency nvidiaLowLatency=NvidiaLowLatency::Off;
+    // PS5 stream whose game renders half the stream rate (StreamCadence.h). false: the frame
+    // generation multiplier doubles, so the output rate stays the chosen one (30 fps at 2X
+    // shows 120) and a real picture waits three quarters of its 33 ms. true: the multiplier
+    // stays (30 fps at 2X shows 60) and it waits half of them, 8 ms less.
+    bool halfRateKeepsMultiplier=false;
+    // Fork, a joined share (docs/CAMERA_ANTICIPATION_2026-11-20.md).
+    CameraAnticipationMode cameraAnticipation=CameraAnticipationMode::Auto;
     bool operator==(const PresentationSettings&) const = default;
-    bool valid()const{return unsigned(mode)<=2&&unsigned(display)<=2&&unsigned(outputRate)<=2&&unsigned(nvidiaLowLatency)<=1&&std::isfinite(customFps)&&customFps>=1.0&&customFps<=1000.0;}
+    bool valid()const{return unsigned(mode)<=2&&unsigned(display)<=2&&unsigned(outputRate)<=2&&unsigned(nvidiaLowLatency)<=1&&unsigned(cameraAnticipation)<=3&&std::isfinite(customFps)&&customFps>=1.0&&customFps<=1000.0;}
 };
 // Who owns the low queue in the interface: on an NVIDIA adapter the two
 // NVIDIA states (开 implies it, 关 clears it); on another adapter the

@@ -1,4 +1,5 @@
 #include "veyra/remoteplay/ProfileStore.h"
+#include "veyra/UserDataRoot.h"
 #include <windows.h>
 #include <wincrypt.h>
 #include <shlobj.h>
@@ -9,11 +10,7 @@
 #include <vector>
 namespace veyra::remoteplay {
 std::filesystem::path profileDirectory(){
-    PWSTR raw=nullptr;
-    const auto hr=SHGetKnownFolderPath(FOLDERID_LocalAppData,0,nullptr,&raw);
-    if(FAILED(hr))throw std::runtime_error("Cannot resolve Remote Play user data directory");
-    std::filesystem::path result(raw);CoTaskMemFree(raw);
-    return result/L"Veyra"/L"remoteplay";
+    return veyra::userdata::root()/L"remoteplay";
 }
 ProfileMigration migrateProfiles(const std::filesystem::path& legacyRoot){
     return migrateProfilesTo(legacyRoot,profileDirectory());

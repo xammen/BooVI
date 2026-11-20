@@ -45,7 +45,7 @@ public class DW {
 }
 "@
 New-Item -ItemType Directory -Force $Out | Out-Null
-$p = Start-Process -FilePath (Join-Path $App 'veyra_qml_ui.exe') -ArgumentList @('--page', $Page) -PassThru
+$p = Start-Process -FilePath (Join-Path $App 'BooVI.exe') -ArgumentList @('--page', $Page) -PassThru
 Start-Sleep -Seconds $WaitSeconds
 $h = [DW]::Largest([uint32]$p.Id)
 if ($h -eq [IntPtr]::Zero) { "no window"; Stop-Process -Id $p.Id -Force; exit 1 }

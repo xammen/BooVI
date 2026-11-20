@@ -18,10 +18,23 @@ QVariantMap QmlPlayerBridge::ps5() const {
     out["available"] = true;
     const auto& s = impl_->snapshot;
     out["active"] = s.remotePlay && (s.running || s.transport == engine::TransportState::Opening || s.transport == engine::TransportState::Stopping);
-    const auto c = impl_->controller.capabilities();
+    const auto c = impl_->ps5Pad();
     out["controller"] = c.connected;
     out["gyro"] = c.gyro && c.accel;
     out["calibrating"] = c.calibrating;
+    out["pad"] = QString::fromStdString(c.name);
+    out["kbm"] = impl_->kbmCapture && impl_->kbmCapture->captured();
+    // The stream runs, the pad is not view-only, and nothing reaches the PS5 because no
+    // Veyra window has the focus: the UI says so instead of failing silently.
+    out["inputPaused"] = out["active"].toBool() && !impl_->ps5Form.value("viewOnly").toBool() && !impl_->ps5Focused;
+    // The console asked for the account's login PIN: the dialog shows the PIN field only then.
+    out["pinRequired"] = s.remotePlay && s.remotePlayState == int(remoteplay::SessionState::LoginPinRequired);
+    // Fork, invités (GuestAccessModel.h): the picture flows, and whether the last Play woke the console.
+    out["streaming"] = s.remotePlay && s.running && s.remotePlayState == int(remoteplay::SessionState::Streaming) && s.remoteDecoded > 0;
+    out["woke"] = impl_->ps5LastWoke;
+    // Fork: PadNotice.qml. The hint after 3 s without a pad, and a counter whose change shows the arrival toast.
+    out["padHint"] = impl_->ps5PadPresence.hint();
+    out["padArrivals"] = int(impl_->ps5PadPresence.arrivals());
 #else
     out["available"] = false;
 #endif
@@ -384,6 +397,54 @@ void QmlPlayerBridge::ps5Scan() {
     VEYRA_PS5_LAUNCH(work);
 #endif
 }
+void QmlPlayerBridge::ps5Play() {
+#ifdef VEYRA_ENABLE_REMOTEPLAY
+    auto& i = *impl_;
+    if (i.ps5Busy) return;
+    auto saved = i.ps5Profile.empty() ? std::nullopt : remoteplay::loadProfile(remoteplay::profileDirectory() / i.ps5Profile);
+    const auto host = asciiOnly(i.ps5Form.value("host").toString());
+    // Not paired or no address: ps5Connect says what is missing.
+    if (!saved || !remoteplay::validHost(host)) { if (!ps5Connect()) emit notice(i.ps5Status, true); return; }
+    saved->host = host;
+    auto work = [request = std::move(*saved), host](std::stop_token stop) {
+        Impl::Ps5Outcome out;
+        out.connectAfter = true;
+        // 0 no answer, 1 rest mode, 2 ready. A unicast probe of the saved address answers in
+        // about 0.1 s; the broadcast sweep took about 6 s per check (QuickProbe.h).
+        auto state = [&] {
+            switch (remoteplay::probePs5(host)) {
+            case remoteplay::ProbeState::Ready: return 2;
+            case remoteplay::ProbeState::RestMode: return 1;
+            default: return 0;
+            }
+        };
+        if (state() != 1) return out;   // ready, or not answering: connect and let the session report
+        const auto wake = remoteplay::wakeLocalPs5(request);
+        if (!wake.ok) {
+            out.connectAfter = false;
+            out.message = std::format(L"唤醒失败（{}）；确认 PS5 处于待机而不是关机。", wake.code);
+            return out;
+        }
+        veyra::log::info("remoteplay-wake", "wake sent; waiting for the console to report ready");
+        for (int check = 1; check <= 120 && !stop.stop_requested(); ++check) {
+            if (state() == 2) {
+                veyra::log::info("remoteplay-wake", std::format("console ready after {} checks", check));
+                out.woke = true;
+                return out;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        }
+        out.connectAfter = false;
+        out.message = stop.stop_requested() ? L"已取消唤醒" : L"PS5 没有在 60 秒内醒来，请检查主机后重试。";
+        return out;
+    };
+    VEYRA_PS5_LAUNCH(work);
+    i.ps5Status = tr("正在检查 PS5，必要时唤醒…");
+    emit ps5Changed();
+#else
+    if (!ps5Connect()) emit notice(impl_->ps5Status, true);
+#endif
+}
 void QmlPlayerBridge::ps5Pair(const QString& pinText) {
 #ifdef VEYRA_ENABLE_REMOTEPLAY
     auto host = asciiOnly(impl_->ps5Form.value("host").toString()), id = asciiOnly(impl_->ps5Form.value("account").toString()), pin = asciiOnly(pinText);
@@ -425,6 +486,7 @@ bool QmlPlayerBridge::ps5Connect() {
 #ifdef VEYRA_ENABLE_REMOTEPLAY
     auto& i = *impl_;
     if (i.ps5Busy) return false;
+    const bool tapAfterWake = std::exchange(i.ps5TapNextConnect, false);
     const auto path = i.ps5Profile.empty() ? std::filesystem::path{} : remoteplay::profileDirectory() / i.ps5Profile;
     auto saved = path.empty() ? std::nullopt : remoteplay::loadProfile(path);
     const auto host = asciiOnly(i.ps5Form.value("host").toString());
@@ -446,35 +508,26 @@ bool QmlPlayerBridge::ps5Connect() {
     emit mediaOpenRequested();
     i.openingSource = true; i.openingSessionId = 0; i.sourceLabel = L"PS5 · " + std::wstring(host.begin(), host.end()); i.resumeSession = 0; i.screenFillActive = false;
     auto request = std::make_shared<source::RemotePlayConnectDesc>(std::move(desc));
-    openAfterCinema(tr("正在连接 PS5 · %1").arg(QString::fromStdString(host)), [this, request, viewOnly] {
+    openAfterCinema(tr("正在连接 PS5 · %1").arg(QString::fromStdString(host)), [this, request, viewOnly, tapAfterWake] {
         auto& i = *impl_;
         if (i.preOpen) i.preOpen();
         i.engine.previewView({});
         i.engine.openRemotePlay(i.videoWindow, std::move(*request), i.options);
         i.openingSessionId = i.engine.snapshot().sessionId;
+        i.ps5TapSession = tapAfterWake && !viewOnly ? i.openingSessionId : 0;
+        i.ps5TapAt = 0;
         refreshSubtitles({});
-        // Controller forwarding at 8 ms, as 1.4.4; view-only leaves the pad to the PS5.
-        // Started with the session: the poll stops the pad when no session runs.
+        // View-only leaves the pad to the PS5. Otherwise the input thread reads and sends
+        // the pad and keyboard/mouse; tickPs5() stops it when the stream ends.
         if (!viewOnly) {
-            if (!i.acquirePad(Impl::PadPs5)) veyra::log::warn("remoteplay-input", "SDL gamepad initialization failed");
-            if (!i.controllerTimer) {
-                i.controllerTimer = new QTimer(this);
-                connect(i.controllerTimer, &QTimer::timeout, this, [this] {
-                    auto& j = *impl_;
-                    const auto s = j.engine.snapshot();
-                    if (s.remotePlay && (s.running || s.transport == engine::TransportState::Opening)) {
-                        const bool focused = QGuiApplication::focusWindow() != nullptr;
-                        j.engine.remotePlayController(j.controller.poll(focused));
-                        j.controller.feedback(j.engine.remotePlayFeedback(), focused);
-                    } else {
-                        j.engine.remotePlayController({}); j.releasePad(Impl::PadPs5); j.controllerTimer->stop();
-                    }
-                });
-            }
-            i.controllerTimer->start(8);
+            // PS5 手柄控制 ends with this stream; its UI-thread pad reader stops now, not on its next tick.
+            if (i.ps5ControlTimer) i.ps5ControlTimer->stop();
+            i.releasePad(Impl::PadPs5Control);
+            i.applyKbmSettings();
+            i.ps5Input.setBackground(i.prefBool("ps5ControlBackground", false));
+            i.ps5Input.start();
         } else {
-            if (i.controllerTimer) i.controllerTimer->stop();
-            i.releasePad(Impl::PadPs5);
+            i.ps5Input.stop();
         }
     });
     i.ps5Watching = true;
@@ -502,6 +555,16 @@ void QmlPlayerBridge::ps5Wake() {
     VEYRA_PS5_LAUNCH(work);
 #endif
 }
+// Fork, invités: the live PS5 session asks the console to enter rest mode (chiaki goto_bed).
+bool QmlPlayerBridge::ps5GotoBed() {
+#ifdef VEYRA_ENABLE_REMOTEPLAY
+    const bool sent = impl_->engine.remotePlayGotoBed();
+    veyra::log::info("remoteplay-ui", std::format("rest mode {}", sent ? "requested" : "not requested (no live session)"));
+    return sent;
+#else
+    return false;
+#endif
+}
 void QmlPlayerBridge::ps5Forget() {
 #ifdef VEYRA_ENABLE_REMOTEPLAY
     if (impl_->ps5Busy || impl_->ps5Profile.empty()) return;
@@ -527,6 +590,11 @@ void QmlPlayerBridge::ps5SendLoginPin(const QString& pin) {
         impl_->ps5Status = tr("登录 PIN 必须为数字。"); emit ps5Changed(); return;
     }
     impl_->engine.remotePlayLoginPin(text.toStdString());
+    // Fork: remembered (DPAPI, this Windows user) only when the user turned it on.
+    if (impl_->prefBool("ps5RememberPin", false) && !impl_->ps5Profile.empty()) {
+        if (!remoteplay::saveLoginPin(remoteplay::profileDirectory() / impl_->ps5Profile, text.toStdString()))
+            veyra::log::warn("remoteplay-ui", "login PIN not remembered: encryption or write failed");
+    }
 #else
     (void)pin; // RemotePlay disabled: keep the QML-callable symbol but no backend.
 #endif
@@ -537,10 +605,93 @@ void QmlPlayerBridge::ps5Cancel() {
 }
 void QmlPlayerBridge::ps5Calibrate() {
 #ifdef VEYRA_ENABLE_REMOTEPLAY
-    impl_->ps5Status = impl_->controller.calibrate() ? tr("将手柄平放并保持静止：采集 120 个稳定样本完成校准；10 秒内不稳定则保留原校准。")
-                                                     : tr("请先连接串流及带陀螺仪的电脑手柄。仅观看模式不使用电脑手柄。");
+    auto& i = *impl_;
+    bool started = false;
+    if (!i.ps5Input.running()) started = i.controller.calibrate();
+    else if (const auto pad = i.ps5Input.capabilities(); pad.connected && pad.gyro && pad.accel) { i.ps5Input.calibrate(); started = true; }
+    i.ps5Status = started ? tr("将手柄平放并保持静止：采集 120 个稳定样本完成校准；10 秒内不稳定则保留原校准。")
+                          : tr("请先连接串流及带陀螺仪的电脑手柄。仅观看模式不使用电脑手柄。");
     emit ps5Changed();
 #endif
+}
+void QmlPlayerBridge::ps5PadHintClose() {
+#ifdef VEYRA_ENABLE_REMOTEPLAY
+    impl_->ps5PadPresence.close();
+    emit ps5Changed();
+#endif
+}
+void QmlPlayerBridge::ps5Kbm(bool on) {
+#ifdef VEYRA_ENABLE_REMOTEPLAY
+    auto& i = *impl_;
+    if (!i.kbmCapture) {
+        i.kbmCapture = std::make_unique<ui::MoonlightInputCapture>();
+        connect(i.kbmCapture.get(), &ui::MoonlightInputCapture::capturedChanged, this, [this](bool captured) {
+            auto& j = *impl_;
+            j.ps5Input.setKbmWindow(captured && j.videoWindow ? GetAncestor(j.videoWindow, GA_ROOT) : nullptr);
+            emit ps5Changed();
+        });
+        connect(i.kbmCapture.get(), &ui::MoonlightInputCapture::releaseRequested, this, [this] {
+            emit notice(tr("已释放键盘和鼠标（点击画面重新捕获）"), false);
+        });
+        connect(i.kbmCapture.get(), &ui::MoonlightInputCapture::quitRequested, this, [this] { ps5Cancel(); });
+        connect(i.kbmCapture.get(), &ui::MoonlightInputCapture::keysRequested, this, &QmlPlayerBridge::ps5KeysRequested);
+    }
+    if (!on) { i.kbmCapture->capture(false); return; }
+    i.applyKbmSettings();
+    // A joined share takes the keyboard and mouse like the PS5 stream (its host decides who plays).
+    const bool joined = joinLive();
+    if ((!i.snapshot.remotePlay && !joined) || !i.videoWindow || (!joined && i.ps5Form.value("viewOnly").toBool())) return;
+    i.kbmCapture->setWindow(GetAncestor(i.videoWindow, GA_ROOT));
+    if (!i.kbmCapture->capture(true)) veyra::log::warn("remoteplay-input", "keyboard/mouse capture refused: Veyra is not the foreground window");
+    else veyra::log::info("remoteplay-input", "keyboard/mouse captured for the PS5");
+#else
+    (void)on;
+#endif
+}
+QVariantList QmlPlayerBridge::ps5KbmBindings() const {
+    QVariantList out;
+#ifdef VEYRA_ENABLE_REMOTEPLAY
+    using B = remoteplay::ControllerState;
+    using T = remoteplay::KbmTarget;
+    struct Control { uint32_t bit; const char* group; const char* id; };
+    static constexpr Control buttons[] = {
+        {B::Cross, "actions", "cross"}, {B::Circle, "actions", "circle"}, {B::Square, "actions", "square"},
+        {B::Triangle, "actions", "triangle"}, {B::L3, "actions", "l3"}, {B::R3, "actions", "r3"},
+        {B::Up, "dpad", "up"}, {B::Down, "dpad", "down"}, {B::Left, "dpad", "left"}, {B::Right, "dpad", "right"},
+        {B::L1, "triggers", "l1"}, {B::R1, "triggers", "r1"},
+        {B::Options, "system", "options"}, {B::Share, "system", "create"}, {B::Touchpad, "system", "touchpad"}, {B::PS, "system", "ps"}};
+    const auto control = [](const remoteplay::KbmBinding& b) -> std::pair<const char*, const char*> {
+        switch (b.target) {
+        case T::LeftUp: return {"move", "ls-up"};
+        case T::LeftDown: return {"move", "ls-down"};
+        case T::LeftLeft: return {"move", "ls-left"};
+        case T::LeftRight: return {"move", "ls-right"};
+        case T::L2: return {"triggers", "l2"};
+        case T::R2: return {"triggers", "r2"};
+        case T::Button: for (const auto& c : buttons) if (b.button == c.bit) return {c.group, c.id}; break;
+        case T::None: break;
+        }
+        return {nullptr, nullptr};
+    };
+    const bool gyro = impl_->prefs.value("kbmMouse").toString() == QLatin1String("gyro");
+    out.push_back(QVariantMap{{"group", "camera"}, {"control", gyro ? "gyro" : "rs"}, {"mouse", "move"}});
+    for (const auto& bound : remoteplay::KbmMapper().bindings()) {
+        const auto [group, id] = control(bound.binding);
+        if (!group) continue;
+        QVariantMap row{{"group", group}, {"control", id}};
+        if (bound.mouse != remoteplay::KbmMouse{}) {
+            static constexpr const char* mouse[] = {"", "left", "middle", "right", "x1", "x2", "wheel-up", "wheel-down"};
+            row["mouse"] = mouse[size_t(bound.mouse)];
+        } else {
+            // The key's name on this keyboard's layout (Z on AZERTY where QWERTY has W).
+            wchar_t name[64]{};
+            const LONG param = LONG(bound.scan << 16) | (bound.extended ? 1L << 24 : 0L);
+            row["key"] = GetKeyNameTextW(param, name, 64) > 0 ? QString::fromWCharArray(name) : QStringLiteral("0x%1").arg(bound.scan, 2, 16, QLatin1Char('0'));
+        }
+        out.push_back(row);
+    }
+#endif
+    return out;
 }
 void QmlPlayerBridge::tickPs5() {
     auto& i = *impl_;
@@ -550,6 +701,11 @@ void QmlPlayerBridge::tickPs5() {
         i.ps5Busy = false;
         Impl::Ps5Outcome r; { std::lock_guard lock(i.ps5Mutex); r = std::move(i.ps5Outcome); }
         i.ps5Status = veyra::ui::i18n::text(r.message);
+        if (r.connectAfter) i.ps5LastWoke = r.woke;
+        if (r.connectAfter) QTimer::singleShot(0, this, [this, woke = r.woke] {
+            impl_->ps5TapNextConnect = woke;
+            if (!ps5Connect()) emit notice(tr("没能继续上次的 PS5 串流：%1").arg(impl_->ps5Status), true);
+        });
 #ifdef VEYRA_ENABLE_REMOTEPLAY
         if (!r.savedPath.empty()) {
             i.ps5Profile = r.savedPath;
@@ -577,6 +733,16 @@ void QmlPlayerBridge::tickPs5() {
         changed = true;
     }
 #ifdef VEYRA_ENABLE_REMOTEPLAY
+    // Fork: answer the console's login PIN request with the remembered PIN, once per session.
+    if (i.snapshot.remotePlay && i.snapshot.remotePlayState == int(remoteplay::SessionState::LoginPinRequired)
+        && i.ps5PinSession != i.snapshot.sessionId && !i.ps5Profile.empty() && i.prefBool("ps5RememberPin", false)) {
+        i.ps5PinSession = i.snapshot.sessionId;
+        if (auto pin = remoteplay::loadLoginPin(remoteplay::profileDirectory() / i.ps5Profile)) {
+            veyra::log::info("remoteplay-ui", "remembered login PIN sent");
+            i.engine.remotePlayLoginPin(*pin);
+            SecureZeroMemory(pin->data(), pin->size());
+        }
+    }
     if (i.ps5Watching && !i.ps5Busy) {
         const auto& s = i.snapshot;
         const bool active = s.remotePlay && (s.running || s.transport == engine::TransportState::Opening || s.transport == engine::TransportState::Stopping);
@@ -586,7 +752,7 @@ void QmlPlayerBridge::tickPs5() {
             const auto& r = s.remoteStream; const auto& p = r.requestedProfile;
             message = veyra::ui::i18n::text(std::format(L"生效：{}p / {} fps / {} / 请求 {} Mbps · 实收视频 {:.1f} Mbps", p.height, p.fps,
                 p.codec == remoteplay::Codec::H264 ? L"H.264" : p.codec == remoteplay::Codec::H265Hdr ? L"H.265 HDR" : L"H.265", p.bitrateKbps / 1000, r.videoMbps));
-            const auto c = i.controller.capabilities();
+            const auto c = i.ps5Pad();
             if (i.ps5Form.value("viewOnly").toBool()) message += tr("\n仅观看：电脑输入已关闭，手柄由 PS5 处理。");
             else if (!c.connected) message += tr("\n未检测到电脑手柄。");
             else message += veyra::ui::i18n::text(std::format(L"\n陀螺仪 {} · 触摸板 {} · 扳机 {} · 触觉 {}{}", c.gyro && c.accel ? L"已启用" : L"不可用",
@@ -595,9 +761,60 @@ void QmlPlayerBridge::tickPs5() {
         if (message != i.ps5Status) { i.ps5Status = message; changed = true; }
         if (!active && !s.remotePlay) i.ps5Watching = false;
     }
+    if (i.ps5TapSession && i.snapshot.sessionId == i.ps5TapSession && i.ps5Input.running()
+        && i.snapshot.remotePlayState == int(remoteplay::SessionState::Streaming) && i.snapshot.remoteDecoded > 0) {
+        const uint64_t now = GetTickCount64();
+        if (!i.ps5TapAt) i.ps5TapAt = now + 1500;
+        else if (now >= i.ps5TapAt) {
+            i.ps5TapSession = 0;
+            i.ps5Input.tapPs();
+            veyra::log::info("remoteplay-wake", "PS button tapped after wake");
+        }
+    }
+    {
+        // A pad plugged in or lost mid-stream refreshes every pad chip at once.
+        const auto pad = i.ps5Pad();
+        if (pad != i.ps5PadSeen) { i.ps5PadSeen = pad; changed = true; }
+        const auto& s = i.snapshot;
+        const bool live = s.remotePlay && s.running && s.remotePlayState == int(remoteplay::SessionState::Streaming) && s.remoteDecoded > 0
+                       && i.ps5Input.running() && !i.ps5Form.value("viewOnly").toBool();
+        const bool kbm = i.kbmCapture && i.kbmCapture->captured();
+        if (i.ps5PadPresence.update(live, kbm, pad.connected, pad.name, GetTickCount64())) changed = true;
+    }
+    if (i.ps5Input.running()) {
+        const auto& s = i.snapshot;
+        if ((s.remotePlay && (s.running || s.transport == engine::TransportState::Opening)) || joinLive()) {
+            i.ps5Input.setBackground(i.prefBool("ps5ControlBackground", false));
+            if (const bool focused = i.ps5Input.focused(); focused != i.ps5Focused) { i.ps5Focused = focused; changed = true; }
+        } else {
+            if (i.kbmCapture) i.kbmCapture->capture(false);
+            i.ps5Input.stop();
+            i.ps5Focused = true;
+            changed = true;
+        }
+    }
 #endif
     if (changed) emit ps5Changed();
     tickPs5Control();
+    testStallUi();
+}
+// Tests only: VEYRA_TEST_UI_STALL="<ms>,<period ms>" blocks the GUI thread for <ms> every
+// <period ms> while a PS5 stream runs, to measure how input copes with a stalled UI.
+void QmlPlayerBridge::testStallUi() {
+    static const auto spec = [] {
+        const auto parts = qEnvironmentVariable("VEYRA_TEST_UI_STALL").split(',');
+        const auto value = parts.size() == 2 ? std::pair{std::clamp(parts[0].toInt(), 0, 2000), std::clamp(parts[1].toInt(), 100, 60000)} : std::pair{0, 0};
+        if (value.first) veyra::log::warn("remoteplay-input", std::format("test: GUI stalls of {} ms every {} ms during a PS5 stream", value.first, value.second));
+        return value;
+    }();
+    static int64_t next = 0;
+    if (!spec.first || !impl_->snapshot.remotePlay) return;
+    const int64_t now = int64_t(GetTickCount64());
+    if (!next) next = now + spec.second;
+    if (now < next) return;
+    next = now + spec.second;
+    veyra::log::warn("remoteplay-input", std::format("test: GUI thread stalled for {} ms", spec.first));
+    Sleep(DWORD(spec.first));
 }
 
 // --- PS5 手柄控制 (capture card dialog) ----------------------------------------
@@ -691,7 +908,7 @@ void QmlPlayerBridge::startPs5Control(bool restart) {
         i.ps5ControlTimer = new QTimer(this);
         connect(i.ps5ControlTimer, &QTimer::timeout, this, [this] {
             auto& j = *impl_;
-            // A PS5 stream polls the pad with its own timer and takes the slot.
+            // A PS5 stream reads the pad on its own input thread and takes the slot.
             if (j.snapshot.remotePlay || !j.engine.remoteControlRequested()) {
                 j.ps5ControlTimer->stop(); j.releasePad(Impl::PadPs5Control); return;
             }
@@ -778,5 +995,13 @@ void QmlPlayerBridge::setRemotePlayPin(const QString& value) {
 }
 
 
+
+void QmlPlayerBridge::setGuest(guest::GuestStreamer* guest) {
+#ifdef VEYRA_ENABLE_REMOTEPLAY
+    impl_->ps5Input.setGuest(guest);
+#else
+    (void)guest;
+#endif
+}
 
 } // namespace veyra::ui

@@ -124,9 +124,17 @@ QVariantList QmlPlayerBridge::readComponentList() const {
     return out;
 }
 
+namespace {
+// BooVI's repository pages; none when the build names no repository (BOOVI_GITHUB_REPO).
+QUrl projectUrl(const QString& tail) {
+    const QString repo = QStringLiteral(BOOVI_GITHUB_REPO);
+    return repo.isEmpty() ? QUrl() : QUrl(QStringLiteral("https://github.com/") + repo + tail);
+}
+}
+
 void QmlPlayerBridge::openProjectPage() {
-    // 关于 → 交流群: the group QR codes are kept current in the project README.
-    if (!QDesktopServices::openUrl(QUrl(QStringLiteral("https://github.com/Likely7/Veyra-NRVideo#readme"))))
+    const QUrl url = projectUrl(QStringLiteral("#readme"));
+    if (url.isEmpty() || !QDesktopServices::openUrl(url))
         emit notice(tr("无法打开浏览器"), true);
 }
 
@@ -191,6 +199,10 @@ bool QmlPlayerBridge::setPreference(const QString& key, const QVariant& value) {
     static const QHash<QString, std::pair<int, int>> ranges{
         {"subtitleSize", {16, 56}}, {"subtitleFont", {0, 5}}, {"subtitleOutline", {0, 3}},
         {"subtitleMargin", {0, 240}}, {"subtitleLines", {0, 8}},
+        // Fork: PS5 keyboard/mouse (KbmMapper.h), in percent.
+        {"kbmSpeed", {0, 100}}, {"kbmCurve", {0, 100}}, {"kbmDeadzone", {0, 40}}, {"kbmPrecision", {0, 100}},
+        // Fork: stream stats card opacity, in percent.
+        {"streamStatsOpacity", {30, 100}},
         // 列表模式 parameter panel width (ProPage splitter); QML clamps it to the window.
         {"listInspectorWidth", {376, 4000}},
         // Network sources (#48): seconds to collect before the first picture; -1 follows the buffer level.
@@ -200,14 +212,28 @@ bool QmlPlayerBridge::setPreference(const QString& key, const QVariant& value) {
         {"recordBitrateMbps", {0, 400}},
         {"recordFps", {0, 240}},
         // Instant replay (#103): seconds the buffer keeps.
-        {"replaySeconds", {15, 600}}};
+        {"replaySeconds", {15, 600}},
+        // Fork, partage: the most the host sends its remote guest, Mb/s (GuestShareModel).
+        {"guestBitrateMbps", {5, 100}},
+        // Fork, invités (GuestAccessModel.h): minutes before a console woken for a friend goes to
+        // rest once they leave (0: stop the session only), and a friend's idle time before the
+        // visit ends (0: never).
+        {"gatewayRestMinutes", {0, 120}}, {"gatewayIdleMinutes", {0, 240}}};
     static const QStringList flags{"recordHevc", "recordAudio", "recordMic", "recordMicTrack", "replayEnabled", "subtitleEnabled", "subtitleBackground", "subtitleFit",
                                    "subtitleSecondLanguage", "audioForceStereo", "captureAudioMonitor", "holdCompare",
                                    "magewellLowLatency", "blackmagicNativeCapture", "captureShowAllFrameRates", "cinePillHidden", "exportStopsPlayback", "obsGameCapture", "autoResume", "fullscreenMemoryProtection", "prewarmEnhancement", "hdrFgCompatibility", "computeOnMonitorGpu", "deinterlace", "networkAutoReconnect",
-                                   // 设置 → 外观 → 启动动画 (the dusk palette's intro, DuskIntro.qml); unset = on.
+                                   // The old startup intro switch, kept so saved preferences still load.
                                    "introAnimation",
                                    // 设置 → 外观 → 启动音乐 and the music button (Main.qml); unset = on.
-                                   "introMusic", "exclusionOverlay"};
+                                   "introMusic", "exclusionOverlay",
+                                   // Fork: remember the PS5 login PIN (DPAPI); off by default.
+                                   "ps5RememberPin",
+                                   // Fork: the stream stats card and its GPU stage rows.
+                                   "streamStats", "streamStatsDetailed",
+                                   // Fork, invités: "accepter les invités en mon absence".
+                                   "gatewayEnabled",
+                                   // Fork, réglages → image → anti-artefacts (FgGuard): unset = on.
+                                   "fgHudGuard", "fgFastGuard"};
     QVariant stored;
     if (ranges.contains(key)) {
         bool ok = false; const int n = value.toInt(&ok);
@@ -216,6 +242,11 @@ bool QmlPlayerBridge::setPreference(const QString& key, const QVariant& value) {
         stored = n;
     } else if (flags.contains(key)) {
         stored = value.toBool();
+    } else if (key == QLatin1String("streamStatsMode")) {
+        // Fork: the stream stats card, full, a compact fps pill, or hidden.
+        const auto mode = value.toString();
+        if (mode != QLatin1String("full") && mode != QLatin1String("compact") && mode != QLatin1String("off")) return false;
+        stored = mode;
     } else if (key == QLatin1String("nrResidualView") || key == QLatin1String("nrCorrectionView")) {
         const auto view = value.toString();
         if (view != QLatin1String("web") && view != QLatin1String("list")) return false;
@@ -243,7 +274,25 @@ bool QmlPlayerBridge::setPreference(const QString& key, const QVariant& value) {
     } else if (key == QLatin1String("palette")) {
         // 设置 → 外观 → 界面配色 (Theme.qml): 日落 or the original 经典 palette.
         const QString v = value.toString();
-        if (v != QLatin1String("dusk") && v != QLatin1String("classic")) return false;
+        if (v != QLatin1String("sage") && v != QLatin1String("dusk") && v != QLatin1String("classic")) return false;
+        stored = v;
+    } else if (key == QLatin1String("guestResolution") || key == QLatin1String("guestReach") || key == QLatin1String("guestMode") || key == QLatin1String("guestFeed")) {
+        // Fork, partage (GuestShareModel.h): the most the guest may receive (size, feed), how the
+        // guest reaches this PC, who drives the pad.
+        static const QHash<QString, QStringList> choices{{"guestResolution", {"720p", "1080p", "native"}}, {"guestReach", {"tunnel", "quick", "tailnet"}},
+                                                         {"guestMode", {"guest", "together", "watch"}}, {"guestFeed", {"real", "60", "120"}}};
+        const QString v = value.toString();
+        if (!choices.value(key).contains(v)) return false;
+        stored = v;
+    } else if (key == QLatin1String("gatewayHostName")) {
+        // Fork, invités: the name the friends' page shows ("en attente de l'accord de …").
+        const QString v = value.toString().simplified();
+        if (v.size() > 24 || v.contains(QRegularExpression(QStringLiteral("[<>\"&]")))) return false;
+        stored = v;
+    } else if (key == QLatin1String("kbmMouse")) {
+        // Fork: what the mouse drives on the PS5 (right stick or gyro).
+        const QString v = value.toString();
+        if (v != QLatin1String("stick") && v != QLatin1String("gyro")) return false;
         stored = v;
     } else if (key == QLatin1String("accent")) {
         const QString v = value.toString();
@@ -290,7 +339,7 @@ bool QmlPlayerBridge::setPreference(const QString& key, const QVariant& value) {
         stored = value.toBool();
     } else if (key == QLatin1String("language")) {
         const QString v = value.toString();
-        static const QStringList languages{"auto", "zh-CN", "zh-TW", "en", "ja"};
+        static const QStringList languages{"auto", "zh-CN", "zh-TW", "en", "ja", "fr"};
         if (!languages.contains(v)) return false;
         stored = v;
     } else if (key == QLatin1String("monitorGpu")) {
@@ -319,6 +368,12 @@ bool QmlPlayerBridge::setPreference(const QString& key, const QVariant& value) {
     return true;
 }
 void QmlPlayerBridge::applyPreference(const QString& key) {
+#ifdef VEYRA_ENABLE_REMOTEPLAY
+    if (key.startsWith(QLatin1String("kbm"))) impl_->applyKbmSettings();
+    // Turning the option off forgets the stored PIN right away.
+    if (key == QLatin1String("ps5RememberPin") && !impl_->prefBool("ps5RememberPin", false) && !impl_->ps5Profile.empty())
+        remoteplay::forgetLoginPin(remoteplay::profileDirectory() / impl_->ps5Profile);
+#endif
     if(key==QLatin1String("captureAudioMonitor"))
         impl_->engine.setCaptureAudioMonitoring(impl_->prefBool("captureAudioMonitor",true));
     // The replay buffer re-arms with what a recording would use.
@@ -464,7 +519,7 @@ QVariantList QmlPlayerBridge::audioDevices() const {
         const QString id = QString::fromStdWString(e.id);
         listed = listed || id == chosen;
         out << QVariantMap{{"id", id}, {"label", QString::fromStdWString(e.name) + (e.isDefault ? tr(" · 当前默认") : QString())},
-                           {"isDefault", e.isDefault}};
+                           {"name", QString::fromStdWString(e.name)}, {"isDefault", e.isDefault}};
     }
     // A saved device that is unplugged stays visible, marked, instead of vanishing.
     if (!listed) out << QVariantMap{{"id", chosen}, {"label", tr("已保存的设备（未连接）")}, {"isDefault", false}, {"missing", true}};
@@ -593,38 +648,11 @@ void QmlPlayerBridge::updateLiveCompanionCompat() {
 int QmlPlayerBridge::uiScaleActive() const { return qApp ? qApp->property("veyraUiScale").toInt() : 0; }
 void QmlPlayerBridge::openFeedbackPage() {
     copyDiagnostics();
-    QDesktopServices::openUrl(QUrl(QStringLiteral("https://github.com/Likely7/Veyra-NRVideo/issues")));
+    if (const QUrl url = projectUrl(QStringLiteral("/issues")); !url.isEmpty()) QDesktopServices::openUrl(url);
     emit notice(tr("诊断信息已复制，可直接粘贴到反馈里"), false);
 }
 void QmlPlayerBridge::openReleasesPage() {
-    QDesktopServices::openUrl(QUrl(QStringLiteral("https://github.com/Likely7/Veyra-NRVideo/releases")));
-}
-bool QmlPlayerBridge::openSponsorLink(const QString& id) {
-    // The author's pages as the author gave them (2026-10-19); the page shows buttons,
-    // never these addresses.
-    static constexpr std::pair<const char*, const char*> links[] = {
-        {"bilibili", "https://space.bilibili.com/19500532?spm_id_from=333.1007.0.0"},
-        {"douyin", "https://v.douyin.com/9s06Bf2Inqc/"},
-        {"x", "https://x.com/likely2002"},
-        {"github", "https://github.com/Likely7"},
-        {"youtube", "https://www.youtube.com/@Likely7Ai"},
-        {"patreon", "https://www.patreon.com/cw/Likely7"},
-        {"patreonCoffee", "https://www.patreon.com/Likely7/posts/buy-me-coffee-175018110"},
-    };
-    for (const auto& [name, url] : links) {
-        if (id != QLatin1StringView(name)) continue;
-        veyra::log::info("ui-sponsor", std::format("open {}", name));
-        // Acceptance runs click every card: they read the address from the log
-        // instead of opening a browser on the test machine.
-        if (qEnvironmentVariableIsSet("VEYRA_TEST_SPONSOR_NO_BROWSER")) {
-            veyra::log::info("ui-sponsor", std::format("test url {}", url));
-            return true;
-        }
-        if (QDesktopServices::openUrl(QUrl(QString::fromLatin1(url)))) return true;
-        emit notice(tr("无法打开浏览器"), true);
-        return false;
-    }
-    return false;
+    if (const QUrl url = projectUrl(QStringLiteral("/releases")); !url.isEmpty()) QDesktopServices::openUrl(url);
 }
 QObject* QmlPlayerBridge::updates() const { return updates_; }
 bool QmlPlayerBridge::eventFilter(QObject* watched, QEvent* event) {
@@ -694,7 +722,7 @@ QString QmlPlayerBridge::screenshotDirectory() const {
     const QString chosen = impl_->prefString("screenshotDir");
     if (!chosen.isEmpty()) return chosen;
     const QString pictures = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
-    return QDir(pictures.isEmpty() ? QDir::homePath() : pictures).filePath(QStringLiteral("Veyra"));
+    return QDir(pictures.isEmpty() ? QDir::homePath() : pictures).filePath(QStringLiteral("BooVI"));
 }
 QString QmlPlayerBridge::lastScreenshot() const { return impl_->lastScreenshot; }
 QString QmlPlayerBridge::dataDirectory() const { return QString::fromStdWString(impl_->dataDir.wstring()); }
@@ -740,6 +768,7 @@ QString QmlPlayerBridge::sourceTitle() const {
     if (kind == QLatin1String("ps5")) return tr("PS5 串流 · %1").arg(impl_->liveLabel);
     if (kind == QLatin1String("moonlight")) return tr("PC 串流 · %1").arg(impl_->liveLabel);
     if (kind == QLatin1String("xbox")) return tr("Xbox 串流 · %1").arg(impl_->liveLabel);
+    if (kind == QLatin1String("join")) return QStringLiteral("BooVI · %1").arg(impl_->liveLabel);
     return tr("屏幕捕获 · %1").arg(impl_->liveLabel);
 }
 // "1080p60" / "1080p59.94": the reported height and nominal rate only.
@@ -958,7 +987,7 @@ QString QmlPlayerBridge::captureSignalText() const {
 
 void QmlPlayerBridge::importPresetDialog() {
     const QString path = QFileDialog::getOpenFileName(nullptr, tr("导入预设"), QString(),
-                                                      tr("Veyra 预设 (*.vpreset);;所有文件 (*)"));
+                                                      tr("BooVI 预设 (*.vpreset);;所有文件 (*)"));
     if (!path.isEmpty()) importPreset(path);
 }
 bool QmlPlayerBridge::importPreset(const QString& path) {
@@ -976,7 +1005,7 @@ void QmlPlayerBridge::exportPresetDialog(int index) {
     if (index < 0 || size_t(index) >= entries.size()) return;
     const QString path = QFileDialog::getSaveFileName(nullptr, tr("导出预设"),
                                                       utf8Of(entries[size_t(index)].name) + QStringLiteral(".vpreset"),
-                                                      tr("Veyra 预设 (*.vpreset)"));
+                                                      tr("BooVI 预设 (*.vpreset)"));
     if (!path.isEmpty()) exportPreset(index, path);
 }
 bool QmlPlayerBridge::exportPreset(int index, const QString& path) {

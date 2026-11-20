@@ -88,8 +88,11 @@ inline constexpr size_t kExportBitrateChoiceCount=sizeof(kExportBitrateChoices)/
 inline constexpr const wchar_t* kExportBitrateLabels[]={L"自动 · 恒定质量",L"6 Mbps",L"10 Mbps",L"16 Mbps",L"24 Mbps",L"40 Mbps",L"60 Mbps",L"100 Mbps",L"150 Mbps",L"200 Mbps"};
 inline size_t exportBitrateIndex(uint32_t mbps){for(size_t i=0;i<kExportBitrateChoiceCount;++i)if(kExportBitrateChoices[i]==mbps)return i;return 0;}
 // videoSrQuality values: 0 = DLSS SR, 1..4 = RTX video SR quality steps,
-// 5 = AMD FSR upscaling (vendor neutral; verified on an NVIDIA adapter).
+// 5 = AMD FSR upscaling (vendor neutral; verified on an NVIDIA adapter),
+// 6 = AMD FSR 4 INT8 upscaling on a non-AMD adapter (FsrProviderUnlock).
 inline constexpr uint32_t kVideoSrFsr=5;
+inline constexpr uint32_t kVideoSrFsr4Int8=6;
+constexpr bool fsrVideoSr(uint32_t q){return q==kVideoSrFsr||q==kVideoSrFsr4Int8;}
 // Fresh SR selections use RTX Video SR medium; explicit saved selections retain
 // their numeric IDs. The UI seeds FSR separately on AMD/Intel adapters.
 inline constexpr uint32_t kDefaultVideoSrQuality=2;
@@ -108,9 +111,9 @@ constexpr bool ngxVideoSr(uint32_t q){return q>=1&&q<=4;}
 constexpr bool vfxVideoSr(uint32_t q){return (q>=16&&q<=19)||q==21||q==23;}
 constexpr bool vfxVideoSrNeedsAmpere(uint32_t q){return q==21||q==23;}
 constexpr bool rtxVideoSr(uint32_t q){return ngxVideoSr(q)||vfxVideoSr(q);}
-constexpr bool validVideoSrQuality(uint32_t q){return q<=kVideoSrFsr||vfxVideoSr(q);}
+constexpr bool validVideoSrQuality(uint32_t q){return q<=kVideoSrFsr4Int8||vfxVideoSr(q);}
 // DLSS SR and FSR are temporal: they read the SR motion source. RTX Video SR is spatial.
-constexpr bool temporalVideoSr(uint32_t q){return q==0||q==kVideoSrFsr;}
+constexpr bool temporalVideoSr(uint32_t q){return q==0||fsrVideoSr(q);}
 inline constexpr uint32_t kVfxVideoSrQualities[]={16,17,18,19,21,23};
 constexpr VideoSrFamily videoSrFamily(uint32_t q){
     return q>=16&&q<=19?VideoSrFamily::HighBitrate:q==21||q==23?VideoSrFamily::Streaming:VideoSrFamily::Standard;
@@ -464,6 +467,11 @@ struct EnhancementSettings {
     // UI "DLSS 性能模式": NVIDIA's DLSS-G performance mode (ngx/DlssgLite.h),
     // DLSS frame generation only. A global control kept in shell preferences.
     bool dlssgLite=false;
+    // UI "anti-artefacts" (réglages → image, pipeline/FgGuard.h): keep the crosshair and HUD out
+    // of frame generation, and favour sharpness in fast motion (global-motion blend and the safe
+    // hold). Global controls kept in shell preferences, on by default.
+    bool fgHudGuard=true;
+    bool fgFastGuard=true;
     // UI "VFG 自动调控": live 2X VFG runs a pair with the next faster model when the
     // chosen one would miss its refresh or the budget (LivePresentationTiming.h).
     // A global control kept in shell preferences.
@@ -544,6 +552,7 @@ struct EnhancementSettings {
         if(!(multiplier>1&&motionUsesFlow(fgMotion,frameGenerationBackend)))
             active.fgMotionRefine=defaults.fgMotionRefine;
         if(!(multiplier>1&&frameGenerationBackend==FrameGenerationBackend::Dlss))active.dlssgLite=defaults.dlssgLite;
+        if(!(multiplier>1)){active.fgHudGuard=defaults.fgHudGuard;active.fgFastGuard=defaults.fgFastGuard;}
         if(!(multiplier>1&&frameGenerationBackend==FrameGenerationBackend::Vfg))active.vfgAutoRegulate=defaults.vfgAutoRegulate;
         return active;
     }

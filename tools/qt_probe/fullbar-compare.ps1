@@ -16,7 +16,7 @@ for ($round = 1; $round -le $Rounds; $round++) {
   foreach ($mode in 'shown','hidden') {
     $log = Join-Path $Out "$mode-$round.log"
     $env:VEYRA_LOG_FILE = $log
-    $p = Start-Process -FilePath (Join-Path $App 'veyra_qml_ui.exe') -ArgumentList @('--page','min','--full-bar',$mode,('"' + $Clip + '"')) -PassThru
+    $p = Start-Process -FilePath (Join-Path $App 'BooVI.exe') -ArgumentList @('--page','min','--full-bar',$mode,('"' + $Clip + '"')) -PassThru
     Start-Sleep -Seconds $Seconds
     Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 800

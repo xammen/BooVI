@@ -40,6 +40,8 @@ struct NvencLiveEncoder::Impl {
     ComPtr<ID3D12Fence> fence;
     HANDLE event=nullptr;
     unsigned successLogs=0;
+    NV_ENC_INITIALIZE_PARAMS init{};   // kept for setBitrateKbps()
+    NV_ENC_CONFIG encodeConfig{};
 
     bool fail(std::wstring message){
         error=std::move(message);
@@ -104,17 +106,31 @@ bool NvencLiveEncoder::open(ID3D12Device* device,const Config& config,const std:
     }
     // Recording favours quality over latency, but B-frames would reorder the
     // output and make DTS differ from PTS; keep IPPP with a 2 s GOP.
+    // A remote guest (lowLatency) gets P2 with the ultra-low-latency tuning instead.
+    const GUID presetGuid=config.lowLatency?NV_ENC_PRESET_P2_GUID:NV_ENC_PRESET_P4_GUID;
+    const NV_ENC_TUNING_INFO tuning=config.lowLatency?NV_ENC_TUNING_INFO_ULTRA_LOW_LATENCY:NV_ENC_TUNING_INFO_HIGH_QUALITY;
     NV_ENC_PRESET_CONFIG preset{};preset.version=NV_ENC_PRESET_CONFIG_VER;preset.presetCfg.version=NV_ENC_CONFIG_VER;
-    if(!p.check(p.api.nvEncGetEncodePresetConfigEx(p.encoder,codec,NV_ENC_PRESET_P4_GUID,NV_ENC_TUNING_INFO_HIGH_QUALITY,&preset),"GetPreset"))return false;
+    if(!p.check(p.api.nvEncGetEncodePresetConfigEx(p.encoder,codec,presetGuid,tuning,&preset),"GetPreset"))return false;
     auto& cfg=preset.presetCfg;
     const uint32_t fps=std::clamp(config.fps,1u,480u);
-    cfg.frameIntervalP=1;cfg.gopLength=fps*2;cfg.rcParams.enableLookahead=0;
-    const uint32_t bits=std::clamp(config.bitrateMbps,1u,400u)*1000000u;
-    cfg.rcParams.rateControlMode=NV_ENC_PARAMS_RC_VBR;
-    cfg.rcParams.averageBitRate=bits;
-    cfg.rcParams.maxBitRate=bits+bits/2;
-    cfg.rcParams.vbvBufferSize=bits/2;
-    cfg.rcParams.vbvInitialDelay=cfg.rcParams.vbvBufferSize;
+    cfg.frameIntervalP=1;cfg.gopLength=config.lowLatency?NVENC_INFINITE_GOPLENGTH:fps*2;cfg.rcParams.enableLookahead=0;
+    const uint32_t bits=config.lowLatency?std::clamp(config.bitrateKbps,500u,200000u)*1000u:std::clamp(config.bitrateMbps,1u,400u)*1000000u;
+    if(config.lowLatency){
+        // One frame of VBV: every frame fits its share of the link, so none queues behind
+        // a large one. Recovery from loss is NACK first, then a PLI-driven IDR.
+        cfg.rcParams.rateControlMode=NV_ENC_PARAMS_RC_CBR;
+        cfg.rcParams.averageBitRate=bits;
+        cfg.rcParams.maxBitRate=bits;
+        cfg.rcParams.vbvBufferSize=bits/fps;
+        cfg.rcParams.vbvInitialDelay=cfg.rcParams.vbvBufferSize;
+        cfg.rcParams.zeroReorderDelay=1;
+    }else{
+        cfg.rcParams.rateControlMode=NV_ENC_PARAMS_RC_VBR;
+        cfg.rcParams.averageBitRate=bits;
+        cfg.rcParams.maxBitRate=bits+bits/2;
+        cfg.rcParams.vbvBufferSize=bits/2;
+        cfg.rcParams.vbvInitialDelay=cfg.rcParams.vbvBufferSize;
+    }
     if(config.hevc){
         auto& hevc=cfg.encodeCodecConfig.hevcConfig;
         hevc.idrPeriod=cfg.gopLength;hevc.repeatSPSPPS=1;
@@ -134,6 +150,8 @@ bool NvencLiveEncoder::open(ID3D12Device* device,const Config& config,const std:
     }else{
         auto& h264=cfg.encodeCodecConfig.h264Config;
         h264.idrPeriod=cfg.gopLength;h264.repeatSPSPPS=1;
+        // Browsers decode High; no B-frames (frameIntervalP=1) keeps it Constrained High.
+        if(config.lowLatency)cfg.profileGUID=NV_ENC_H264_PROFILE_HIGH_GUID;
         auto& vui=h264.h264VUIParameters;
         vui.videoSignalTypePresentFlag=1;vui.videoFormat=NV_ENC_VUI_VIDEO_FORMAT_UNSPECIFIED;vui.videoFullRangeFlag=0;vui.colourDescriptionPresentFlag=1;
         vui.colourPrimaries=NV_ENC_VUI_COLOR_PRIMARIES_BT709;
@@ -141,11 +159,12 @@ bool NvencLiveEncoder::open(ID3D12Device* device,const Config& config,const std:
         vui.colourMatrix=NV_ENC_VUI_MATRIX_COEFFS_BT709;
     }
     NV_ENC_INITIALIZE_PARAMS init{};init.version=NV_ENC_INITIALIZE_PARAMS_VER;
-    init.encodeGUID=codec;init.presetGUID=NV_ENC_PRESET_P4_GUID;init.tuningInfo=NV_ENC_TUNING_INFO_HIGH_QUALITY;
+    init.encodeGUID=codec;init.presetGUID=presetGuid;init.tuningInfo=tuning;
     init.encodeWidth=config.width;init.encodeHeight=config.height;init.darWidth=config.width;init.darHeight=config.height;
     init.frameRateNum=fps;init.frameRateDen=1;init.enablePTD=1;init.encodeConfig=&cfg;
     init.maxEncodeWidth=config.width;init.maxEncodeHeight=config.height;init.bufferFormat=p.format;
     if(!p.check(p.api.nvEncInitializeEncoder(p.encoder,&init),"InitializeEncoder"))return false;
+    p.init=init;p.encodeConfig=cfg;p.init.encodeConfig=&p.encodeConfig;
     p.sequence.resize(4096);uint32_t size=0;
     NV_ENC_SEQUENCE_PARAM_PAYLOAD seq{};seq.version=NV_ENC_SEQUENCE_PARAM_PAYLOAD_VER;seq.inBufferSize=4096;seq.spsppsBuffer=p.sequence.data();seq.outSPSPPSPayloadSize=&size;
     if(!p.check(p.api.nvEncGetSequenceParams(p.encoder,&seq),"GetSequenceParams"))return false;
@@ -186,8 +205,8 @@ bool NvencLiveEncoder::open(ID3D12Device* device,const Config& config,const std:
         out.resource.outputFencePoint.version=NV_ENC_FENCE_POINT_D3D12_VER;out.resource.outputFencePoint.pFence=p.fence.Get();
         out.resource.outputFencePoint.bSignal=1;
     }
-    veyra::log::info("nvenc-live",std::format("open codec={} hdr={} extent={}x{} fps={} vbrMbps={} inputs={} outputs={} bitstreamBytes={}",
-        config.hevc?"HEVC":"H264",config.hdr,config.width,config.height,fps,bits/1000000,p.inputs.size(),p.outputs.size(),bitstreamBytes));
+    veyra::log::info("nvenc-live",std::format("open codec={} hdr={} extent={}x{} fps={} {}Kbps={} inputs={} outputs={} bitstreamBytes={}",
+        config.hevc?"HEVC":"H264",config.hdr,config.width,config.height,fps,config.lowLatency?"lowLatencyCbr":"vbr",bits/1000,p.inputs.size(),p.outputs.size(),bitstreamBytes));
     p.error.clear();
     return true;
 }
@@ -208,6 +227,20 @@ bool NvencLiveEncoder::submit(unsigned index,ID3D12Fence* waitFence,uint64_t val
     if(!p.check(p.api.nvEncEncodePicture(p.encoder,&pic),"EncodePicture"))return false;
     out.pending=true;out.ptsUs=ptsUs;out.input=index;++p.submitted;
     return true;
+}
+
+bool NvencLiveEncoder::setRate(uint32_t kbps,uint32_t fps){
+    auto& p=*p_;
+    if(!p.encoder||!p.config.lowLatency)return false;
+    const uint32_t bits=std::clamp(kbps,500u,200000u)*1000u;
+    if(fps)fps=std::clamp(fps,1u,480u);
+    if(bits==p.encodeConfig.rcParams.averageBitRate&&(!fps||fps==p.init.frameRateNum))return true;
+    if(fps)p.init.frameRateNum=fps;
+    p.encodeConfig.rcParams.averageBitRate=bits;p.encodeConfig.rcParams.maxBitRate=bits;
+    p.encodeConfig.rcParams.vbvBufferSize=bits/std::max(1u,p.init.frameRateNum);
+    p.encodeConfig.rcParams.vbvInitialDelay=p.encodeConfig.rcParams.vbvBufferSize;
+    NV_ENC_RECONFIGURE_PARAMS r{};r.version=NV_ENC_RECONFIGURE_PARAMS_VER;r.reInitEncodeParams=p.init;r.reInitEncodeParams.encodeConfig=&p.encodeConfig;
+    return p.check(p.api.nvEncReconfigureEncoder(p.encoder,&r),"Reconfigure");
 }
 
 bool NvencLiveEncoder::takeOldest(Packet& packet,bool wait,uint32_t timeoutMs,bool& ready){

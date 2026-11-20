@@ -41,7 +41,7 @@ public class PW {
 }
 "@
 New-Item -ItemType Directory -Force $Out | Out-Null
-$exe = Join-Path $App 'veyra_qml_ui.exe'
+$exe = Join-Path $App 'BooVI.exe'
 $launch = @('--page', $Page)
 if ($Extra -ne '') { $launch += ($Extra -split '\s+' | Where-Object { $_ -ne '' }) }
 if ($Clip -ne '') { $launch += ('"' + $Clip + '"') }

@@ -1718,7 +1718,7 @@ int main() {
         check(requiresGraphRebuild(disabled,s),"enabling the second actual SR pass rebuilds");
         auto g=ChainGlobalSettings::capture(s);EnhancementSettings restored;g.apply(restored);
         check(restored.dualSrEnabled&&restored.dualSrTarget==s.dualSrTarget&&restored.dualSrQuality==s.dualSrQuality,"chain globals retain independent second-stage settings");
-        auto invalid=s;invalid.dualSrQuality=6;check(!invalid.validate().empty(),"reject invalid second SR quality before any GPU work");
+        auto invalid=s;invalid.dualSrQuality=7;check(!invalid.validate().empty(),"reject invalid second SR quality before any GPU work");
         invalid=s;invalid.dualSrTarget=SrTarget(99);check(!invalid.validate().empty(),"reject invalid second SR target");
         ChainExecutionRequest badRequest{{2560,1440},s.srTarget};badRequest.dualSrEnabled=true;badRequest.dualSrTarget=SrTarget(99);
         ChainExecutionPlan rejected;check(!compileChainExecutionPlan(toChain(s),badRequest,rejected).accepted,"invalid second target returns a rejected plan rather than throwing");

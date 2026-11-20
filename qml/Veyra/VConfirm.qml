@@ -52,11 +52,12 @@ Item {
         border.color: Theme.stroke2
         opacity: box.shown ? 1 : 0
         visible: opacity > 0
-        Behavior on opacity { NumberAnimation { duration: Theme.d(200) } }
-        property real motionS: box.shown ? 1 : 0.9
-        property real motionDy: box.shown ? 0 : 14
-        Behavior on motionS { NumberAnimation { duration: Theme.d(550); easing.bezierCurve: Theme.spring } }
-        Behavior on motionDy { NumberAnimation { duration: Theme.d(550); easing.bezierCurve: Theme.spring } }
+        Behavior on opacity { NumberAnimation { duration: Theme.d(box.shown ? 280 : Theme.durExit) } }
+        // Same motion as DialogLayer: in over 420 ms without overshoot, out faster and shorter.
+        property real motionS: box.shown ? 1 : 0.98
+        property real motionDy: box.shown ? 0 : 10
+        Behavior on motionS { NumberAnimation { duration: Theme.d(box.shown ? Theme.durEnter : Theme.durExit); easing.type: Easing.BezierSpline; easing.bezierCurve: box.shown ? Theme.ease : Theme.easeExit } }
+        Behavior on motionDy { NumberAnimation { duration: Theme.d(box.shown ? Theme.durEnter : Theme.durExit); easing.type: Easing.BezierSpline; easing.bezierCurve: box.shown ? Theme.ease : Theme.easeExit } }
         transform: [
             Scale { origin.x: card.width / 2; origin.y: card.height / 2; xScale: card.motionS; yScale: card.motionS },
             Translate { y: card.motionDy }

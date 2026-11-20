@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Sign-in sequence ported from xal-node's Msal class (unknownskl/xal-node, MIT) as used by Greenlight.
 #include "veyra/xbox/Account.h"
+#include "veyra/UserDataRoot.h"
 
 #include <windows.h>
 #include <shlobj.h>
@@ -105,11 +106,7 @@ std::optional<std::string> unprotect(std::vector<uint8_t> bytes) {
 std::filesystem::path dataDirectory() {
     wchar_t override[MAX_PATH] = {};
     if (GetEnvironmentVariableW(L"VEYRA_XBOX_DATA", override, MAX_PATH) > 0) return std::filesystem::path(override);
-    PWSTR raw = nullptr;
-    if (FAILED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &raw))) throw std::runtime_error("Cannot resolve the user data directory");
-    std::filesystem::path result(raw);
-    CoTaskMemFree(raw);
-    return result / L"Veyra" / L"xbox";
+    return veyra::userdata::root() / L"xbox";
 }
 
 std::optional<SavedTokens> loadTokens(const std::filesystem::path& file) {

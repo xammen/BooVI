@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #pragma once
 #include "VideoIngress.h"
+#include <functional>
 #include <memory>
 #include <stdexcept>
 namespace veyra::remoteplay {
@@ -52,6 +53,9 @@ public:
     void frameDecoded(HostTime now);
     void decoderBackend(bool hardware,bool fallback);
     void streamProfile(VideoProfile profile);
+    // Called on the network thread after each accepted access unit, under the inbox lock, so it
+    // may only signal: the decoder owner then sleeps on an event instead of looking every millisecond.
+    void setVideoWake(std::function<void()> wake);
 private:
     std::shared_ptr<Shared> shared_;
 };

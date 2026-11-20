@@ -136,8 +136,9 @@ private:
     uint8_t held_ = 0;
 };
 
-// Ctrl+Alt+Shift+<key> is handled by the app and never sent to the host.
-enum class Reserved { None, ReleaseCapture, Quit, ToggleStats };
+// Ctrl+Alt+Shift+<key> is handled by the app and never sent to the host. ShowKeys (Ctrl+M,
+// the PS5 bindings overlay) only where the router enables it (InputRouter's keysHotkey).
+enum class Reserved { None, ReleaseCapture, Quit, ToggleStats, ShowKeys };
 
 inline Reserved reservedHotkey(uint32_t vk, uint8_t modifiers) {
     constexpr uint8_t all = kModShift | kModCtrl | kModAlt;

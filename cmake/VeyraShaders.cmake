@@ -2,8 +2,14 @@
 # Machine-specific DXC discovery stays here; CMakePresets stay path-free.
 
 function(veyra_find_dxc out_var)
+  # Fork: an explicit VEYRA_DXC, or the SDK of the active environment (a portable MSVC
+  # has no Program Files kit), before the installed kits.
+  if(VEYRA_DXC AND EXISTS "${VEYRA_DXC}")
+    set(${out_var} "${VEYRA_DXC}" PARENT_SCOPE)
+    return()
+  endif()
   set(candidates "")
-  file(GLOB kit_roots "$ENV{ProgramFiles\(x86\)}/Windows Kits/10/bin/*")
+  file(GLOB kit_roots "$ENV{WindowsSdkDir}/bin/*" "$ENV{ProgramFiles\(x86\)}/Windows Kits/10/bin/*")
   if(kit_roots)
     list(SORT kit_roots ORDER DESCENDING)
     foreach(root IN LISTS kit_roots)

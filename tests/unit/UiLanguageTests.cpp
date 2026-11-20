@@ -43,9 +43,22 @@ int main(int argc, char** argv) {
     // Unknown text and paths come back unchanged.
     expect(i18n::text(QStringLiteral("D:/视频/我的片子.mkv")), QStringLiteral("D:/视频/我的片子.mkv"), "path untouched");
 
-    i18n::apply(QStringLiteral("zh-CN"));
+    // The fork's French-source QML strings (i18n/fork.json).
+    expect(QCoreApplication::translate("SettingsPage", "réglages"), QStringLiteral("settings"), "fork string in English");
+    expect(QCoreApplication::translate("Any", "couper le son · %1 %"), QStringLiteral("mute · %1 %"), "fork string keeps its slot");
+
+    i18n::apply(QStringLiteral("fr"));
+    expect(QCoreApplication::translate("SettingsPage", "réglages"), QStringLiteral("réglages"), "fork string in French is its source");
+    expect(QCoreApplication::translate("Any", "导出完成").isEmpty() ? QStringLiteral("missing") : QStringLiteral("found"), QStringLiteral("found"), "French keeps the main catalog");
+
+    // No Japanese column: English, never the French source.
+    i18n::apply(QStringLiteral("ja"));
+    expect(QCoreApplication::translate("SettingsPage", "réglages"), QStringLiteral("settings"), "fork string falls back to English");
+
+    if (!i18n::apply(QStringLiteral("zh-CN"))) { ++failures; std::printf("FAIL zh-CN did not apply\n"); }
     expect(QCoreApplication::translate("Any", "导出完成"), QStringLiteral("导出完成"), "source language");
     expect(i18n::text(QStringLiteral("导出完成")), QStringLiteral("导出完成"), "source language text()");
+    expect(QCoreApplication::translate("SettingsPage", "réglages"), QStringLiteral("settings"), "fork string in Simplified Chinese falls back to English");
 
     std::printf("ui i18n tests: %d failures\n", failures);
     return failures ? 1 : 0;

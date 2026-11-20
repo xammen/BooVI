@@ -11,9 +11,9 @@ function File-Sha256([string]$Path) {
     try { return [BitConverter]::ToString($hasher.ComputeHash($stream)).Replace('-','') }
     finally { $hasher.Dispose();$stream.Dispose() }
 }
-$app=[IO.Path]::GetFullPath($AppDirectory);$player=Join-Path $app 'veyra_qml_ui.exe'
+$app=[IO.Path]::GetFullPath($AppDirectory);$player=Join-Path $app 'BooVI.exe'
 if (-not (Test-Path -LiteralPath $player -PathType Leaf)) { throw 'Extract the patch into a Veyra 2.0.6 portable copy first.' }
-if (@(Get-Process -Name 'veyra_qml_ui','Veyra' -ErrorAction SilentlyContinue).Count -gt 0) { throw 'Close Veyra first. Close OBS before testing the same capture card.' }
+if (@(Get-Process -Name 'BooVI','Veyra' -ErrorAction SilentlyContinue).Count -gt 0) { throw 'Close Veyra first. Close OBS before testing the same capture card.' }
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) { $OutputDirectory=Join-Path $app ('logs/bmd-'+$Variant+'-'+(Get-Date -Format 'yyyyMMdd-HHmmss-fff')) }
 $output=[IO.Path]::GetFullPath($OutputDirectory)
 if (Test-Path -LiteralPath $output) { throw 'Output already exists; evidence will not be overwritten.' }

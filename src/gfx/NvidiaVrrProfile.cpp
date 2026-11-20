@@ -117,7 +117,7 @@ public:
         VrrProfileSnapshot state;
         state.executable = normalized(executable);
         if (state.executable.empty()) throw Failure{VrrProfileError::UnsafeProfile};
-        state.profileName = L"Veyra VRR - " + state.executable;
+        state.profileName = L"BooVI VRR - " + state.executable;
         if (state.profileName.size() >= 2048) throw Failure{VrrProfileError::UnsafeProfile};
         for (size_t k = 0; k < state.global.size(); ++k) state.global[k] = value(global, vrrProfileSettingIds[k]);
         auto app = versioned<Application>();
@@ -145,7 +145,7 @@ public:
         if (plan.createProfile) {
             auto info = versioned<Profile>(); copy(info.name, state.profileName);
             checked(call<Handle, Profile*, Handle*>(0xCC176068, session, &info, &profile));
-            auto app = versioned<Application>(); copy(app.name, state.executable); copy(app.friendly, L"Veyra");
+            auto app = versioned<Application>(); copy(app.name, state.executable); copy(app.friendly, L"BooVI");
             checked(call<Handle, Handle, Application*>(0x4347A9DE, session, profile, &app));
         }
         if (plan.removeProfile) checked(call<Handle, Handle>(0x17093206, session, profile));

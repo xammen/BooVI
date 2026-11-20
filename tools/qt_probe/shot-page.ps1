@@ -24,7 +24,7 @@ public class W2 {
 "@
 New-Item -ItemType Directory -Force $Out | Out-Null
 
-$exe = Join-Path $App 'veyra_qml_ui.exe'
+$exe = Join-Path $App 'BooVI.exe'
 $argList = @()
 if ($Clip -ne '') { $argList = @($Clip) }
 $p = Start-Process -FilePath $exe -ArgumentList $argList -PassThru

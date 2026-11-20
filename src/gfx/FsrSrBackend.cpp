@@ -1,10 +1,13 @@
 #include "veyra/gfx/FsrSrBackend.h"
+#include "veyra/gfx/FsrProviderUnlock.h"
 
 #include "veyra/Log.h"
 #include "veyra/RuntimePaths.h"
 
 #include <filesystem>
+#include <optional>
 #include <string>
+#include <string_view>
 
 #ifdef VEYRA_HAS_FSR
 #include <ffx_api_loader.h>
@@ -105,7 +108,7 @@ FsrSrBackend::FsrSrBackend() : p_(std::make_unique<Impl>()) {}
 FsrSrBackend::~FsrSrBackend() { release(); }
 
 bool FsrSrBackend::initialize(ID3D12Device* device, uint32_t maxRenderWidth, uint32_t maxRenderHeight,
-                              uint32_t maxUpscaleWidth, uint32_t maxUpscaleHeight, bool hdr) {
+                              uint32_t maxUpscaleWidth, uint32_t maxUpscaleHeight, bool hdr, bool fsr4Int8) {
 #ifdef VEYRA_HAS_FSR
     auto& p = *p_;
     if (p.available) return true;
@@ -123,10 +126,19 @@ bool FsrSrBackend::initialize(ID3D12Device* device, uint32_t maxRenderWidth, uin
         log::error("fsr-sr", std::format("loader load failed win32={}", GetLastError()));
         return false;
     }
-    if (std::filesystem::exists(providerPath) &&
-        LoadLibraryExW(providerPath.c_str(), nullptr,
-                       LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32) == nullptr) {
+    const HMODULE provider = std::filesystem::exists(providerPath)
+        ? LoadLibraryExW(providerPath.c_str(), nullptr, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32)
+        : nullptr;
+    if (provider == nullptr) {
         log::warn("fsr-sr", std::format("provider preload failed win32={}", GetLastError()));
+    }
+    std::optional<FsrProviderUnlock> unlock;
+    if (fsr4Int8) {
+        unlock.emplace(device, provider, "ffxProvider_FSR4_Int8");
+        if (!unlock->active()) {
+            log::error("fsr-sr", "FSR 4 INT8 needs a non-AMD adapter and the FSR 4 provider in amd_fidelityfx_upscaler_dx12.dll");
+            return false;
+        }
     }
     ffxLoadFunctions(&p.functions, p.loader);
     if (p.functions.CreateContext == nullptr || p.functions.DestroyContext == nullptr ||
@@ -134,6 +146,7 @@ bool FsrSrBackend::initialize(ID3D12Device* device, uint32_t maxRenderWidth, uin
         log::error("fsr-sr", "loader is missing the FidelityFX API entry points");
         return false;
     }
+    uint64_t fsr4Id = 0;
     {
         ffxQueryDescGetVersions versions{};
         versions.header.type = FFX_API_QUERY_DESC_TYPE_GET_VERSIONS;
@@ -153,10 +166,19 @@ bool FsrSrBackend::initialize(ID3D12Device* device, uint32_t maxRenderWidth, uin
         if (listResult == FFX_API_RETURN_OK && capacity > 0 && names[0] != nullptr) {
             p.providerVersion = names[0];
         }
+        for (uint64_t i = 0; fsr4Int8 && listResult == FFX_API_RETURN_OK && i < capacity && i < 8; ++i)
+            if (names[i] != nullptr && std::string_view(names[i]).starts_with("4.")) { fsr4Id = ids[i]; p.providerVersion = names[i]; break; }
         log::info("fsr-sr", std::format("providers count={} selected={}", capacity,
                                         p.providerVersion.empty() ? "none" : p.providerVersion));
     }
 
+    if (fsr4Int8 && fsr4Id == 0) {
+        log::error("fsr-sr", "FSR 4 INT8 provider not offered after the unlock");
+        return false;
+    }
+    ffxOverrideVersion overrideVersion{};
+    overrideVersion.header.type = FFX_API_DESC_TYPE_OVERRIDE_VERSION;
+    overrideVersion.versionId = fsr4Id;
     ffxCreateBackendDX12Desc backendDesc{};
     backendDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_DX12;
     backendDesc.device = device;
@@ -167,12 +189,13 @@ bool FsrSrBackend::initialize(ID3D12Device* device, uint32_t maxRenderWidth, uin
     upscaleDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE;
     upscaleDesc.header.pNext = &backendDesc.header;
     backendDesc.header.pNext = &versionDesc.header;
+    if (fsr4Int8) versionDesc.header.pNext = &overrideVersion.header;
     upscaleDesc.flags = hdr ? FFX_UPSCALE_ENABLE_HIGH_DYNAMIC_RANGE : 0u;
     upscaleDesc.maxRenderSize = {maxRenderWidth, maxRenderHeight};
     upscaleDesc.maxUpscaleSize = {maxUpscaleWidth, maxUpscaleHeight};
     upscaleDesc.fpMessage = fsrMessage;
     auto result = p.functions.CreateContext(&p.context, &upscaleDesc.header, nullptr);
-    if (result != FFX_API_RETURN_OK || p.context == nullptr) {
+    if (!fsr4Int8 && (result != FFX_API_RETURN_OK || p.context == nullptr)) {
         log::warn("fsr-sr", std::format("context with version desc failed result={}; retrying without it",
                                         returnName(result)));
         backendDesc.header.pNext = nullptr;

@@ -24,6 +24,9 @@ public:
     void close() noexcept override;
     void controller(remoteplay::ControllerState state);
     void loginPin(std::string pin);
+    // Fork: asks the console to enter rest mode from the owner thread; true once chiaki
+    // queued it, false when no session answered within a second.
+    bool gotoBed();
     remoteplay::ControllerFeedback takeFeedback();
     remoteplay::SessionInbox::Snapshot sessionSnapshot() const;
     uint64_t skipped() const;
@@ -36,10 +39,12 @@ public:
     void setAudioSync(unsigned mode, int offset) { audio_.setSync(mode, offset); }
     void videoPresented(double pts, int64_t host) { audio_.videoPresented(pts, host); }
     void videoReset(bool resetAudio=true) { audio_.videoReset(resetAudio); }
+    void* frameEvent() const { std::lock_guard lock(mutex_); return frameEvent_; }
 private:
     friend struct RemotePlaySessionSourceTestAccess;
     void publishDecoded(const AVFrame*,pipeline::FramePacket,const SourceInfo&);
     void run(std::stop_token, RemotePlayConnectDesc);
+    void serveGotoBed(RemotePlaySource&);
     remoteplay::ControllerState takeControllerLocked(remoteplay::HostTime now);
     struct Frame { std::shared_ptr<AVFrame> frame; pipeline::FramePacket packet; SourceInfo info; };
     mutable std::mutex mutex_;
@@ -55,7 +60,14 @@ private:
     remoteplay::ControllerState controller_;
     std::deque<std::pair<remoteplay::HostTime,remoteplay::ControllerState>> pendingControllers_;
     remoteplay::HostTime controllerStamp_=0;
+    std::vector<float> controllerAgesMs_; // fork: time each sent state waited in the queue
+    std::atomic<bool> controllerFresh_{false}; // fork: a new state is queued; send without waiting for the 4 ms tick
+    // Auto-reset event (HANDLE) set when a decoded picture is published: the engine waits on it
+    // between pictures instead of looking every millisecond.
+    void* frameEvent_=nullptr;
+    void* controllerWake_=nullptr; // fork: auto-reset event (HANDLE) set with controllerFresh_; the owner loop waits on it
     std::string pin_;
+    bool bedRequested_=false, bedDone_=false, bedOk_=false;
     uint64_t skipped_=0;
     Rates rates_;
     RecoveryStatus recovery_;

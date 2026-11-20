@@ -62,7 +62,7 @@ New-Item -ItemType Directory -Force $Out | Out-Null
 $launch = @('--page', $Page)
 if ($Extra -ne '') { $launch += ($Extra -split '\s+' | Where-Object { $_ -ne '' }) }
 if ($Clip -ne '') { $launch += ('"' + $Clip + '"') }
-$p = Start-Process -FilePath (Join-Path $App 'veyra_qml_ui.exe') -ArgumentList $launch -PassThru
+$p = Start-Process -FilePath (Join-Path $App 'BooVI.exe') -ArgumentList $launch -PassThru
 Start-Sleep -Seconds $WaitSeconds
 if ($p.HasExited) { "the app exited early"; exit 1 }
 $h = [HW]::Largest([uint32]$p.Id)

@@ -67,7 +67,7 @@ public:
         // for generation (provider returns -15 otherwise); diagnostic toggle.
         bool xessLowLatencySleep = true;
         // Probe runs create their own window class name per process.
-        std::wstring title = L"Veyra";
+        std::wstring title = L"BooVI";
         HWND targetWindow = nullptr; // borrowed UI-owned child HWND; never destroyed by sink
     };
 

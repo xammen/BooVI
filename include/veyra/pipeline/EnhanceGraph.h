@@ -10,6 +10,8 @@
 #include "veyra/pipeline/NrInstance.h"
 #include "veyra/pipeline/ResolutionPlan.h"
 #include "veyra/pipeline/NrTemporalPass.h"
+#include "veyra/pipeline/FgFrameDump.h"
+#include "veyra/pipeline/FgGuard.h"
 #include "veyra/pipeline/NrHoldPass.h"
 #include "veyra/pipeline/NrReuse.h"
 #include "veyra/pipeline/NrReusePass.h"
@@ -142,6 +144,7 @@ struct EnhanceGraphDesc {
     // A first DLSS SR / FSR pass runs only when it enlarges; at the source size
     // its result is the source (as for the Video Effects families).
     bool firstSrRuns(uint32_t quality)const{return dualSr&&videoSrQuality==quality&&firstSrEnlarges();}
+    bool firstFsrRuns()const{return dualSr&&engine::fsrVideoSr(videoSrQuality)&&firstSrEnlarges();}
     uint32_t fgMultiplier=2;
     engine::FrameGenerationBackend frameGenerationBackend=engine::FrameGenerationBackend::Dlss;
     uint32_t vfgQuality=1;
@@ -155,6 +158,9 @@ struct EnhanceGraphDesc {
     // XeSS motion refinement with the optical-flow source (UI "边缘神盾"): FlowRefine/
     // FlowFill plus NVOF forward-backward or FidelityFX FlowClaim. Off: validated flow.
     bool fgMotionRefine=true;
+    // Anti-artefacts (FgGuard.h): static overlays kept out of frame generation, and the
+    // global-motion blend with the safe hold for fast motion.
+    bool fgHudGuard=true,fgFastGuard=true;
     // DLSS-G performance mode (ngx/DlssgLite.h): DLSS frame generation only.
     bool dlssgLite=false;
     engine::ContentRate contentRate=engine::ContentRate::Transport;
@@ -640,6 +646,9 @@ public:
         return uploadFences_[slot%2];
     }
     ID3D12Fence* presentationReadyFenceObject(unsigned slot,bool generated)const;
+    // Fork: one more list on the graph's queue just read real frame `slot` (the guest's
+    // early tap, PresentCapture.h). The presentation queue waits for it before its own read.
+    void realFrameRead(unsigned slot);
     void presentationSubmitted(unsigned slot,ID3D12Fence* fence,uint64_t value){
         presentationFences_[slot%2]=fence;presentationValues_[slot%2]=value;
     }
@@ -741,7 +750,7 @@ public:
     // an NGX feature, so it also works on non-NVIDIA adapters.
     // Double SR may run FSR in either pass; each pass is its own FidelityFX context.
     bool fsrSrRequested() const { return desc_.enableSr && !desc_.stillImage &&
-        (desc_.finalSrQuality()==engine::kVideoSrFsr || desc_.firstSrRuns(engine::kVideoSrFsr)); }
+        (engine::fsrVideoSr(desc_.finalSrQuality()) || desc_.firstFsrRuns()); }
     // Out of line: the backend type is only forward declared here.
     bool fsrSrEnabled() const;
     // Requested output multiplier (2 = one generated frame). Consumed by the
@@ -831,6 +840,13 @@ public:
     uint32_t dlssgLiteState() const {return dlssgLiteState_;}
     bool fgCapabilityAvailable() const { return fgCapsAvailable_; }
     int fgMultiFrameCountMax() const { return fgMultiFrameMax_; }
+    // Largest multiplier one process() call may ask for. DLSS takes its frame count with each
+    // evaluation, so a stream whose content runs at half its transport rate doubles the
+    // multiplier on the same graph; the other backends are built for one multiplier.
+    uint32_t fgPreviewCeiling() const {
+        return desc_.frameGenerationBackend==engine::FrameGenerationBackend::Dlss&&fgCapsAvailable_?
+            std::clamp(uint32_t(std::max(1,fgMultiFrameMax_))+1u,desc_.fgMultiplier,6u):desc_.fgMultiplier;
+    }
     // Scenario toggles (probe/UI): gates only; the feature handles stay alive.
     // setNrEnabled also refreshes the section-5 blit SRV (slot 2) so the
     // videoFrame source follows workRgba (NR off) or finalRgba (NR on).
@@ -1141,6 +1157,8 @@ private:
     std::unique_ptr<ngx::DlssFgBackend> fgBackend_;
     std::unique_ptr<gfx::FsrFgPresenter> fsrFgBackend_;
     std::unique_ptr<gfx::AmfFrcBackend> amfFrc_;
+    std::unique_ptr<FgFrameDump> fgDump_,fgFlowDump_;  // VEYRA_TEST_FG_DUMP only
+    FgGuard fgGuard_;
     std::unique_ptr<gfx::FsrSrBackend> fsrSrBackend_;
     // Double SR first passes on DLSS SR / FSR (the final pass keeps the members above).
     std::unique_ptr<ngx::DlssSrBackend> firstDlssSrBackend_;

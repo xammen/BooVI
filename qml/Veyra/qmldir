@@ -11,7 +11,6 @@ DialogHost 1.0 DialogHost.qml
 StreamHud 1.0 StreamHud.qml
 VBackdrop 1.0 VBackdrop.qml
 VAccentFill 1.0 VAccentFill.qml
-DuskIntro 1.0 DuskIntro.qml
 VButton 1.0 VButton.qml
 VCard 1.0 VCard.qml
 VDot 1.0 VDot.qml
@@ -52,7 +51,6 @@ BeautyEditor 1.0 BeautyEditor.qml
 VSpinner 1.0 VSpinner.qml
 VEqBars 1.0 VEqBars.qml
 VTelemetryValue 1.0 VTelemetryValue.qml
-SponsorPanel 1.0 SponsorPanel.qml
 RotateButton 1.0 RotateButton.qml
 
 
@@ -82,3 +80,7 @@ SubtitleSettingsDialog 1.0 SubtitleSettingsDialog.qml
 AudioSettingsDialog 1.0 AudioSettingsDialog.qml
 SavePresetDialog 1.0 SavePresetDialog.qml
 ManagePresetsDialog 1.0 ManagePresetsDialog.qml
+Ps5InputChips 1.0 Ps5InputChips.qml
+SharePanel 1.0 SharePanel.qml
+GuestChip 1.0 GuestChip.qml
+PadNotice 1.0 PadNotice.qml

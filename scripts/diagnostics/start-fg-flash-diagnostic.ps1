@@ -13,7 +13,7 @@ foreach ($required in @($diagnostic, (Join-Path $app 'qt.conf'), (Join-Path $app
         throw 'Place the diagnostic files beside the original Veyra 2.0.6 NVIDIA executable first.'
     }
 }
-$players = @(Get-Process -Name 'veyra_qml_ui','veyra-flash-diagnostic','flash-pixel-probe' -ErrorAction SilentlyContinue)
+$players = @(Get-Process -Name 'BooVI','veyra-flash-diagnostic','flash-pixel-probe' -ErrorAction SilentlyContinue)
 if ($players.Count -gt 0) { throw 'Close other Veyra players before starting this diagnostic.' }
 if ([string]::IsNullOrWhiteSpace($ProfileSource)) { $ProfileSource = Join-Path $app 'runtime_local/user-data-2.0.0' }
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {

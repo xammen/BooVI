@@ -1,0 +1,4153 @@
+{
+ "entries": [
+  {
+   "fr": " et ta manette est branchée",
+   "src": [
+    "qml/HomePage.qml"
+   ],
+   "en": " and your controller is plugged in"
+  },
+  {
+   "fr": " i/s",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": " fps"
+  },
+  {
+   "fr": " · EN DIRECT",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": " · LIVE"
+  },
+  {
+   "fr": " · fait",
+   "src": [
+    "qml/ConnectPage.qml"
+   ],
+   "en": " · done"
+  },
+  {
+   "fr": " · windows",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": " · windows"
+  },
+  {
+   "fr": "%1 arrive",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "%1 is on the way"
+  },
+  {
+   "fr": "%1 attend ton accord",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "%1 is waiting for your OK"
+  },
+  {
+   "fr": "%1 joue",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "%1 is playing"
+  },
+  {
+   "fr": "%1 veut jouer sur ta ps5",
+   "src": [
+    "qml/Main.qml"
+   ],
+   "en": "%1 wants to play on your PS5"
+  },
+  {
+   "fr": "%1 voudrait te rejoindre",
+   "src": [
+    "qml/Main.qml"
+   ],
+   "en": "%1 would like to join you"
+  },
+  {
+   "fr": "%1 · douce sous %2 pts/s",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "%1 · gentle below %2 counts/s"
+  },
+  {
+   "fr": "%1 · plein régime à %2 pts/s",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "%1 · full tilt at %2 counts/s"
+  },
+  {
+   "fr": "%1, réglés avant cette version. ils ajoutent du travail à chaque image.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "%1, set before this version. they add work to every frame."
+  },
+  {
+   "fr": ". un clic et tu es en jeu, en %1.",
+   "src": [
+    "qml/HomePage.qml"
+   ],
+   "en": ". one click and you're in the game, in %1."
+  },
+  {
+   "fr": "0 · coupée",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "0 · off"
+  },
+  {
+   "fr": "1 jour",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "1 day"
+  },
+  {
+   "fr": "1 mois",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "1 month"
+  },
+  {
+   "fr": "1 semaine",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "1 week"
+  },
+  {
+   "fr": "1% low",
+   "src": [
+    "qml/NodePage.qml",
+    "qml/ProDisplayPanel.qml",
+    "qml/ProPage.qml"
+   ],
+   "en": "1% low"
+  },
+  {
+   "fr": "100 Mb/s",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "100 Mb/s"
+  },
+  {
+   "fr": "accepter",
+   "src": [
+    "qml/Main.qml",
+    "qml/SettingsPage.qml"
+   ],
+   "en": "accept"
+  },
+  {
+   "fr": "accepter les invités en mon absence",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "welcome guests while I'm away"
+  },
+  {
+   "fr": "account id",
+   "src": [
+    "qml/SetupPs5.qml"
+   ],
+   "en": "account id"
+  },
+  {
+   "fr": "accueil",
+   "src": [
+    "qml/UiTopBar.qml"
+   ],
+   "en": "home"
+  },
+  {
+   "fr": "accès",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "access"
+  },
+  {
+   "fr": "accès personnel · hôte %1 · gardé sur ce pc après la première partie",
+   "src": [
+    "qml/SetupJoin.qml"
+   ],
+   "en": "personal access · host %1 · kept on this PC after the first game"
+  },
+  {
+   "fr": "actif",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "on"
+  },
+  {
+   "fr": "actions",
+   "src": [
+    "qml/KbmBindings.qml"
+   ],
+   "en": "actions"
+  },
+  {
+   "fr": "active le hdr dans windows pour l'utiliser ici.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "turn on hdr in windows to use it here."
+  },
+  {
+   "fr": "activer https (tailscale serve)",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "turn on https (tailscale serve)"
+  },
+  {
+   "fr": "actualiser",
+   "src": [
+    "qml/SetupCapture.qml",
+    "qml/SetupPc.qml",
+    "qml/SetupXbox.qml"
+   ],
+   "en": "refresh"
+  },
+  {
+   "fr": "adresse ip",
+   "src": [
+    "qml/SetupPs5.qml"
+   ],
+   "en": "ip address"
+  },
+  {
+   "fr": "affichage",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "display"
+  },
+  {
+   "fr": "afficher",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "show"
+  },
+  {
+   "fr": "afficher les stats",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "show stats"
+  },
+  {
+   "fr": "affiché",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "shown"
+  },
+  {
+   "fr": "agrandir",
+   "src": [
+    "qml/UiWindowButtons.qml"
+   ],
+   "en": "enlarge"
+  },
+  {
+   "fr": "agrandit le flux vers %1.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "upscales the stream to %1."
+  },
+  {
+   "fr": "ajoute le temps de chaque étape sur la carte graphique.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "adds the time of each step on the graphics card."
+  },
+  {
+   "fr": "ajoute une ps5, une xbox, un pc ou une carte de capture. ça prend une minute.",
+   "src": [
+    "qml/HomePage.qml"
+   ],
+   "en": "add a ps5, an xbox, a pc or a capture card. it takes a minute."
+  },
+  {
+   "fr": "ajouter",
+   "src": [
+    "qml/SetupPc.qml"
+   ],
+   "en": "add"
+  },
+  {
+   "fr": "ajouter une ps5, une xbox, un pc ou une carte de capture",
+   "src": [
+    "qml/HomePage.qml"
+   ],
+   "en": "add a ps5, an xbox, a pc or a capture card"
+  },
+  {
+   "fr": "ajouter une source",
+   "src": [
+    "qml/HomePage.qml"
+   ],
+   "en": "add a source"
+  },
+  {
+   "fr": "ajuste la luminosité, le contraste et la saturation.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "adjusts brightness, contrast and saturation."
+  },
+  {
+   "fr": "allume-la ou laisse-la en mode repos. BooVI la cherche sur ton réseau local.",
+   "src": [
+    "qml/SetupPs5.qml"
+   ],
+   "en": "turn it on or leave it in rest mode. BooVI looks for it on your local network."
+  },
+  {
+   "fr": "animations réduites",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "reduced motion"
+  },
+  {
+   "fr": "anti-artefacts",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "anti-artifacts"
+  },
+  {
+   "fr": "anti-crénelage",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "anti-aliasing"
+  },
+  {
+   "fr": "APERÇU · AUCUN FLUX",
+   "src": [
+    "qml/MinimalPage.qml"
+   ],
+   "en": "PREVIEW · NO STREAM"
+  },
+  {
+   "fr": "appareil",
+   "src": [
+    "qml/SetupCapture.qml"
+   ],
+   "en": "device"
+  },
+  {
+   "fr": "appareil enregistré, débranché",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "saved device, unplugged"
+  },
+  {
+   "fr": "arrêter l'enregistrement",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "stop recording"
+  },
+  {
+   "fr": "arrêter le partage",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "stop sharing"
+  },
+  {
+   "fr": "associer",
+   "src": [
+    "qml/SetupPc.qml",
+    "qml/SetupPs5.qml"
+   ],
+   "en": "pair"
+  },
+  {
+   "fr": "associer, une seule fois",
+   "src": [
+    "qml/SetupPc.qml",
+    "qml/SetupPs5.qml"
+   ],
+   "en": "pair, just once"
+  },
+  {
+   "fr": "associé",
+   "src": [
+    "qml/Sources.qml"
+   ],
+   "en": "paired"
+  },
+  {
+   "fr": "associée",
+   "src": [
+    "qml/Sources.qml"
+   ],
+   "en": "paired"
+  },
+  {
+   "fr": "aucun tunnel cloudflare n'est configuré sur ce pc : prends le lien rapide.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "no cloudflare tunnel is set up on this pc: use the quick link."
+  },
+  {
+   "fr": "aucune",
+   "src": [
+    "qml/SettingsPage.qml",
+    "qml/SharePanel.qml"
+   ],
+   "en": "none"
+  },
+  {
+   "fr": "aucune carte détectée",
+   "src": [
+    "qml/SetupCapture.qml"
+   ],
+   "en": "no card detected"
+  },
+  {
+   "fr": "aucune limite : des images peuvent être calculées pour rien.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "no limit: frames may be rendered for nothing."
+  },
+  {
+   "fr": "aucune manette",
+   "src": [
+    "qml/HomePage.qml",
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "no controller"
+  },
+  {
+   "fr": "aucune manette détectée",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "no controller detected"
+  },
+  {
+   "fr": "aucune manette sur ce pc",
+   "src": [
+    "qml/PadNotice.qml"
+   ],
+   "en": "no controller on this PC"
+  },
+  {
+   "fr": "audio",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "audio"
+  },
+  {
+   "fr": "aujourd'hui %1",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "today %1"
+  },
+  {
+   "fr": "auto",
+   "src": [
+    "qml/SettingsPage.qml",
+    "qml/SetupPc.qml",
+    "qml/SharePanel.qml"
+   ],
+   "en": "auto"
+  },
+  {
+   "fr": "auto : pas de déchirure et pas d'attente.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "auto: no tearing and no waiting."
+  },
+  {
+   "fr": "auto suit la taille et la fluidité de l'image. en Mb/s.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "auto follows the picture's size and frame rate. in Mb/s."
+  },
+  {
+   "fr": "autoriser automatiquement",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "let in automatically"
+  },
+  {
+   "fr": "autres effets actifs",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "other active effects"
+  },
+  {
+   "fr": "avancé",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "advanced"
+  },
+  {
+   "fr": "bas",
+   "src": [
+    "qml/KbmBindings.qml"
+   ],
+   "en": "down"
+  },
+  {
+   "fr": "beauté",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "beauty"
+  },
+  {
+   "fr": "BooVI garde l'accès ouvert même sans stream : une icône reste près de l'horloge, et réduire la fenêtre l'y range. ton ami réveille la ps5 avec son lien.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "BooVI keeps the door open even with no stream: an icon stays by the clock, and minimizing the window tucks it there. your friend wakes the PS5 with their link."
+  },
+  {
+   "fr": "BooVI est en arrière-plan. clique ou appuie sur ps pour reprendre.",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "BooVI is in the background. click or press ps to resume."
+  },
+  {
+   "fr": "BooVI s'ouvre dans la zone de notification à l'ouverture de ta session, prêt à accueillir.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "BooVI opens in the notification area when you sign in, ready to welcome guests."
+  },
+  {
+   "fr": "BooVI · gpl-3.0 · basé sur veyra et chiaki-ng",
+   "src": [
+    "qml/HomePage.qml"
+   ],
+   "en": "BooVI · gpl-3.0 · based on veyra and chiaki-ng"
+  },
+  {
+   "fr": "bouton 4",
+   "src": [
+    "qml/KbmBindings.qml"
+   ],
+   "en": "button 4"
+  },
+  {
+   "fr": "bouton 5",
+   "src": [
+    "qml/KbmBindings.qml"
+   ],
+   "en": "button 5"
+  },
+  {
+   "fr": "branche une manette pour le calibrer.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "plug in a controller to calibrate it."
+  },
+  {
+   "fr": "branche-la en usb ou bluetooth",
+   "src": [
+    "qml/HomePage.qml"
+   ],
+   "en": "connect it over usb or bluetooth"
+  },
+  {
+   "fr": "branche-la en usb ou bluetooth.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "connect it over usb or bluetooth."
+  },
+  {
+   "fr": "brancher la carte",
+   "src": [
+    "qml/SetupCapture.qml"
+   ],
+   "en": "plug in the card"
+  },
+  {
+   "fr": "c'est fait",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "done"
+  },
+  {
+   "fr": "calibrage…",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "calibrating…"
+  },
+  {
+   "fr": "calibrer",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "calibrate"
+  },
+  {
+   "fr": "caméra",
+   "src": [
+    "qml/KbmBindings.qml"
+   ],
+   "en": "camera"
+  },
+  {
+   "fr": "capture",
+   "src": [
+    "qml/Sources.qml"
+   ],
+   "en": "capture"
+  },
+  {
+   "fr": "capture d'écran",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "screenshot"
+  },
+  {
+   "fr": "capturer clavier et souris au lancement",
+   "src": [
+    "qml/SetupPc.qml"
+   ],
+   "en": "capture keyboard and mouse at launch"
+  },
+  {
+   "fr": "captures",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "captures"
+  },
+  {
+   "fr": "captures d'écran",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "screenshots"
+  },
+  {
+   "fr": "carré",
+   "src": [
+    "qml/KbmBindings.qml"
+   ],
+   "en": "square"
+  },
+  {
+   "fr": "carte de capture",
+   "src": [
+    "qml/ConnectPage.qml",
+    "qml/Sources.qml"
+   ],
+   "en": "capture card"
+  },
+  {
+   "fr": "CARTE DE CAPTURE",
+   "src": [
+    "qml/Sources.qml"
+   ],
+   "en": "CAPTURE CARD"
+  },
+  {
+   "fr": "carte graphique",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "graphics card"
+  },
+  {
+   "fr": "casque, haut-parleurs ou écran.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "headset, speakers or display."
+  },
+  {
+   "fr": "ce pc est déjà associé.",
+   "src": [
+    "qml/SetupPc.qml"
+   ],
+   "en": "this pc is already paired."
+  },
+  {
+   "fr": "ce pc n'annonce pas d'encodage 10 bits.",
+   "src": [
+    "qml/SetupPc.qml"
+   ],
+   "en": "this pc does not report 10-bit encoding."
+  },
+  {
+   "fr": "ce qu'il reçoit au plus",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "the most they receive"
+  },
+  {
+   "fr": "ce que BooVI demande à la ps5.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "what BooVI asks the ps5 for."
+  },
+  {
+   "fr": "ce que le pc encode. l'upscaling se fait ici, après.",
+   "src": [
+    "qml/SetupPc.qml"
+   ],
+   "en": "what the pc encodes. upscaling happens here, afterwards."
+  },
+  {
+   "fr": "ce que reçoit l'invité",
+   "src": [
+    "qml/SettingsPage.qml",
+    "qml/SharePanel.qml"
+   ],
+   "en": "what the guest receives"
+  },
+  {
+   "fr": "ce que reçoit l'invité, au plus",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "what the guest receives, at most"
+  },
+  {
+   "fr": "ce que sa page affiche : « en attente de l'accord de … ».",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "what their page shows: “waiting for … to say yes”."
+  },
+  {
+   "fr": "ce que ta carte graphique fait du flux.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "what your graphics card does with the stream."
+  },
+  {
+   "fr": "ce que ta connexion envoie au plus vers ton ami, en Mb/s. sa page ne dépasse jamais ça, même en manuel à fond ; BooVI baisse aussi tout seul quand des paquets se perdent.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "the most your connection sends to your friend, in Mb/s. their page never goes past it, even set to the max by hand; BooVI also lowers it on its own when packets get lost."
+  },
+  {
+   "fr": "celle de windows",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "same as windows"
+  },
+  {
+   "fr": "cet écran ne le gère pas.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "this display does not support it."
+  },
+  {
+   "fr": "cette ps5 est déjà associée.",
+   "src": [
+    "qml/SetupPs5.qml"
+   ],
+   "en": "this ps5 is already paired."
+  },
+  {
+   "fr": "changer",
+   "src": [
+    "qml/SettingsPage.qml",
+    "qml/SetupPs5.qml"
+   ],
+   "en": "change"
+  },
+  {
+   "fr": "chaque image attend le rafraîchissement de l'écran.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "each frame waits for the display refresh."
+  },
+  {
+   "fr": "chercher",
+   "src": [
+    "qml/SetupPs5.qml"
+   ],
+   "en": "search"
+  },
+  {
+   "fr": "chercher un réglage",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "search settings"
+  },
+  {
+   "fr": "chiffré sur ce pc et envoyé quand la ps5 le demande.",
+   "src": [
+    "qml/SetupPs5.qml"
+   ],
+   "en": "encrypted on this pc and sent when the ps5 asks for it."
+  },
+  {
+   "fr": "choisie",
+   "src": [
+    "qml/SetupCapture.qml",
+    "qml/SetupPs5.qml"
+   ],
+   "en": "selected"
+  },
+  {
+   "fr": "choisir",
+   "src": [
+    "qml/UiSelect.qml"
+   ],
+   "en": "choose"
+  },
+  {
+   "fr": "choisir la console",
+   "src": [
+    "qml/SetupXbox.qml"
+   ],
+   "en": "choose the console"
+  },
+  {
+   "fr": "choisis le jeu, puis le réglage. tu pourras changer en jeu.",
+   "src": [
+    "qml/SetupPc.qml"
+   ],
+   "en": "pick the game, then the preset. you can change it in game."
+  },
+  {
+   "fr": "clavier-souris",
+   "src": [
+    "qml/SettingsPage.qml",
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "keyboard & mouse"
+  },
+  {
+   "fr": "clavier-souris actif · ctrl+m touches · ctrl+alt+maj+z libère",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "keyboard & mouse on · ctrl+m keys · ctrl+alt+shift+z releases"
+  },
+  {
+   "fr": "clavier-souris coupé · ctrl+m pour fermer",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "keyboard & mouse off · ctrl+m to close"
+  },
+  {
+   "fr": "clic droit",
+   "src": [
+    "qml/KbmBindings.qml"
+   ],
+   "en": "right click"
+  },
+  {
+   "fr": "clic gauche",
+   "src": [
+    "qml/KbmBindings.qml"
+   ],
+   "en": "left click"
+  },
+  {
+   "fr": "clic molette",
+   "src": [
+    "qml/KbmBindings.qml"
+   ],
+   "en": "middle click"
+  },
+  {
+   "fr": "clique sur associer : BooVI affiche un code à taper dans sunshine.",
+   "src": [
+    "qml/SetupPc.qml"
+   ],
+   "en": "click pair: BooVI shows a code to type into sunshine."
+  },
+  {
+   "fr": "code d'association",
+   "src": [
+    "qml/SetupPs5.qml"
+   ],
+   "en": "pairing code"
+  },
+  {
+   "fr": "code de connexion demandé",
+   "src": [
+    "qml/SetupPs5.qml"
+   ],
+   "en": "sign-in code required"
+  },
+  {
+   "fr": "code à taper sur microsoft.com/link",
+   "src": [
+    "qml/SetupXbox.qml"
+   ],
+   "en": "code to enter at microsoft.com/link"
+  },
+  {
+   "fr": "codec",
+   "src": [
+    "qml/SettingsPage.qml",
+    "qml/SetupPc.qml"
+   ],
+   "en": "codec"
+  },
+  {
+   "fr": "colle le lien d'un ami qui partage",
+   "src": [
+    "qml/HomePage.qml"
+   ],
+   "en": "paste the link of a friend who shares"
+  },
+  {
+   "fr": "colle le lien de ton ami",
+   "src": [
+    "qml/Sources.qml"
+   ],
+   "en": "paste your friend's link"
+  },
+  {
+   "fr": "coller",
+   "src": [
+    "qml/SetupJoin.qml"
+   ],
+   "en": "paste"
+  },
+  {
+   "fr": "coller le lien de ton ami",
+   "src": [
+    "qml/SetupJoin.qml"
+   ],
+   "en": "paste your friend's link"
+  },
+  {
+   "fr": "comment tu joues ?",
+   "src": [
+    "qml/SetupCapture.qml",
+    "qml/SetupJoin.qml",
+    "qml/SetupPc.qml",
+    "qml/SetupPs5.qml",
+    "qml/SetupXbox.qml"
+   ],
+   "en": "how do you play?"
+  },
+  {
+   "fr": "complet",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "full"
+  },
+  {
+   "fr": "compte",
+   "src": [
+    "qml/SetupXbox.qml"
+   ],
+   "en": "account"
+  },
+  {
+   "fr": "compte connecté",
+   "src": [
+    "qml/Sources.qml"
+   ],
+   "en": "account signed in"
+  },
+  {
+   "fr": "compte psn",
+   "src": [
+    "qml/SetupPs5.qml"
+   ],
+   "en": "psn account"
+  },
+  {
+   "fr": "compte relié, gardé chiffré sur ce pc.",
+   "src": [
+    "qml/SetupXbox.qml"
+   ],
+   "en": "account linked, kept encrypted on this pc."
+  },
+  {
+   "fr": "configurée",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "configured"
+  },
+  {
+   "fr": "confirmer",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "confirm"
+  },
+  {
+   "fr": "connexion sur la page de microsoft : BooVI ne voit jamais ton mot de passe. non officiel, ça peut casser sans prévenir.",
+   "src": [
+    "qml/SetupXbox.qml"
+   ],
+   "en": "you sign in on microsoft's page: BooVI never sees your password. unofficial, it can break without warning."
+  },
+  {
+   "fr": "connexion…",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "connecting…"
+  },
+  {
+   "fr": "conseillé",
+   "src": [
+    "qml/PresetChoices.qml"
+   ],
+   "en": "recommended"
+  },
+  {
+   "fr": "console",
+   "src": [
+    "qml/SetupXbox.qml"
+   ],
+   "en": "console"
+  },
+  {
+   "fr": "consoles",
+   "src": [
+    "qml/UiTopBar.qml"
+   ],
+   "en": "consoles"
+  },
+  {
+   "fr": "continue d'envoyer la manette quand tu cliques sur ton autre écran.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "keeps sending the controller when you click on your other screen."
+  },
+  {
+   "fr": "continuer",
+   "src": [
+    "qml/SetupCapture.qml",
+    "qml/SetupJoin.qml",
+    "qml/SetupPc.qml",
+    "qml/SetupPs5.qml",
+    "qml/SetupXbox.qml"
+   ],
+   "en": "continue"
+  },
+  {
+   "fr": "contraste",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "contrast"
+  },
+  {
+   "fr": "copier",
+   "src": [
+    "qml/SettingsPage.qml",
+    "qml/SharePanel.qml"
+   ],
+   "en": "copy"
+  },
+  {
+   "fr": "couleur",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "colour"
+  },
+  {
+   "fr": "couleurs",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "colours"
+  },
+  {
+   "fr": "coupe les mouvements de l'interface.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "turns off interface motion."
+  },
+  {
+   "fr": "couper",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "end"
+  },
+  {
+   "fr": "couper https",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "turn off https"
+  },
+  {
+   "fr": "couper l'invité",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "kick the guest"
+  },
+  {
+   "fr": "couper le son",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "mute"
+  },
+  {
+   "fr": "couper le son · %1 %",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "mute · %1 %"
+  },
+  {
+   "fr": "courbe",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "curve"
+  },
+  {
+   "fr": "courbe et zone morte du stick, à régler jeu par jeu.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "stick curve and deadzone, to tune game by game."
+  },
+  {
+   "fr": "croix",
+   "src": [
+    "qml/KbmBindings.qml"
+   ],
+   "en": "cross"
+  },
+  {
+   "fr": "croix directionnelle",
+   "src": [
+    "qml/KbmBindings.qml"
+   ],
+   "en": "d-pad"
+  },
+  {
+   "fr": "créer",
+   "src": [
+    "qml/KbmBindings.qml"
+   ],
+   "en": "create"
+  },
+  {
+   "fr": "créer le lien",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "create the link"
+  },
+  {
+   "fr": "crépuscule",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "dusk"
+  },
+  {
+   "fr": "ctrl+alt+maj+z libère, +q coupe le flux.",
+   "src": [
+    "qml/SetupPc.qml"
+   ],
+   "en": "ctrl+alt+shift+z releases, +q stops the stream."
+  },
+  {
+   "fr": "ctrl+m les affiche aussi pendant le stream.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "ctrl+m also shows them during the stream."
+  },
+  {
+   "fr": "ctrl+m pour fermer",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "ctrl+m to close"
+  },
+  {
+   "fr": "d'une image décodée chez l'hôte à son affichage ici : encodage, réseau, décodage, frame gen et présentation. horloges synchronisées.",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "from a picture decoded on the host to its display here: encoding, network, decoding, frame gen and presentation. clocks synchronised."
+  },
+  {
+   "fr": "demande ton accord",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "asks for your OK"
+  },
+  {
+   "fr": "demander mon accord",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "ask me first"
+  },
+  {
+   "fr": "depuis %1",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "since %1"
+  },
+  {
+   "fr": "dernier réglage gardé",
+   "src": [
+    "qml/Sources.qml"
+   ],
+   "en": "last setting kept"
+  },
+  {
+   "fr": "direct",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "direct"
+  },
+  {
+   "fr": "droite",
+   "src": [
+    "qml/KbmBindings.qml"
+   ],
+   "en": "right"
+  },
+  {
+   "fr": "du décodage d'une vraie image à sa présentation : attente de la frame gen et calcul gpu. le balayage de l'écran n'est pas mesuré ici.",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "from decoding a real picture to presenting it: frame gen wait and gpu work. the screen scan-out isn't measured here."
+  },
+  {
+   "fr": "du décodage d'une vraie image à son affichage : attente de la frame gen, calcul gpu, présentation et balayage de l'écran.",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "from decoding a real picture to showing it: frame gen wait, gpu work, present and screen scan-out."
+  },
+  {
+   "fr": "durée",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "length"
+  },
+  {
+   "fr": "débit",
+   "src": [
+    "qml/SharePanel.qml",
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "bitrate"
+  },
+  {
+   "fr": "débit demandé",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "requested bitrate"
+  },
+  {
+   "fr": "débit max",
+   "src": [
+    "qml/SetupPc.qml"
+   ],
+   "en": "max bitrate"
+  },
+  {
+   "fr": "débruitage",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "denoise"
+  },
+  {
+   "fr": "déchirure",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "tearing"
+  },
+  {
+   "fr": "décodage",
+   "src": [
+    "qml/SettingsPage.qml",
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "decode"
+  },
+  {
+   "fr": "décodage logiciel sur le processeur : le décodeur matériel du gpu n'a pas pu être utilisé.",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "software decoding on the processor: the GPU's hardware decoder could not be used."
+  },
+  {
+   "fr": "décodeur",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "decoder"
+  },
+  {
+   "fr": "décodée → envoyée : réelles %1 · fluide %2. les modes fluides attendent les images générées par ta carte (15 à 30 ms de plus).",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "decoded → sent: real %1 · smooth %2. smooth modes wait for the frames your GPU generates (15 to 30 ms more)."
+  },
+  {
+   "fr": "définition",
+   "src": [
+    "qml/SettingsPage.qml",
+    "qml/SharePanel.qml"
+   ],
+   "en": "resolution"
+  },
+  {
+   "fr": "déjà associée",
+   "src": [
+    "qml/SetupPs5.qml"
+   ],
+   "en": "already paired"
+  },
+  {
+   "fr": "délai gpu",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "gpu delay"
+  },
+  {
+   "fr": "délai total",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "total delay"
+  },
+  {
+   "fr": "démarrer avec windows",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "start with Windows"
+  },
+  {
+   "fr": "démarrer le partage",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "start sharing"
+  },
+  {
+   "fr": "déplacement",
+   "src": [
+    "qml/KbmBindings.qml"
+   ],
+   "en": "movement"
+  },
+  {
+   "fr": "détection seulement sur carte nvidia.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "detection on nvidia cards only."
+  },
+  {
+   "fr": "effacer",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "clear"
+  },
+  {
+   "fr": "elle est peut-être encore reliée à la ps5. branche-la en usb, ou éteins-la, maintiens create puis ps jusqu'à ce que la barre lumineuse clignote, et ajoute-la dans le bluetooth de windows.",
+   "src": [
+    "qml/PadNotice.qml"
+   ],
+   "en": "it may still be connected to the PS5. plug it in over USB, or turn it off, hold Create then PS until the light bar blinks, and add it in Windows Bluetooth settings."
+  },
+  {
+   "fr": "en attente de l'invité",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "waiting for the guest"
+  },
+  {
+   "fr": "en cours",
+   "src": [
+    "qml/SetupPc.qml"
+   ],
+   "en": "in progress"
+  },
+  {
+   "fr": "en filaire, 300 à 500 Mb/s passent. baisse en wifi si ça saccade.",
+   "src": [
+    "qml/SetupPc.qml"
+   ],
+   "en": "wired, 300 to 500 Mb/s get through. lower it on wi-fi if it stutters."
+  },
+  {
+   "fr": "en jeu",
+   "src": [
+    "qml/Sources.qml"
+   ],
+   "en": "in game"
+  },
+  {
+   "fr": "en ligne",
+   "src": [
+    "qml/SetupPc.qml",
+    "qml/Sources.qml"
+   ],
+   "en": "online"
+  },
+  {
+   "fr": "en remote play, la ps5 ne reçoit qu'une manette : la souris devient un stick, pas une vraie souris. au-delà du plein régime, c'est la vitesse max du jeu qui limite : monte aussi la sensibilité dans le jeu. ctrl+m montre les touches, ctrl+alt+maj+z libère la souris.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "over remote play the ps5 only accepts a controller: the mouse becomes a stick, not a real mouse. past full tilt, the game's max speed is the limit: raise the sensitivity in the game too. ctrl+m shows the keys, ctrl+alt+shift+z releases the mouse."
+  },
+  {
+   "fr": "enregistrements",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "recordings"
+  },
+  {
+   "fr": "enregistrer",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "record"
+  },
+  {
+   "fr": "enregistrer, garder les dernières secondes, prendre une image.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "record, keep the last seconds, take a picture."
+  },
+  {
+   "fr": "entre sans demander",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "comes in without asking"
+  },
+  {
+   "fr": "envoi max",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "max upload"
+  },
+  {
+   "fr": "envoyer",
+   "src": [
+    "qml/SetupPs5.qml"
+   ],
+   "en": "send"
+  },
+  {
+   "fr": "expiré",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "expired"
+  },
+  {
+   "fr": "fermer",
+   "src": [
+    "qml/PadNotice.qml",
+    "qml/SharePanel.qml",
+    "qml/StreamOverlay.qml",
+    "qml/UiWindowButtons.qml"
+   ],
+   "en": "close"
+  },
+  {
+   "fr": "file d'attente courte",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "short queue"
+  },
+  {
+   "fr": "fixe",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "fixed"
+  },
+  {
+   "fr": "fluide",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "smooth"
+  },
+  {
+   "fr": "fluide 120",
+   "src": [
+    "qml/SettingsPage.qml",
+    "qml/SharePanel.qml"
+   ],
+   "en": "smooth 120"
+  },
+  {
+   "fr": "fluide 60",
+   "src": [
+    "qml/SettingsPage.qml",
+    "qml/SharePanel.qml"
+   ],
+   "en": "smooth 60"
+  },
+  {
+   "fr": "fluidité",
+   "src": [
+    "qml/StreamPresets.qml"
+   ],
+   "en": "smoothness"
+  },
+  {
+   "fr": "fluidité max",
+   "src": [
+    "qml/PresetChoices.qml"
+   ],
+   "en": "max smoothness"
+  },
+  {
+   "fr": "frame generation",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "frame generation"
+  },
+  {
+   "fr": "g-sync actif",
+   "src": [
+    "qml/HomePage.qml"
+   ],
+   "en": "g-sync on"
+  },
+  {
+   "fr": "g-sync prêt",
+   "src": [
+    "qml/HomePage.qml"
+   ],
+   "en": "g-sync ready"
+  },
+  {
+   "fr": "gamepp détecté",
+   "src": [
+    "qml/Main.qml"
+   ],
+   "en": "gamepp detected"
+  },
+  {
+   "fr": "garde les dernières secondes en mémoire. %1 les enregistre.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "keeps the last seconds in memory. %1 saves them."
+  },
+  {
+   "fr": "garder le replay",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "save the replay"
+  },
+  {
+   "fr": "gardé : %1",
+   "src": [
+    "qml/SetupJoin.qml"
+   ],
+   "en": "saved: %1"
+  },
+  {
+   "fr": "gauche",
+   "src": [
+    "qml/KbmBindings.qml"
+   ],
+   "en": "left"
+  },
+  {
+   "fr": "gyro · prête",
+   "src": [
+    "qml/HomePage.qml"
+   ],
+   "en": "gyro · ready"
+  },
+  {
+   "fr": "gyro · touchpad · vibrations",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "gyro · touchpad · rumble"
+  },
+  {
+   "fr": "gyroscope",
+   "src": [
+    "qml/KbmBindings.qml",
+    "qml/SettingsPage.qml"
+   ],
+   "en": "gyroscope"
+  },
+  {
+   "fr": "gâchettes",
+   "src": [
+    "qml/KbmBindings.qml"
+   ],
+   "en": "triggers"
+  },
+  {
+   "fr": "h.265 donne une meilleure image au même débit.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "h.265 gives a better picture at the same bitrate."
+  },
+  {
+   "fr": "haut",
+   "src": [
+    "qml/KbmBindings.qml"
+   ],
+   "en": "up"
+  },
+  {
+   "fr": "hdr actif",
+   "src": [
+    "qml/HomePage.qml"
+   ],
+   "en": "hdr on"
+  },
+  {
+   "fr": "hdr et infos à l'écran pendant le jeu.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "hdr and on-screen info while playing."
+  },
+  {
+   "fr": "hdr10 convient à presque tous les écrans.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "hdr10 suits almost every display."
+  },
+  {
+   "fr": "heures permises",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "allowed hours"
+  },
+  {
+   "fr": "hier %1",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "yesterday %1"
+  },
+  {
+   "fr": "hors ligne",
+   "src": [
+    "qml/SetupPc.qml"
+   ],
+   "en": "offline"
+  },
+  {
+   "fr": "hôte %1",
+   "src": [
+    "qml/Sources.qml"
+   ],
+   "en": "host %1"
+  },
+  {
+   "fr": "hôte → écran",
+   "src": [
+    "qml/SharePanel.qml",
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "host → screen"
+  },
+  {
+   "fr": "identifiant enregistré sur ce pc",
+   "src": [
+    "qml/SetupPs5.qml"
+   ],
+   "en": "id saved on this pc"
+  },
+  {
+   "fr": "il joue",
+   "src": [
+    "qml/GuestChip.qml"
+   ],
+   "en": "playing"
+  },
+  {
+   "fr": "il ne s'affiche qu'une fois : envoie-le en privé. il ouvre la page dans un navigateur, ou se colle dans « rejoindre un partage » de BooVI.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "it shows only once: send it privately. it opens the page in a browser, or pastes into BooVI's “join a share”."
+  },
+  {
+   "fr": "il partage depuis BooVI et t'envoie un lien. ici, c'est ta carte graphique qui fait la super résolution et la frame gen, à la fréquence de ton écran.",
+   "src": [
+    "qml/SetupJoin.qml"
+   ],
+   "en": "they share from BooVI and send you a link. here, your own graphics card does the super resolution and the frame gen, at your screen's refresh rate."
+  },
+  {
+   "fr": "il regarde",
+   "src": [
+    "qml/GuestChip.qml"
+   ],
+   "en": "watching"
+  },
+  {
+   "fr": "il regarde ta partie",
+   "src": [
+    "qml/Main.qml"
+   ],
+   "en": "they watch your game"
+  },
+  {
+   "fr": "il reçoit : %1",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "they receive: %1"
+  },
+  {
+   "fr": "IMAGE",
+   "src": [
+    "qml/HomePage.qml"
+   ],
+   "en": "PICTURE"
+  },
+  {
+   "fr": "image",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "picture"
+  },
+  {
+   "fr": "image native, pas de frame gen. la latence la plus basse, pour les jeux compétitifs.",
+   "src": [
+    "qml/PresetChoices.qml"
+   ],
+   "en": "native picture, no frame gen. the lowest latency, for competitive games."
+  },
+  {
+   "fr": "images différentes par seconde dans le flux. un jeu à 30 i/s arrive en double dans un flux à 60 : les doublons sont retirés avant la frame gen.",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "distinct pictures per second in the stream. a 30 fps game arrives twice in a 60 fps stream: the copies are removed before frame gen."
+  },
+  {
+   "fr": "images par seconde",
+   "src": [
+    "qml/SettingsPage.qml",
+    "qml/SetupCapture.qml",
+    "qml/SetupPc.qml"
+   ],
+   "en": "frames per second"
+  },
+  {
+   "fr": "images reçues et affichées, en haut à droite. réduit, il ne montre que les i/s.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "frames received and shown, top right. compact shows only the fps."
+  },
+  {
+   "fr": "images réelles",
+   "src": [
+    "qml/SettingsPage.qml",
+    "qml/SharePanel.qml",
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "real pictures"
+  },
+  {
+   "fr": "inactif",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "off"
+  },
+  {
+   "fr": "installe sunshine sur le pc à streamer, sur le même réseau. il apparaît ici tout seul.",
+   "src": [
+    "qml/SetupPc.qml"
+   ],
+   "en": "install sunshine on the pc to stream from, on the same network. it shows up here by itself."
+  },
+  {
+   "fr": "interface",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "interface"
+  },
+  {
+   "fr": "inviter un ami",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "invite a friend"
+  },
+  {
+   "fr": "invité : %1 · accès permanent",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "guest: %1 · personal access"
+  },
+  {
+   "fr": "invité : application BooVI",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "guest: BooVI app"
+  },
+  {
+   "fr": "invité connecté",
+   "src": [
+    "qml/GuestChip.qml",
+    "qml/SharePanel.qml"
+   ],
+   "en": "guest connected"
+  },
+  {
+   "fr": "invité inactif",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "idle guest"
+  },
+  {
+   "fr": "invités",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "guests"
+  },
+  {
+   "fr": "jamais",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "never"
+  },
+  {
+   "fr": "jamais plus d'images que ton écran ne peut en montrer.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "never more frames than your display can show."
+  },
+  {
+   "fr": "jeu",
+   "src": [
+    "qml/SetupPc.qml"
+   ],
+   "en": "game"
+  },
+  {
+   "fr": "jeu à 30 i/s sur la ps5",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "30 fps games on the ps5"
+  },
+  {
+   "fr": "jouer",
+   "src": [
+    "qml/HomePage.qml",
+    "qml/SetupCapture.qml",
+    "qml/SetupJoin.qml",
+    "qml/SetupPc.qml",
+    "qml/SetupPs5.qml",
+    "qml/SetupXbox.qml"
+   ],
+   "en": "play"
+  },
+  {
+   "fr": "jouer à la souris, convertie en manette.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "play with the mouse, turned into a controller."
+  },
+  {
+   "fr": "journaux",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "logs"
+  },
+  {
+   "fr": "jusqu'au %1",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "until %1"
+  },
+  {
+   "fr": "jusqu'à la fermeture de BooVI. aussi dans la barre du stream.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "until BooVI closes. also in the stream toolbar."
+  },
+  {
+   "fr": "l'apparence de BooVI.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "how BooVI looks."
+  },
+  {
+   "fr": "l'hôte t'envoie ses vraies images. la frame gen et la super résolution tournent ici : dlss sur rtx 40 et 50, fsr 3.1 sur toute carte dx12. tu pourras changer en jeu.",
+   "src": [
+    "qml/SetupJoin.qml"
+   ],
+   "en": "the host sends you its real pictures. frame gen and super resolution run here: dlss on rtx 40 and 50, fsr 3.1 on any dx12 card. you can change it in game."
+  },
+  {
+   "fr": "l'invité",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "the guest"
+  },
+  {
+   "fr": "l'invité joue",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "guest plays"
+  },
+  {
+   "fr": "l'invité n'a pas de manette : sa page lui montre comment en brancher une.",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "the guest has no controller: their page shows them how to connect one."
+  },
+  {
+   "fr": "l'invité se connecte…",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "the guest is connecting…"
+  },
+  {
+   "fr": "l'écran",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "the display"
+  },
+  {
+   "fr": "l'écran du pc doit être en hdr, codec hevc ou av1.",
+   "src": [
+    "qml/SetupPc.qml"
+   ],
+   "en": "the pc's display must be in hdr, codec hevc or av1."
+  },
+  {
+   "fr": "l'écran le gère, mais pas dans ce mode d'affichage.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "the display supports it, but not in this display mode."
+  },
+  {
+   "fr": "l'écran où s'ouvre le stream.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "the display the stream opens on."
+  },
+  {
+   "fr": "l'écran suit le rythme des images.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "the display follows the frame pace."
+  },
+  {
+   "fr": "la carte envoie ce que la console sort. ta carte graphique fait le reste. tu pourras changer en jeu.",
+   "src": [
+    "qml/SetupCapture.qml"
+   ],
+   "en": "the card sends what the console outputs. your graphics card does the rest. you can change it in game."
+  },
+  {
+   "fr": "la console se réveille et il joue seul",
+   "src": [
+    "qml/Main.qml"
+   ],
+   "en": "the console wakes up and they play alone"
+  },
+  {
+   "fr": "la manette",
+   "src": [
+    "qml/SettingsPage.qml",
+    "qml/SharePanel.qml"
+   ],
+   "en": "the pad"
+  },
+  {
+   "fr": "la manette que la console reçoit.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "the controller the console receives."
+  },
+  {
+   "fr": "la ps5 décide du débit réel ; c'est une demande, pas une garantie.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "the ps5 decides the real bitrate; it's a request, not a guarantee."
+  },
+  {
+   "fr": "la ps5 envoie au maximum du 1080p à 60 images par seconde. ta carte graphique fait le reste. tu pourras changer en jeu.",
+   "src": [
+    "qml/SetupPs5.qml"
+   ],
+   "en": "the ps5 sends at most 1080p at 60 frames per second. your graphics card does the rest. you can change it in game."
+  },
+  {
+   "fr": "la ps5 envoie chaque image en double. les doublons sont retirés : fluide garde la sortie choisie (x2 devient x4), réactif garde le multiplicateur et raccourcit l'attente d'environ 8 ms.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "the ps5 sends every picture twice. the copies are removed: smooth keeps the chosen output (x2 becomes x4), responsive keeps the multiplier and cuts the wait by about 8 ms."
+  },
+  {
+   "fr": "la ps5 ne reçoit aucun bouton. un badge le rappelle en jeu.",
+   "src": [
+    "qml/SetupPs5.qml"
+   ],
+   "en": "the ps5 receives no buttons. a badge reminds you in game."
+  },
+  {
+   "fr": "la ps5 ne reçoit aucun bouton. un badge le rappelle pendant le stream.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "the ps5 receives no buttons. a badge reminds you during the stream."
+  },
+  {
+   "fr": "la sortie choisie est débranchée : le son passe par celle de windows.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "the chosen output is unplugged: sound goes through windows' default."
+  },
+  {
+   "fr": "la sortie hdmi de la console va dans la carte, la carte dans ce pc en usb ou pcie.",
+   "src": [
+    "qml/SetupCapture.qml"
+   ],
+   "en": "the console's hdmi output goes into the card, the card into this pc over usb or pcie."
+  },
+  {
+   "fr": "la souris pilote",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "the mouse drives"
+  },
+  {
+   "fr": "la taille de ton écran est le bon choix.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "your display's size is the right choice."
+  },
+  {
+   "fr": "la visite se termine quand sa manette ne bouge plus depuis…",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "the visit ends when their controller has been still for…"
+  },
+  {
+   "fr": "la xbox envoie du 1080p. ta carte graphique fait le reste. tu pourras changer en jeu.",
+   "src": [
+    "qml/SetupXbox.qml"
+   ],
+   "en": "the xbox sends 1080p. your graphics card does the rest. you can change it in game."
+  },
+  {
+   "fr": "langue",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "language"
+  },
+  {
+   "fr": "latence",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "latency"
+  },
+  {
+   "fr": "latence min",
+   "src": [
+    "qml/PresetChoices.qml"
+   ],
+   "en": "min latency"
+  },
+  {
+   "fr": "le 5.1 du pc ou de la xbox, mixé pour un casque. la ps5 envoie déjà de la stéréo.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "5.1 from the pc or the xbox, mixed for a headset. the ps5 already sends stereo."
+  },
+  {
+   "fr": "le chemin le plus court entre le flux et ton écran.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "the shortest path between the stream and your display."
+  },
+  {
+   "fr": "le clavier et la souris marchent aussi.",
+   "src": [
+    "qml/PadNotice.qml"
+   ],
+   "en": "keyboard and mouse work too."
+  },
+  {
+   "fr": "le code de ton compte ps5, pas celui d'association.",
+   "src": [
+    "qml/SetupPs5.qml"
+   ],
+   "en": "your ps5 account's code, not the pairing one."
+  },
+  {
+   "fr": "le flux s'affiche à sa taille d'origine.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "the stream shows at its original size."
+  },
+  {
+   "fr": "le gyroscope ne sert que dans les jeux qui proposent la visée au gyro.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "the gyroscope only helps in games that offer gyro aiming."
+  },
+  {
+   "fr": "le hdr s'enregistre toujours en hevc 10 bits.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "hdr always records as 10-bit hevc."
+  },
+  {
+   "fr": "le lien",
+   "src": [
+    "qml/SetupJoin.qml"
+   ],
+   "en": "the link"
+  },
+  {
+   "fr": "le lien contient ?t= ou ?a= suivi d'un code",
+   "src": [
+    "qml/SetupJoin.qml"
+   ],
+   "en": "the link holds ?t= or ?a= followed by a code"
+  },
+  {
+   "fr": "le lien de %1",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "%1's link"
+  },
+  {
+   "fr": "le maximum que la ps5 envoie en remote play.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "the most the ps5 sends over remote play."
+  },
+  {
+   "fr": "le pc et la xbox gardent leurs réglages de flux dans consoles.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "the pc and the xbox keep their stream settings in consoles."
+  },
+  {
+   "fr": "le pc ne répond pas : allume-le ou réveille-le, puis actualise.",
+   "src": [
+    "qml/SetupPc.qml"
+   ],
+   "en": "the pc is not answering: turn it on or wake it, then refresh."
+  },
+  {
+   "fr": "le plein écran est coupé pour cette session : la mémoire vidéo ne cessait de grimper.",
+   "src": [
+    "qml/Main.qml"
+   ],
+   "en": "fullscreen is off for this session: video memory kept climbing."
+  },
+  {
+   "fr": "le plus que ton ami peut choisir. images réelles : la latence la plus basse. fluide : les images que ta carte génère, avec 15 à 30 ms d'attente en plus. sa page choisit dans cette limite, seule selon sa connexion ou à la main.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "the most your friend can pick. real frames: the lowest latency. smooth: the frames your GPU generates, with 15 to 30 ms more wait. their page picks within this limit, on its own from their connection or by hand."
+  },
+  {
+   "fr": "le plus rapide, avec des déchirures possibles sans g-sync.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "the fastest, with possible tearing without g-sync."
+  },
+  {
+   "fr": "le réseau et l'encodage par la console ne sont pas comptés.",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "the network and the console's encoding aren't counted."
+  },
+  {
+   "fr": "le son",
+   "src": [
+    "qml/SetupCapture.qml"
+   ],
+   "en": "sound"
+  },
+  {
+   "fr": "le son arrive par la carte. choisis son entrée pour l'entendre et l'enregistrer.",
+   "src": [
+    "qml/SetupCapture.qml"
+   ],
+   "en": "sound comes through the card. choose its input to hear and record it."
+  },
+  {
+   "fr": "le son attend l'image : %1 ms en ce moment.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "sound waits for the picture: %1 ms right now."
+  },
+  {
+   "fr": "le son attend l'image le temps qu'elle soit traitée.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "sound waits while the picture is processed."
+  },
+  {
+   "fr": "le son part dès qu'il arrive, même en avance sur l'image.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "sound plays as soon as it arrives, even ahead of the picture."
+  },
+  {
+   "fr": "le stream continue derrière. reprends quand tu veux.",
+   "src": [
+    "qml/HomePage.qml"
+   ],
+   "en": "the stream keeps going behind. resume whenever you like."
+  },
+  {
+   "fr": "le tunnel cloudflare s'est arrêté",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "the cloudflare tunnel stopped"
+  },
+  {
+   "fr": "le viseur, le texte et la minimap restent nets au lieu d'être dédoublés par la frame gen.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "the crosshair, text and minimap stay sharp instead of being doubled by frame gen."
+  },
+  {
+   "fr": "lecture des formats",
+   "src": [
+    "qml/SetupCapture.qml"
+   ],
+   "en": "reading formats"
+  },
+  {
+   "fr": "les conditions de sony ne prévoient pas qu'une autre personne joue à distance sur ton compte.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "Sony's terms do not provide for someone else playing remotely on your account."
+  },
+  {
+   "fr": "lien http de ton tailnet : l'image passe, mais les navigateurs ne lisent la manette qu'en https.",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "http link in your tailnet: the picture plays, but browsers only read a pad over https."
+  },
+  {
+   "fr": "lien https de ton tailnet : ton ami doit y être, ou tu lui partages ce pc dans tailscale.",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "https link in your tailnet: your friend must be in it, or you share this pc with them in tailscale."
+  },
+  {
+   "fr": "lien https sur %1 par un tunnel cloudflare : ton ami n'installe rien. le tunnel s'ouvre avec le partage et se ferme avec lui.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "https link on %1 through a cloudflare tunnel: your friend installs nothing. the tunnel opens with sharing and closes with it."
+  },
+  {
+   "fr": "lien rapide",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "quick link"
+  },
+  {
+   "fr": "lien reconnu · hôte %1",
+   "src": [
+    "qml/SetupJoin.qml"
+   ],
+   "en": "link recognised · host %1"
+  },
+  {
+   "fr": "lien trycloudflare.com tiré au hasard à chaque partage, sans compte : ton ami n'installe rien.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "a random trycloudflare.com link for each share, no account: your friend installs nothing."
+  },
+  {
+   "fr": "limite d'images",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "frame limit"
+  },
+  {
+   "fr": "logiciel",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "software"
+  },
+  {
+   "fr": "luminosité",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "brightness"
+  },
+  {
+   "fr": "luminosité, contraste et saturation de l'image.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "brightness, contrast and saturation of the picture."
+  },
+  {
+   "fr": "MANETTE",
+   "src": [
+    "qml/HomePage.qml"
+   ],
+   "en": "CONTROLLER"
+  },
+  {
+   "fr": "manette",
+   "src": [
+    "qml/SettingsPage.qml",
+    "qml/SetupJoin.qml",
+    "qml/SetupPc.qml",
+    "qml/SetupXbox.qml",
+    "qml/SharePanel.qml",
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "controller"
+  },
+  {
+   "fr": "manette branchée",
+   "src": [
+    "qml/HomePage.qml"
+   ],
+   "en": "controller connected"
+  },
+  {
+   "fr": "manette connectée · %1",
+   "src": [
+    "qml/PadNotice.qml"
+   ],
+   "en": "controller connected · %1"
+  },
+  {
+   "fr": "manette de l'invité : %1",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "guest's controller: %1"
+  },
+  {
+   "fr": "manette en arrière-plan",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "controller in the background"
+  },
+  {
+   "fr": "manette en pause",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "controller paused"
+  },
+  {
+   "fr": "manette → ps5",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "pad → ps5"
+  },
+  {
+   "fr": "manuel",
+   "src": [
+    "qml/SettingsPage.qml",
+    "qml/SharePanel.qml"
+   ],
+   "en": "manual"
+  },
+  {
+   "fr": "masquer",
+   "src": [
+    "qml/SettingsPage.qml",
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "hide"
+  },
+  {
+   "fr": "masquer les réglages du flux",
+   "src": [
+    "qml/SetupPc.qml"
+   ],
+   "en": "hide stream settings"
+  },
+  {
+   "fr": "masquer les stats",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "hide stats"
+  },
+  {
+   "fr": "masqué",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "hidden"
+  },
+  {
+   "fr": "MaxCLL (nit)",
+   "src": [
+    "qml/ProDisplayPanel.qml"
+   ],
+   "en": "MaxCLL (nit)"
+  },
+  {
+   "fr": "MaxFALL (nit)",
+   "src": [
+    "qml/ProDisplayPanel.qml"
+   ],
+   "en": "MaxFALL (nit)"
+  },
+  {
+   "fr": "micro",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "mic"
+  },
+  {
+   "fr": "modifier",
+   "src": [
+    "qml/HomePage.qml"
+   ],
+   "en": "edit"
+  },
+  {
+   "fr": "moi seul",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "only me"
+  },
+  {
+   "fr": "moins d'images en attente avant l'écran.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "fewer frames waiting before the display."
+  },
+  {
+   "fr": "molette ↑",
+   "src": [
+    "qml/KbmBindings.qml"
+   ],
+   "en": "wheel ↑"
+  },
+  {
+   "fr": "molette ↓",
+   "src": [
+    "qml/KbmBindings.qml"
+   ],
+   "en": "wheel ↓"
+  },
+  {
+   "fr": "mon domaine",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "my domain"
+  },
+  {
+   "fr": "mouvements rapides : privilégier la netteté",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "fast motion: favour sharpness"
+  },
+  {
+   "fr": "mélangé au son du jeu.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "mixed into the game sound."
+  },
+  {
+   "fr": "méthode",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "method"
+  },
+  {
+   "fr": "méthode de frame gen",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "frame gen method"
+  },
+  {
+   "fr": "même compte sur la xbox, et fonctions à distance activées dans appareils et connexions.",
+   "src": [
+    "qml/SetupXbox.qml"
+   ],
+   "en": "same account on the xbox, and remote features on in devices & connections."
+  },
+  {
+   "fr": "natif",
+   "src": [
+    "qml/StreamPresets.qml"
+   ],
+   "en": "native"
+  },
+  {
+   "fr": "native",
+   "src": [
+    "qml/SettingsPage.qml",
+    "qml/SharePanel.qml"
+   ],
+   "en": "native"
+  },
+  {
+   "fr": "native : la sortie de ta super résolution (1440p par exemple), sans copie de plus. 720p demande deux fois moins de débit que 1080p.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "native: your super resolution's output (1440p for example), with no extra copy. 720p needs half the bitrate of 1080p."
+  },
+  {
+   "fr": "native · %1p",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "native · %1p"
+  },
+  {
+   "fr": "neutre",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "neutral"
+  },
+  {
+   "fr": "non",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "no"
+  },
+  {
+   "fr": "non standard",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "non-standard"
+  },
+  {
+   "fr": "nouveau lien",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "new link"
+  },
+  {
+   "fr": "nvidia reflex",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "nvidia reflex"
+  },
+  {
+   "fr": "occupé",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "busy"
+  },
+  {
+   "fr": "occupé si tu joues",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "busy while you play"
+  },
+  {
+   "fr": "off",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "off"
+  },
+  {
+   "fr": "opacité des stats",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "stats opacity"
+  },
+  {
+   "fr": "opacité · %1 %",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "opacity · %1 %"
+  },
+  {
+   "fr": "options",
+   "src": [
+    "qml/KbmBindings.qml"
+   ],
+   "en": "options"
+  },
+  {
+   "fr": "oublier",
+   "src": [
+    "qml/SetupJoin.qml",
+    "qml/SetupPc.qml",
+    "qml/SetupPs5.qml"
+   ],
+   "en": "forget"
+  },
+  {
+   "fr": "ouverture du tunnel…",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "opening the tunnel…"
+  },
+  {
+   "fr": "ouvre sunshine sur le pc (https://ip-du-pc:47990), onglet pin, et tape ce code.",
+   "src": [
+    "qml/SetupPc.qml"
+   ],
+   "en": "open sunshine on the pc (https://pc-ip:47990), pin tab, and type this code."
+  },
+  {
+   "fr": "ouvrir",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "open"
+  },
+  {
+   "fr": "ouvrir la page",
+   "src": [
+    "qml/SetupXbox.qml"
+   ],
+   "en": "open the page"
+  },
+  {
+   "fr": "ouvrir le dossier",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "open the folder"
+  },
+  {
+   "fr": "overlay nvidia détecté",
+   "src": [
+    "qml/Main.qml"
+   ],
+   "en": "nvidia overlay detected"
+  },
+  {
+   "fr": "où sort le son du stream, et à quel niveau.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "where the stream's sound goes, and how loud."
+  },
+  {
+   "fr": "partage",
+   "src": [
+    "qml/ConnectPage.qml",
+    "qml/SettingsPage.qml",
+    "qml/Sources.qml"
+   ],
+   "en": "sharing"
+  },
+  {
+   "fr": "PARTAGE BOOVI",
+   "src": [
+    "qml/Sources.qml"
+   ],
+   "en": "BOOVI SHARE"
+  },
+  {
+   "fr": "partager",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "share"
+  },
+  {
+   "fr": "partager le stream",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "share the stream"
+  },
+  {
+   "fr": "pas dans la liste ? adresse ip",
+   "src": [
+    "qml/SetupPc.qml",
+    "qml/SetupPs5.qml"
+   ],
+   "en": "not listed? ip address"
+  },
+  {
+   "fr": "pavé tactile",
+   "src": [
+    "qml/KbmBindings.qml"
+   ],
+   "en": "touchpad"
+  },
+  {
+   "fr": "pc",
+   "src": [
+    "qml/Sources.qml"
+   ],
+   "en": "pc"
+  },
+  {
+   "fr": "perdues",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "lost"
+  },
+  {
+   "fr": "performance",
+   "src": [
+    "qml/StreamPresets.qml"
+   ],
+   "en": "performance"
+  },
+  {
+   "fr": "perte",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "loss"
+  },
+  {
+   "fr": "ping",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "ping"
+  },
+  {
+   "fr": "plein écran",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "fullscreen"
+  },
+  {
+   "fr": "plus discret par-dessus le jeu. au survol, elles repassent à 100 %.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "quieter over the game. on hover they go back to 100 %."
+  },
+  {
+   "fr": "plus fluide, mais chaque vraie image attend un peu. à couper dans les jeux compétitifs.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "smoother, but each real frame waits a little. turn it off in competitive games."
+  },
+  {
+   "fr": "plus tard",
+   "src": [
+    "qml/Main.qml"
+   ],
+   "en": "later"
+  },
+  {
+   "fr": "pose la manette à plat pendant 2 secondes.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "lay the controller flat for 2 seconds."
+  },
+  {
+   "fr": "pour que son affichage reste sur l'image du jeu et pas sur l'interface, BooVI doit redémarrer. le stream en cours s'arrête.",
+   "src": [
+    "qml/Main.qml"
+   ],
+   "en": "to keep its display on the game picture and off the interface, BooVI has to restart. the current stream stops."
+  },
+  {
+   "fr": "processeur",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "processor"
+  },
+  {
+   "fr": "protéger le viseur et le hud",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "protect the crosshair and hud"
+  },
+  {
+   "fr": "préréglage",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "preset"
+  },
+  {
+   "fr": "présentation",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "presentation"
+  },
+  {
+   "fr": "prêt à jouer.",
+   "src": [
+    "qml/HomePage.qml"
+   ],
+   "en": "ready to play."
+  },
+  {
+   "fr": "prête",
+   "src": [
+    "qml/HomePage.qml"
+   ],
+   "en": "ready"
+  },
+  {
+   "fr": "qualité",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "quality"
+  },
+  {
+   "fr": "quand c'est la visite qui a réveillé la console, après le départ de ton ami.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "when the visit woke the console, after your friend leaves."
+  },
+  {
+   "fr": "quand il se connecte",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "when they connect"
+  },
+  {
+   "fr": "quand la caméra tourne, l'image suit son mouvement sans lignes. sur un geste trop brusque, la vraie image reste affichée plutôt qu'une image ratée.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "when the camera turns, the picture follows its motion without lines. on a move too sudden, the real frame stays on screen instead of a broken one."
+  },
+  {
+   "fr": "qui joue",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "who plays"
+  },
+  {
+   "fr": "qui joue quand un invité est là. modifiable pendant la partie, depuis « partager ».",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "who plays while a guest is here. you can change it during the game, from “share”."
+  },
+  {
+   "fr": "quitter le plein écran",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "exit fullscreen"
+  },
+  {
+   "fr": "quitter le stream",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "leave the stream"
+  },
+  {
+   "fr": "raccourcis : %1 capture d'écran · %2 enregistrer · %3 replay",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "shortcuts: %1 screenshot · %2 record · %3 replay"
+  },
+  {
+   "fr": "recherche sur le réseau",
+   "src": [
+    "qml/SetupPc.qml"
+   ],
+   "en": "searching the network"
+  },
+  {
+   "fr": "redémarrer",
+   "src": [
+    "qml/Main.qml"
+   ],
+   "en": "restart"
+  },
+  {
+   "fr": "refus auto dans %1 s",
+   "src": [
+    "qml/Main.qml"
+   ],
+   "en": "auto-refused in %1 s"
+  },
+  {
+   "fr": "refuser",
+   "src": [
+    "qml/Main.qml",
+    "qml/SettingsPage.qml"
+   ],
+   "en": "refuse"
+  },
+  {
+   "fr": "regarde si tu joues",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "watches while you play"
+  },
+  {
+   "fr": "regarder",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "watch"
+  },
+  {
+   "fr": "regarder seulement",
+   "src": [
+    "qml/SettingsPage.qml",
+    "qml/SetupPs5.qml",
+    "qml/SharePanel.qml",
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "watch only"
+  },
+  {
+   "fr": "regarder seulement : tout ce que l'invité appuie est ignoré.",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "watch only: everything the guest presses is ignored."
+  },
+  {
+   "fr": "rejoindre",
+   "src": [
+    "qml/SetupJoin.qml"
+   ],
+   "en": "join"
+  },
+  {
+   "fr": "rejoindre un partage",
+   "src": [
+    "qml/Sources.qml"
+   ],
+   "en": "join a share"
+  },
+  {
+   "fr": "relier ton compte",
+   "src": [
+    "qml/SetupXbox.qml"
+   ],
+   "en": "link your account"
+  },
+  {
+   "fr": "remettre la ps5 en veille",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "put the PS5 back to rest"
+  },
+  {
+   "fr": "remettre le son",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "unmute"
+  },
+  {
+   "fr": "replay",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "replay"
+  },
+  {
+   "fr": "reprendre",
+   "src": [
+    "qml/HomePage.qml",
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "resume"
+  },
+  {
+   "fr": "restaurer",
+   "src": [
+    "qml/UiWindowButtons.qml"
+   ],
+   "en": "restore"
+  },
+  {
+   "fr": "retard du son",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "sound delay"
+  },
+  {
+   "fr": "retenir le code de connexion",
+   "src": [
+    "qml/SetupPs5.qml"
+   ],
+   "en": "remember the sign-in code"
+  },
+  {
+   "fr": "retour",
+   "src": [
+    "qml/ConnectPage.qml"
+   ],
+   "en": "back"
+  },
+  {
+   "fr": "retour au jeu",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "back to the game"
+  },
+  {
+   "fr": "reçu",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "received"
+  },
+  {
+   "fr": "rien ne correspond",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "nothing matches"
+  },
+  {
+   "fr": "rien à lancer.",
+   "src": [
+    "qml/HomePage.qml"
+   ],
+   "en": "nothing to launch."
+  },
+  {
+   "fr": "rivatuner détecté",
+   "src": [
+    "qml/Main.qml"
+   ],
+   "en": "rivatuner detected"
+  },
+  {
+   "fr": "rond",
+   "src": [
+    "qml/KbmBindings.qml"
+   ],
+   "en": "circle"
+  },
+  {
+   "fr": "réactif",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "responsive"
+  },
+  {
+   "fr": "réduire",
+   "src": [
+    "qml/StreamOverlay.qml",
+    "qml/UiWindowButtons.qml"
+   ],
+   "en": "collapse"
+  },
+  {
+   "fr": "réduit",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "compact"
+  },
+  {
+   "fr": "réduit la file d'attente de la carte graphique.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "shortens the graphics card's queue."
+  },
+  {
+   "fr": "réglage perso",
+   "src": [
+    "qml/HomePage.qml"
+   ],
+   "en": "custom setting"
+  },
+  {
+   "fr": "réglages",
+   "src": [
+    "qml/SettingsPage.qml",
+    "qml/StreamOverlay.qml",
+    "qml/UiTopBar.qml"
+   ],
+   "en": "settings"
+  },
+  {
+   "fr": "réglages avancés de la carte",
+   "src": [
+    "qml/SetupCapture.qml"
+   ],
+   "en": "advanced card settings"
+  },
+  {
+   "fr": "réglages du flux",
+   "src": [
+    "qml/SetupPc.qml"
+   ],
+   "en": "stream settings"
+  },
+  {
+   "fr": "réseau",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "network"
+  },
+  {
+   "fr": "résolution",
+   "src": [
+    "qml/SetupCapture.qml",
+    "qml/SetupPc.qml"
+   ],
+   "en": "resolution"
+  },
+  {
+   "fr": "résolution et fréquence",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "resolution and refresh rate"
+  },
+  {
+   "fr": "réveil de la ps5…",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "waking the PS5…"
+  },
+  {
+   "fr": "réveiller",
+   "src": [
+    "qml/SetupPs5.qml"
+   ],
+   "en": "wake"
+  },
+  {
+   "fr": "révoquer",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "revoke"
+  },
+  {
+   "fr": "sa connexion : %1 · ping %2",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "their connection: %1 · ping %2"
+  },
+  {
+   "fr": "sa connexion : test en cours ou pas encore fait",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "their connection: test running or not done yet"
+  },
+  {
+   "fr": "sa manette envoie des données mais aucun bouton n'est arrivé : il peut la configurer depuis sa page.",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "their controller sends data but no button has come through: they can set it up from their page."
+  },
+  {
+   "fr": "sans fin",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "no end"
+  },
+  {
+   "fr": "sans gyroscope",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "no gyroscope"
+  },
+  {
+   "fr": "saturation",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "saturation"
+  },
+  {
+   "fr": "se connecter",
+   "src": [
+    "qml/SetupXbox.qml"
+   ],
+   "en": "sign in"
+  },
+  {
+   "fr": "se déconnecter",
+   "src": [
+    "qml/SetupXbox.qml"
+   ],
+   "en": "sign out"
+  },
+  {
+   "fr": "seul à la console, il joue. si tu es en jeu, tu reçois toujours une demande.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "alone at the console, they play. if you're in a game, you always get asked."
+  },
+  {
+   "fr": "si tu joues déjà",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "if you're already playing"
+  },
+  {
+   "fr": "signal : %1",
+   "src": [
+    "qml/SetupCapture.qml"
+   ],
+   "en": "signal: %1"
+  },
+  {
+   "fr": "son",
+   "src": [
+    "qml/SetupCapture.qml"
+   ],
+   "en": "sound"
+  },
+  {
+   "fr": "son du jeu",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "game sound"
+  },
+  {
+   "fr": "son prénom",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "their first name"
+  },
+  {
+   "fr": "sortie",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "output"
+  },
+  {
+   "fr": "sortie hdr",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "hdr output"
+  },
+  {
+   "fr": "sortie visée · %1",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "target output · %1"
+  },
+  {
+   "fr": "source",
+   "src": [
+    "qml/ConnectPage.qml"
+   ],
+   "en": "source"
+  },
+  {
+   "fr": "sources",
+   "src": [
+    "qml/HomePage.qml"
+   ],
+   "en": "sources"
+  },
+  {
+   "fr": "souris",
+   "src": [
+    "qml/KbmBindings.qml"
+   ],
+   "en": "mouse"
+  },
+  {
+   "fr": "sr → %1",
+   "src": [
+    "qml/StreamPresets.qml"
+   ],
+   "en": "sr → %1"
+  },
+  {
+   "fr": "sr → %1 · fg x%2",
+   "src": [
+    "qml/StreamPresets.qml"
+   ],
+   "en": "sr → %1 · fg x%2"
+  },
+  {
+   "fr": "stabilisation",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "stabilisation"
+  },
+  {
+   "fr": "stats détaillées",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "detailed stats"
+  },
+  {
+   "fr": "stats en jeu",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "in-game stats"
+  },
+  {
+   "fr": "stick droit",
+   "src": [
+    "qml/KbmBindings.qml",
+    "qml/SettingsPage.qml"
+   ],
+   "en": "right stick"
+  },
+  {
+   "fr": "stick gauche ←",
+   "src": [
+    "qml/KbmBindings.qml"
+   ],
+   "en": "left stick ←"
+  },
+  {
+   "fr": "stick gauche ↑",
+   "src": [
+    "qml/KbmBindings.qml"
+   ],
+   "en": "left stick ↑"
+  },
+  {
+   "fr": "stick gauche →",
+   "src": [
+    "qml/KbmBindings.qml"
+   ],
+   "en": "left stick →"
+  },
+  {
+   "fr": "stick gauche ↓",
+   "src": [
+    "qml/KbmBindings.qml"
+   ],
+   "en": "left stick ↓"
+  },
+  {
+   "fr": "streaming",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "streaming"
+  },
+  {
+   "fr": "STREAMING PC",
+   "src": [
+    "qml/Sources.qml"
+   ],
+   "en": "PC STREAMING"
+  },
+  {
+   "fr": "STREAMING XBOX",
+   "src": [
+    "qml/Sources.qml"
+   ],
+   "en": "XBOX STREAMING"
+  },
+  {
+   "fr": "stéréo forcée",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "forced stereo"
+  },
+  {
+   "fr": "suivre",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "follow"
+  },
+  {
+   "fr": "suivre garde les images de la frame gen.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "follow keeps the frame gen frames."
+  },
+  {
+   "fr": "super résolution",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "super resolution"
+  },
+  {
+   "fr": "super résolution et frame gen x%1, jusqu'à %2 images par seconde. chaque vraie image attend un peu plus.",
+   "src": [
+    "qml/PresetChoices.qml"
+   ],
+   "en": "super resolution and frame gen x%1, up to %2 frames per second. each real frame waits a little longer."
+  },
+  {
+   "fr": "super résolution vers %1, sans frame gen. le bon réglage par défaut.",
+   "src": [
+    "qml/PresetChoices.qml"
+   ],
+   "en": "super resolution to %1, no frame gen. the right default."
+  },
+  {
+   "fr": "sur la ps5 : réglages, système, lecture à distance, associer un appareil. tape le code à 8 chiffres affiché.",
+   "src": [
+    "qml/SetupPs5.qml"
+   ],
+   "en": "on the ps5: settings, system, remote play, pair device. type the 8-digit code shown."
+  },
+  {
+   "fr": "synchro son et image",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "audio/video sync"
+  },
+  {
+   "fr": "synchronisation",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "sync"
+  },
+  {
+   "fr": "système",
+   "src": [
+    "qml/KbmBindings.qml"
+   ],
+   "en": "system"
+  },
+  {
+   "fr": "ta carte de capture est prête",
+   "src": [
+    "qml/HomePage.qml"
+   ],
+   "en": "your capture card is ready"
+  },
+  {
+   "fr": "ta manette devient la manette xbox 1 du pc.",
+   "src": [
+    "qml/SetupPc.qml"
+   ],
+   "en": "your controller becomes the pc's xbox controller 1."
+  },
+  {
+   "fr": "ta manette joue chez ton ami : une dualsense envoie aussi le gyroscope et le pavé tactile, et reçoit les vibrations.",
+   "src": [
+    "qml/SetupJoin.qml"
+   ],
+   "en": "your controller plays at your friend's: a dualsense also sends its gyroscope and touchpad, and gets the rumble."
+  },
+  {
+   "fr": "ta manette pilote la xbox.",
+   "src": [
+    "qml/SetupXbox.qml"
+   ],
+   "en": "your controller drives the xbox."
+  },
+  {
+   "fr": "ta ps5 est associée",
+   "src": [
+    "qml/HomePage.qml"
+   ],
+   "en": "your ps5 is paired"
+  },
+  {
+   "fr": "ta ps5, son appairage et son code de connexion restent sur ce pc : ton ami ne reçoit que l'image, le son et sa manette. un seul invité à la fois ; un lien révoqué ne marche plus, tout de suite.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "your PS5, its pairing and its sign-in code stay on this PC: your friend only gets the picture, the sound and their controller. one guest at a time; a revoked link stops working at once."
+  },
+  {
+   "fr": "ta xbox est reliée à ton compte",
+   "src": [
+    "qml/HomePage.qml"
+   ],
+   "en": "your xbox is linked to your account"
+  },
+  {
+   "fr": "taille visée",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "target size"
+  },
+  {
+   "fr": "tailnet",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "tailnet"
+  },
+  {
+   "fr": "tailscale est coupé : seul ce pc peut ouvrir ce lien.",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "tailscale is off: only this pc can open this link."
+  },
+  {
+   "fr": "temps de calcul gpu de la chaîne (super résolution, frame gen, présentation) pour une image reçue.",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "gpu time of the chain (super resolution, frame gen, present) per received picture."
+  },
+  {
+   "fr": "test manette",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "controller test"
+  },
+  {
+   "fr": "ton ami ouvre ce lien dans chrome ou edge, il n'installe rien. quiconque a le lien peut rejoindre tant que le partage dure.",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "your friend opens this link in chrome or edge and installs nothing. anyone with the link can join while sharing lasts."
+  },
+  {
+   "fr": "ton nom pour tes invités",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "your name for your guests"
+  },
+  {
+   "fr": "ton pc est associé",
+   "src": [
+    "qml/HomePage.qml"
+   ],
+   "en": "your pc is paired"
+  },
+  {
+   "fr": "ton prénom",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "your first name"
+  },
+  {
+   "fr": "ton tailnet : ton ami installe tailscale et tu lui partages ce pc. l'image ne passe que par tailscale.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "your tailnet: your friend installs tailscale and you share this pc with them. the picture only travels through tailscale."
+  },
+  {
+   "fr": "total gpu",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "gpu total"
+  },
+  {
+   "fr": "touches",
+   "src": [
+    "qml/SettingsPage.qml",
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "keys"
+  },
+  {
+   "fr": "touches clavier-souris",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "keyboard & mouse keys"
+  },
+  {
+   "fr": "toujours envoyer la manette",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "always send the controller"
+  },
+  {
+   "fr": "tout couper",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "turn everything off"
+  },
+  {
+   "fr": "triangle",
+   "src": [
+    "qml/KbmBindings.qml"
+   ],
+   "en": "triangle"
+  },
+  {
+   "fr": "trouver",
+   "src": [
+    "qml/SetupPc.qml",
+    "qml/SetupPs5.qml"
+   ],
+   "en": "find"
+  },
+  {
+   "fr": "trouver mon id",
+   "src": [
+    "qml/SetupPs5.qml"
+   ],
+   "en": "find my id"
+  },
+  {
+   "fr": "trouver ta ps5",
+   "src": [
+    "qml/SetupPs5.qml"
+   ],
+   "en": "find your ps5"
+  },
+  {
+   "fr": "trouver ton pc",
+   "src": [
+    "qml/SetupPc.qml"
+   ],
+   "en": "find your pc"
+  },
+  {
+   "fr": "tu es en jeu.",
+   "src": [
+    "qml/HomePage.qml"
+   ],
+   "en": "you're in the game."
+  },
+  {
+   "fr": "tunnel cloudflare connecté",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "cloudflare tunnel connected"
+  },
+  {
+   "fr": "tunnel cloudflare en connexion…",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "cloudflare tunnel connecting…"
+  },
+  {
+   "fr": "un ami allume ta ps5 et joue avec son propre lien, même quand tu n'es pas là.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "a friend turns on your PS5 and plays with their own link, even when you're not there."
+  },
+  {
+   "fr": "un ami joue avec toi à distance",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "a friend plays with you remotely"
+  },
+  {
+   "fr": "un ami regarde ton stream et joue avec sa manette, depuis son navigateur.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "a friend watches your stream and plays with their pad, from their browser."
+  },
+  {
+   "fr": "un ami regarde ton stream et joue avec sa manette, depuis son navigateur. il lui faut le lien, chrome ou edge, et une manette branchée sur son pc.",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "a friend watches your stream and plays with their pad, from their browser. they need the link, chrome or edge, and a pad plugged into their pc."
+  },
+  {
+   "fr": "un jeu tourne",
+   "src": [
+    "qml/SetupPc.qml"
+   ],
+   "en": "a game is running"
+  },
+  {
+   "fr": "un lien personnel qui dure. tu peux le couper quand tu veux.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "a personal link that lasts. you can cut it whenever you want."
+  },
+  {
+   "fr": "un retard fixe, à régler à l'oreille.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "a fixed delay, to tune by ear."
+  },
+  {
+   "fr": "un seul invité à la fois, avec un lien qui change à chaque partage et quand tu le coupes. le navigateur ne transmet ni le gyroscope, ni le pavé tactile (sauf son clic), ni les gâchettes adaptatives. les conditions de sony ne prévoient pas qu'une autre personne joue à distance sur ton compte.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "one guest at a time, with a link that changes every time you share and when you kick them. the browser carries neither the gyro, nor the touchpad (except its click), nor the adaptive triggers. sony's terms do not foresee someone else playing remotely on your account."
+  },
+  {
+   "fr": "une limite fixe, en images par seconde.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "a fixed limit, in frames per second."
+  },
+  {
+   "fr": "utile pour signaler un problème.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "useful to report a problem."
+  },
+  {
+   "fr": "utilisée",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "in use"
+  },
+  {
+   "fr": "vide : à toute heure. 22:00 à 02:00 passe minuit.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "empty: any time. 22:00 to 02:00 runs past midnight."
+  },
+  {
+   "fr": "violet",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "violet"
+  },
+  {
+   "fr": "visée fine",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "fine aim"
+  },
+  {
+   "fr": "vitesse de la caméra",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "camera speed"
+  },
+  {
+   "fr": "volume du stream",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "stream volume"
+  },
+  {
+   "fr": "vérification",
+   "src": [
+    "qml/SetupPc.qml"
+   ],
+   "en": "checking"
+  },
+  {
+   "fr": "windows affiche en hdr sur cet écran.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "windows shows hdr on this display."
+  },
+  {
+   "fr": "zone exclue",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "excluded area"
+  },
+  {
+   "fr": "zone morte du jeu",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "game deadzone"
+  },
+  {
+   "fr": "zone protégée",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "protected area"
+  },
+  {
+   "fr": "à associer",
+   "src": [
+    "qml/SetupPc.qml"
+   ],
+   "en": "to pair"
+  },
+  {
+   "fr": "à deux",
+   "src": [
+    "qml/GuestChip.qml",
+    "qml/SettingsPage.qml",
+    "qml/SharePanel.qml"
+   ],
+   "en": "together"
+  },
+  {
+   "fr": "à deux si tu joues",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "plays with you while you play"
+  },
+  {
+   "fr": "à deux, sur ta partie en cours",
+   "src": [
+    "qml/Main.qml"
+   ],
+   "en": "together, in your current game"
+  },
+  {
+   "fr": "à reconnecter",
+   "src": [
+    "qml/Sources.qml"
+   ],
+   "en": "to reconnect"
+  },
+  {
+   "fr": "ÉCRAN",
+   "src": [
+    "qml/HomePage.qml"
+   ],
+   "en": "DISPLAY"
+  },
+  {
+   "fr": "écran",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "display"
+  },
+  {
+   "fr": "écran %1 Hz",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "screen %1 Hz"
+  },
+  {
+   "fr": "écran de ce pc",
+   "src": [
+    "qml/SetupPc.qml"
+   ],
+   "en": "this pc's display"
+  },
+  {
+   "fr": "équilibré",
+   "src": [
+    "qml/StreamPresets.qml"
+   ],
+   "en": "balanced"
+  },
+  {
+   "fr": "étapes",
+   "src": [
+    "qml/ConnectPage.qml"
+   ],
+   "en": "steps"
+  },
+  {
+   "fr": "état du hdr inconnu pour l'instant.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "hdr state unknown for now."
+  },
+  {
+   "fr": "anticipation : %1",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "anticipation: %1"
+  },
+  {
+   "fr": "inactive",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "inactive"
+  },
+  {
+   "fr": "active",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "active"
+  },
+  {
+   "fr": "apprend",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "learning"
+  },
+  {
+   "fr": "confiance %1",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "confidence %1"
+  },
+  {
+   "fr": "gain appris",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "gain learnt"
+  },
+  {
+   "fr": "la caméra est redessinée à chaque rafraîchissement de l'écran selon le stick droit, sans attendre l'image suivante. délai appris : %1 ms. seule la caméra est anticipée : hud, personnages et tirs suivent le flux comme avant.",
+   "src": [
+    "qml/StreamOverlay.qml"
+   ],
+   "en": "the camera is redrawn every screen refresh from the right stick, without waiting for the next picture. learnt delay: %1 ms. only the camera is anticipated: hud, characters and shots follow the stream as before."
+  },
+  {
+   "fr": "anticipation caméra · partage rejoint",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "camera anticipation · joined share"
+  },
+  {
+   "fr": "chez un ami : la caméra suit ton stick droit à chaque rafraîchissement de ton écran, sans attendre l'image suivante. seule : pas de frame gen, donc aucune attente, mais les objets bougent au rythme du jeu. avec interpolation : la frame gen lisse aussi les objets et remet son attente (une demi-image à une image). automatique : seule, sur un écran de 100 hz ou plus.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "at a friend's: the camera follows your right stick every refresh of your screen, without waiting for the next picture. alone: no frame gen, so no wait, but objects move at the game's own rate. with interpolation: frame gen smooths objects too and brings its wait back (half a picture to one picture). automatic: alone, on a screen of 100 hz or more."
+  },
+  {
+   "fr": "automatique",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "automatic"
+  },
+  {
+   "fr": "désactivée",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "off"
+  },
+  {
+   "fr": "anticipation seule",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "anticipation alone"
+  },
+  {
+   "fr": "anticipation + interpolation",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "anticipation + interpolation"
+  },
+  {
+   "fr": "BooVI %1 est disponible",
+   "src": [
+    "qml/UpdateBanner.qml"
+   ],
+   "en": "BooVI %1 is available"
+  },
+  {
+   "fr": "voir la version",
+   "src": [
+    "qml/UpdateBanner.qml"
+   ],
+   "en": "see the release"
+  }
+ ]
+}

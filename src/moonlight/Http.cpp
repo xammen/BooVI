@@ -331,7 +331,7 @@ HttpResponse HttpClient::get(const HttpTarget& target, const std::string& pathAn
     std::string hostHeader = ipv6 ? "[" + target.host + "]" : target.host;
     if (!defaultPort) hostHeader += ":" + std::to_string(target.port);
     const std::string request = "GET " + pathAndQuery + " HTTP/1.1\r\nHost: " + hostHeader +
-        "\r\nConnection: close\r\nAccept: */*\r\nUser-Agent: Veyra\r\n\r\n";
+        "\r\nConnection: close\r\nAccept: */*\r\nUser-Agent: BooVI\r\n\r\n";
 
     Connection connection(socket.handle, ssl.get(), wait);
     connection.writeAll(request);

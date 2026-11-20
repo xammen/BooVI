@@ -431,7 +431,7 @@ void QmlPlayerBridge::resumeLastSource() {
     if (kind == QLatin1String("ps5")) {
 #ifdef VEYRA_ENABLE_REMOTEPLAY
         ps5Load();
-        if (!ps5Connect()) emit notice(tr("没能继续上次的 PS5 串流：%1").arg(impl_->ps5Status), true);
+        ps5Play();   // fork: wakes a console in rest mode first
 #else
         emit notice(tr("此版本不含 PS5 串流"), true);
 #endif

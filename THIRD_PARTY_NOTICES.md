@@ -1,3 +1,41 @@
+# Third-party notices
+
+BooVI is free software under the GNU General Public License v3 (`LICENSE`). It is a fork of
+[Veyra](https://github.com/Likely7/Veyra-NRVideo) (GPLv3) and keeps Veyra's copyright and
+attribution notices, reproduced from "Third-party dependencies" below as Veyra published them.
+
+## What the BooVI release zip contains
+
+| Component | License | Notice in the zip |
+|---|---|---|
+| Veyra (the code BooVI is based on) | GPL-3.0 | `LICENSE` |
+| [chiaki-ng](https://github.com/streetpea/chiaki-ng) (PS5 Remote Play, linked statically) | AGPL-3.0-only with an OpenSSL exception | `licenses/remoteplay/CHIAKI_AGPL3_OPENSSL.txt` |
+| [moonlight-common-c](https://github.com/moonlight-stream/moonlight-common-c), ENet, nanors (PC streaming) | GPL-3.0, MIT | `licenses/moonlight/` |
+| libdatachannel, libjuice, usrsctp, libsrtp, plog, nlohmann/json (Xbox and guest WebRTC) | MPL-2.0, BSD-3-Clause, MIT | `licenses/xbox/` |
+| Opus, json-c, libevent, miniupnpc, curl, nanopb, Jerasure, gf-complete, SDL3 | BSD, MIT, zlib | `licenses/remoteplay/` |
+| Qt 6.8.3, dynamically linked DLLs and plugins | LGPL-3.0 | `licenses/qt/` |
+| FFmpeg 9.0, dynamically linked [BtbN LGPL shared build](https://github.com/BtbN/FFmpeg-Builds) | LGPL-2.1-or-later | `licenses/FFMPEG-BTBN-LGPL-BUILD.txt`, `licenses/FFMPEG-COPYRIGHT.txt` |
+| OpenSSL 3 (`libcrypto-3-x64.dll`, `libssl-3-x64.dll`) | Apache-2.0 | `licenses/remoteplay/openssl/` |
+| dav1d, zlib | BSD-2-Clause, zlib | `licenses/DAV1D-*`, `licenses/ZLIB-*` |
+| NVIDIA DLSS, DLSS Frame Generation, NGX runtime DLLs (unmodified binaries) | NVIDIA RTX SDK license | `licenses/NVIDIA_RTX_SDK_LICENSE.txt` |
+| NVIDIA Video Effects (Video Frame Generation, Video Super Resolution) runtime | NVIDIA license | `licenses/nvidia-vfg/` |
+| AMD FidelityFX SDK runtime (FSR upscaling and frame generation) | MIT | `licenses/AMD_FIDELITYFX_LICENSE.txt` |
+| Intel XeSS and XeLL runtime | Intel Simplified Software License | `licenses/INTEL_XESS_LICENSE.txt` |
+| Magewell capture runtime | Magewell notice | `licenses/magewell/` |
+| Microsoft Visual C++ runtime | Visual Studio redistributable terms | see "Microsoft Visual C++ Runtime" below |
+| JetBrains Mono font | OFL-1.1 | `qml/Veyra/fonts/JetBrainsMono-OFL.txt` |
+| Lucide icons | ISC | `licenses/LUCIDE-LICENSE.txt` |
+
+The remaining files in `licenses/` cover the other runtimes Veyra's notices below describe.
+
+Not bundled: `cloudflared` and Tailscale, which the guest sharing feature starts when the user
+has installed them, and Sunshine, the PC host.
+
+Source: the complete corresponding source of a release is this repository at its release tag,
+plus the pinned upstream sources the build scripts name (chiaki-ng commit
+`0e16950165f06e5c3291537c2eeba6e852be7120` with `scripts/remoteplay/patches/`, the library tags
+in `scripts/fork/build-rp-deps.ps1` and `scripts/fork/setup-dev.ps1`).
+
 # Third-party dependencies
 
 ## RX 7000 experimental NR provider (2026-10-30, development branch)
@@ -329,19 +367,6 @@ The Qt/QML interface (2026-09-26) draws the Lucide geometry that the approved pr
 
 The sponsor page (2026-10-19) adds Lucide `coffee` and `external-link` (as `external`) from lucide-static 1.51.0 to the same
 `icons.js`, under the same ISC notice.
-
-## Simple Icons brand glyphs (sponsor page, 2026-10-19)
-
-设置 → 赞助作者 draws the Bilibili, TikTok (Douyin uses the same mark), X, GitHub, YouTube, Ko-fi, WeChat and Alipay
-glyphs from [Simple Icons](https://github.com/simple-icons/simple-icons) 16.34.0 (npm `simple-icons`, CC0-1.0).
-`tools/qt_probe/make-sponsor-icons.py` places the unmodified path data on coloured tiles in `qml/Veyra/sponsor/*.svg`;
-the Ko-fi glyph is split into its subpaths to colour the cup the way Ko-fi's own button does. CC0 covers the
-drawings only: the logos remain trademarks of their owners and are used solely to link to the author's own
-pages; no endorsement is implied.
-
-The Patreon glyph used by the sponsor page and documentation buttons (2026-11-11) is from
-[Simple Icons at cd796c98565fc466923fc1128b962e133fa3c612](https://github.com/simple-icons/simple-icons/blob/cd796c98565fc466923fc1128b962e133fa3c612/icons/patreon.svg),
-under CC0 1.0. Its original path is retained in the SVG files with source metadata.
 
 ## RTX Video SDK 1.1 local VSR adapter
 
@@ -1112,13 +1137,3 @@ Upstream collaborator selimsandal explicitly states that third-party redistribut
 - Source: https://github.com/GPUOpen-LibrariesAndSDKs/AMF, tag v1.5.3 (commit 57ee0cfb0e1a08d9041f77435653794c1b012be0), public headers `amf/public/include` only, used at build time for AMD FRC (frame rate conversion).
 - License: MIT, Copyright (c) Advanced Micro Devices, Inc. (see LICENSE.txt in that tag; each header carries the MIT notice).
 - Nothing from the SDK is redistributed in Veyra packages. The AMF runtime (`amfrt64.dll`) belongs to the user's AMD driver and is loaded from the Windows system directory only.
-
-## Startup music in runnable packages (2026-11-15)
-
-The user supplied BGM.MP3 and confirmed permission to distribute the exact file
-in Veyra runnable packages. The asset is separate from Veyra source code and its
-GPL license; it is excluded from Git and corresponding source archives.
-Runtime path: `media/startup-music.mp3`, 1847011 bytes, SHA256
-`3005aa601f06a97d3968fd9fa171e870fceb4ec47586f1e950c9ed3c7875fb6a`.
-Each runnable package includes its separate notice and manifest. Windows Media
-Foundation provides decoding; no additional codec or audio SDK is bundled.

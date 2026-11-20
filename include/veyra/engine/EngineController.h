@@ -11,6 +11,7 @@
 #include "veyra/engine/EnhancementSettings.h"
 #include "veyra/engine/EffectChain.h"
 #include "veyra/engine/PresentationSettings.h"
+#include "veyra/engine/CameraAnticipation.h"
 #include "veyra/diagnostics/FrameMetrics.h"
 #include "veyra/engine/PreviewView.h"
 #include "veyra/engine/EngineWatchdog.h"
@@ -22,13 +23,16 @@
 #ifdef VEYRA_ENABLE_XBOX
 #include "veyra/source/XboxSessionSource.h"
 #endif
+#ifdef VEYRA_ENABLE_GUEST_CLIENT
+#include "veyra/source/GuestClientSource.h"
+#endif
 #include "veyra/media/AudioTrack.h"
 #include "veyra/media/NetworkSettings.h"
 #include "veyra/sink/VideoEncoder.h"
 #include "veyra/engine/ExportOptions.h"
 #include "veyra/engine/LiveRecorder.h"
 #include "veyra/engine/DisplayStateService.h"
-namespace veyra::source { struct RemotePlayConnectDesc; class RemotePlaySessionSource; struct MoonlightConnectDesc; class MoonlightSessionSource; struct XboxConnectDesc; class XboxSessionSource; }
+namespace veyra::source { struct RemotePlayConnectDesc; class RemotePlaySessionSource; struct MoonlightConnectDesc; class MoonlightSessionSource; struct XboxConnectDesc; class XboxSessionSource; struct GuestClientDesc; class GuestClientSource; }
 namespace veyra::remoteplay { struct ControllerState;struct ControllerFeedback; }
 namespace veyra::sink { struct RgbaImage; }
 namespace veyra::gfx { class D3D12DeviceContext; class CommandSlotRing; }
@@ -142,6 +146,9 @@ struct PlayerSnapshot {
     bool captureSampledBlack=false; // Sparse CPU-source samples, not no-signal detection.
     bool captureRecovering=false;unsigned captureReconnectAttempts=0;
     double captureFps=0,captureReadAgeMs=0,captureAgeMs=0,captureAgeP95Ms=0;
+    // Live sources, median of the last 2 s: a real picture from its capture or decode callback
+    // to the return of its Present. scanoutMs: that Present to the vblank that showed it, -1 unknown.
+    double liveDelayMs=0,scanoutMs=-1;
     double schedulingWaitP95Ms=0,processCpuP95Ms=0,presentCpuP95Ms=0;
     // Realtime file preview: dropped enhancement opportunities this metrics
     // window, and measured media-advance / wall-clock playback speed (1.0 =
@@ -198,6 +205,9 @@ struct PlayerSnapshot {
 #ifdef VEYRA_ENABLE_XBOX
     bool xboxActive=false;source::XboxStats xbox;
 #endif
+#ifdef VEYRA_ENABLE_GUEST_CLIENT
+    bool guestClientActive=false;source::GuestClientStats guestClient;   // fork: a share joined as a BooVI client
+#endif
 };
 class EngineController {
 public:
@@ -214,6 +224,7 @@ public:
     remoteplay::ControllerFeedback remotePlayFeedback();
     void remotePlayController(const remoteplay::ControllerState&);
     void remotePlayLoginPin(std::string);
+    bool remotePlayGotoBed();   // fork: the live session asks the console to enter rest mode
     // PS5 手柄控制 beside a capture card: a controller-only Remote Play session
     // (the console's keepalive video and audio are dropped on receipt). Start and
     // stop are queued to a dedicated thread, so callers never wait for the
@@ -249,6 +260,10 @@ public:
     void xboxController(const remoteplay::ControllerState&);
     remoteplay::ControllerFeedback xboxFeedback();
 #endif
+#ifdef VEYRA_ENABLE_GUEST_CLIENT
+    // Fork: join a friend's share. The PS5 input thread's pad reaches it through remotePlayController().
+    void openGuestClient(HWND, source::GuestClientDesc, PlayerOptions);
+#endif
     void stop();
     void comparison(int mode,bool base,float split=.5f){comparisonMode_=mode;comparisonBase_=base;comparisonSplit_=std::clamp(split,0.0f,1.0f);}
     void pause(bool p);
@@ -269,6 +284,12 @@ public:
     // Live recording of the processed picture and the played sound
     // (LiveRecorder.h). Any thread; the file opens with the next presented
     // frame and is finished in the background.
+    // Fork: one more consumer of the presented frame (the remote guest's encoder,
+    // GuestStreamer.h). It must outlive this controller.
+    bool addPresentCapture(PresentCapture& capture){return captures_.add(capture);}
+    // Fork: the remote guest's tap (EarlyCapture). Call once, before the first open(); it
+    // must outlive this controller.
+    bool setEarlyCapture(EarlyCapture& capture){earlyGate_.target=&capture;return captures_.add(earlyGate_);}
     bool requestRecording(const RecordingSettings& options,std::wstring& error);
     void stopRecording();
     RecordingStatus recordingSnapshot()const;
@@ -311,6 +332,11 @@ private:
 #endif
     std::shared_ptr<source::MoonlightSessionSource> activeMoonlight_;
     std::shared_ptr<source::XboxSessionSource> activeXbox_;
+    std::shared_ptr<source::GuestClientSource> activeGuestClient_;
+    // Fork, camera anticipation: the stick's history (input thread) and the learnt model (owner thread).
+    CameraAnticipation anticipation_;
+    source::GuestClientStats::Anticipation anticipationShown_;   // under mutex_, for snapshot()
+    std::shared_ptr<source::GuestClientDesc> pendingGuestClient_;   // taken by run() for a "guest:" session
     PreviewView previewView_;
     std::wstring savePath_;
     // Live recorder: every session's presenter records into it; it owns its
@@ -320,6 +346,21 @@ private:
     // frame through captures_.
     std::unique_ptr<LiveRecorder> replay_=std::make_unique<LiveRecorder>(true);
     PresentCaptureFanout captures_{*recorder_,*replay_};
+    // The early capture's place in the present fanout: it passes presented frames on while the
+    // session is not live, or while the target wants the presented stream (a live session
+    // otherwise feeds it before presentation). The target acts only on what it recorded.
+    // presentSource100ns: when the picture about to be presented reached this PC, 0 for a file.
+    // Engine thread, but for target, set before it starts.
+    struct EarlyGate final:PresentCapture{
+        EarlyCapture* target=nullptr;bool live=false;int64_t presentSource100ns=0;
+        bool record(ID3D12GraphicsCommandList* list,const Frame& frame) override{
+            const int64_t source=std::exchange(presentSource100ns,0);
+            if(!target||(live&&!target->presentedFeed()))return false;
+            Frame timed=frame;timed.sourceHost100ns=source;return target->record(list,timed);
+        }
+        void submitted(ID3D12Fence* fence,uint64_t value) override{if(target)target->submitted(fence,value);}
+        void discarded() override{if(target)target->discarded();}
+    } earlyGate_;
     // Declared before worker_: it outlives the engine thread's presenters.
     DisplayStateService displayStates_;
     std::thread worker_;

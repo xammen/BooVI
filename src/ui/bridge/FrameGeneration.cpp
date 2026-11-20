@@ -235,6 +235,29 @@ void QmlPlayerBridge::setDlssgLite(bool value) {
     if (!impl_->savePrefs()) veyra::log::warn("ui-prefs", "DLSS performance mode not saved");
     emit settingsChanged();
 }
+// Fork, anti-artefacts: global controls kept in shell preferences, like 边缘神盾.
+bool QmlPlayerBridge::fgHudGuard() const { return settings().fgHudGuard; }
+void QmlPlayerBridge::setFgHudGuard(bool value) {
+    auto s = settings();
+    if (s.fgHudGuard == value) return;
+    s.fgHudGuard = value;
+    // Refused: the switch snaps back to the engine's value.
+    if (!impl_->commit(std::move(s))) { veyra::log::warn("ui-prefs", "fgHudGuard refused"); emit settingsChanged(); return; }
+    impl_->prefs[QStringLiteral("fgHudGuard")] = value;
+    if (!impl_->savePrefs()) veyra::log::warn("ui-prefs", "fgHudGuard not saved");
+    emit settingsChanged();
+}
+bool QmlPlayerBridge::fgFastGuard() const { return settings().fgFastGuard; }
+void QmlPlayerBridge::setFgFastGuard(bool value) {
+    auto s = settings();
+    if (s.fgFastGuard == value) return;
+    s.fgFastGuard = value;
+    // Refused: the switch snaps back to the engine's value.
+    if (!impl_->commit(std::move(s))) { veyra::log::warn("ui-prefs", "fgFastGuard refused"); emit settingsChanged(); return; }
+    impl_->prefs[QStringLiteral("fgFastGuard")] = value;
+    if (!impl_->savePrefs()) veyra::log::warn("ui-prefs", "fgFastGuard not saved");
+    emit settingsChanged();
+}
 bool QmlPlayerBridge::vfgAutoRegulate() const { return settings().vfgAutoRegulate; }
 void QmlPlayerBridge::setVfgAutoRegulate(bool value) {
     auto s = settings();
@@ -299,6 +322,18 @@ double QmlPlayerBridge::previewAspect() const {
 void QmlPlayerBridge::setDisplaySync(int value) {
     if (value < 0 || value > 2 || int(impl_->presentation.display) == value) return;
     impl_->presentation.display = static_cast<engine::DisplaySync>(value);
+    applyPresentation();
+}
+bool QmlPlayerBridge::halfRateKeepsMultiplier() const { return impl_->presentation.halfRateKeepsMultiplier; }
+void QmlPlayerBridge::setHalfRateKeepsMultiplier(bool value) {
+    if (impl_->presentation.halfRateKeepsMultiplier == value) return;
+    impl_->presentation.halfRateKeepsMultiplier = value;
+    applyPresentation();
+}
+int QmlPlayerBridge::cameraAnticipation() const { return int(impl_->presentation.cameraAnticipation); }
+void QmlPlayerBridge::setCameraAnticipation(int value) {
+    if (value < 0 || value > 3 || int(impl_->presentation.cameraAnticipation) == value) return;
+    impl_->presentation.cameraAnticipation = static_cast<engine::CameraAnticipationMode>(value);
     applyPresentation();
 }
 bool QmlPlayerBridge::variableRefresh() const { return impl_->presentation.variableRefresh; }
@@ -370,7 +405,7 @@ void QmlPlayerBridge::applyPresentation() {
     if (!p.valid()) return;
     impl_->engine.requestPresentation(p);
     impl_->prefs[QStringLiteral("presentation")] = QVariantMap{
-        {"lowQueue", p.enabled}, {"nvidiaLowLatency",int(p.nvidiaLowLatency)}, {"display", int(p.display)}, {"outputRate", int(p.outputRate)}, {"customFps", p.customFps}, {"vrr", p.variableRefresh}};
+        {"lowQueue", p.enabled}, {"nvidiaLowLatency",int(p.nvidiaLowLatency)}, {"display", int(p.display)}, {"outputRate", int(p.outputRate)}, {"customFps", p.customFps}, {"vrr", p.variableRefresh}, {"halfRateKeepsMultiplier", p.halfRateKeepsMultiplier}, {"cameraAnticipation", int(p.cameraAnticipation)}};
     if (!impl_->savePrefs()) veyra::log::warn("ui-prefs", "presentation settings not saved");
     veyra::log::info("ui-presentation", std::format("lowQueue={} nvidiaLowLatency={} display={} outputRate={} customFps={:.3f} variableRefresh={}",
         p.enabled, int(p.nvidiaLowLatency), int(p.display), int(p.outputRate), p.customFps, p.variableRefresh));

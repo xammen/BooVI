@@ -5,6 +5,7 @@ import QtQuick
 import QtQuick.Window
 import QtQuick.Shapes
 import "IconData.js" as IconData
+import "IconExtra.js" as IconExtra
 
 Item {
     id: icon
@@ -14,7 +15,8 @@ Item {
     property real strokeWidth: 1.7
     // .play svg: fill:currentColor; stroke:none (the filled play/pause glyphs).
     property bool filled: false
-    readonly property bool known: IconData.paths[name] !== undefined
+    readonly property string pathData: IconData.paths[name] || IconExtra.paths[name] || ""
+    readonly property bool known: pathData.length > 0
     readonly property bool softwareRendering: (typeof vySoftwareUi !== "undefined" && vySoftwareUi)
         || GraphicsInfo.api === GraphicsInfo.Software
     // Bumped when the interface's graphics device was lost and recreated (GPU reset): Qt
@@ -29,7 +31,7 @@ Item {
         const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"'
             + ' fill="' + (filled ? paint : "none") + '" stroke="' + (filled ? "none" : paint)
             + '" opacity="' + color.a + '" stroke-width="' + strokeWidth + '" stroke-linecap="round" stroke-linejoin="round">'
-            + '<path d="' + IconData.paths[name] + '"/></svg>'
+            + '<path d="' + pathData + '"/></svg>'
         return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg)
     }
 
@@ -61,7 +63,7 @@ Item {
             strokeWidth: icon.strokeWidth
             capStyle: ShapePath.RoundCap
             joinStyle: ShapePath.RoundJoin
-            PathSvg { path: icon.known ? IconData.paths[icon.name] + (icon.deviceGeneration % 2 ? " " : "") : "" }
+            PathSvg { path: icon.known ? icon.pathData + (icon.deviceGeneration % 2 ? " " : "") : "" }
         }
     }
 }

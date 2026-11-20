@@ -102,6 +102,7 @@ bool RemotePlaySource::connect(const RemotePlayConnectDesc& desc)
         veyra::log::error("remoteplay", "invalid queue limits");
         return false;
     }
+    inbox_->setVideoWake(desc.videoArrived);
     auto token = inbox_->begin(static_cast<remoteplay::HostTime>(origin100ns_));
     inbox_->streamProfile(request_.video);
     token_ = token; // Keep a second weak token; backend owns the moved copy.
@@ -193,7 +194,11 @@ bool RemotePlaySource::openDecoder(remoteplay::Codec codec, std::uint32_t width,
     codecContext_->thread_count = 1;
     codecContext_->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;
 #ifdef _WIN32
-    if(decodeMode_!=RemotePlayConnectDesc::DecodeMode::Software&&!hardwareFallback_&&decodeDevice_){
+    // VEYRA_TEST_RP_SOFTWARE_DECODE=1: CPU pictures for one run (whole-picture comparison of the
+    // stream's repeats), without touching the saved decode setting.
+    static const bool testSoftware=GetEnvironmentVariableW(L"VEYRA_TEST_RP_SOFTWARE_DECODE",nullptr,0)>0;
+    if(testSoftware)codecContext_->thread_count=0;
+    if(decodeMode_!=RemotePlayConnectDesc::DecodeMode::Software&&!hardwareFallback_&&decodeDevice_&&!testSoftware){
         AVBufferRef* device=av_hwdevice_ctx_alloc(AV_HWDEVICE_TYPE_D3D12VA);
         int result=AVERROR(ENOMEM);
         if(device){
@@ -246,6 +251,7 @@ pipeline::FramePacket RemotePlaySource::makePacket(const remoteplay::VideoSample
     packet.sourceKind = pipeline::SourceKind::RemotePlay;
     packet.sourceEpoch = epoch;
     packet.arrivalHost100ns = sample.arrival100ns;
+    packet.compressedBytes = static_cast<std::uint32_t>(sample.payload.bytes().size());
     const auto stamp = clock_.video(sourceIndex, sample.arrival100ns);
     if (stamp) {
         if(sourceIndex%600==0)veyra::log::info("remoteplay-clock",std::format("wireIndex={} ptsMs={:.3f} arrivalMinusPtsMs={:.3f} nominalFps={} (arrival-disciplined local estimate, not PS5 native PTS)",sourceIndex,double(stamp->pts100ns)/10000,double(sample.arrival100ns-static_cast<int64_t>(origin100ns_)-stamp->pts100ns)/10000,info_.averageFps));

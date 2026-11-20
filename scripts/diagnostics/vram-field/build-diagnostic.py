@@ -65,13 +65,13 @@ for name in ('gfx/D3D12DeviceContext.cpp','pipeline/EnhanceGraph.cpp','pipeline/
  build_commands.append(command);objects.append(obj);changes[str(output)]=sha(output)
 
 ninja=(BUILD/'build.ninja').read_text(encoding='utf-8')
-match=re.search(r'^build veyra_qml_ui.exe: .*?(?=\n\n)',ninja,re.M|re.S);assert match
+match=re.search(r'^build BooVI.exe: .*?(?=\n\n)',ninja,re.M|re.S);assert match
 lines=match.group().splitlines()
 def unescape(s):return s.replace('$ ',' ').replace('$:',':').replace('$$','$')
 original_objects=[BUILD/unescape(x) for x in lines[0].split('Release ',1)[1].split(' | ',1)[0].split(' ')]
 v=dict(re.match(r'  ([A-Z_]+) = (.*)',x).groups() for x in lines[1:] if re.match(r'  ([A-Z_]+) = (.*)',x))
 libraries=args(unescape(v['LINK_LIBRARIES']))
-for item in list(map(str,original_objects))+libraries+['veyra_qml_ui.exe','veyra-qml.manifest']:
+for item in list(map(str,original_objects))+libraries+['BooVI.exe','veyra-qml.manifest']:
  p=Path(item);p=p if p.is_absolute() else BUILD/p
  if p.is_file():inputs[str(p)]=sha(p)
 rsp=OUT/'diagnostic-link.rsp'

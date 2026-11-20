@@ -10,9 +10,10 @@
 
 using veyra::ui::UpdateChecker;
 namespace {
+const QString kRepo = QStringLiteral("example/BooVI");
 QByteArray release(QString tag = QStringLiteral("v2.0.8"), bool prerelease = false, bool draft = false,
                    QString url = {}) {
-    if (url.isEmpty()) url = QStringLiteral("https://github.com/Likely7/Veyra-NRVideo/releases/tag/") + tag;
+    if (url.isEmpty()) url = QStringLiteral("https://github.com/example/BooVI/releases/tag/") + tag;
     return QJsonDocument(QJsonObject{{"tag_name", tag}, {"draft", draft}, {"prerelease", prerelease},
                                     {"html_url", url}}).toJson();
 }
@@ -67,7 +68,7 @@ private slots:
         QTest::newRow("missing-fields") << QStringLiteral("2.0.7") << QByteArray("{\"tag_name\":\"v2.0.8\"}") << 200 << QStringLiteral("invalid-release");
         QTest::newRow("untrusted-link") << QStringLiteral("2.0.7") << release("v2.0.8", false, false, "https://example.com/update") << 200 << QStringLiteral("invalid-release");
         QTest::newRow("other-repo") << QStringLiteral("2.0.7") << release("v2.0.8", false, false, "https://github.com/other/repo/releases/tag/v2.0.8") << 200 << QStringLiteral("invalid-release");
-        QTest::newRow("mismatched-tag") << QStringLiteral("2.0.7") << release("v2.0.8", false, false, "https://github.com/Likely7/Veyra-NRVideo/releases/tag/v2.0.9") << 200 << QStringLiteral("invalid-release");
+        QTest::newRow("mismatched-tag") << QStringLiteral("2.0.7") << release("v2.0.8", false, false, "https://github.com/example/BooVI/releases/tag/v2.0.9") << 200 << QStringLiteral("invalid-release");
         QTest::newRow("overflow") << QStringLiteral("2.0.7") << release("v2.0.2147483648") << 200 << QStringLiteral("invalid-release");
         QTest::newRow("unknown-local") << QStringLiteral("dev") << release() << 200 << QStringLiteral("invalid-release");
         QTest::newRow("404") << QStringLiteral("2.0.7") << release() << 404 << QStringLiteral("http-404-network-203");
@@ -78,7 +79,7 @@ private slots:
         QFETCH(QString, local); QFETCH(QByteArray, body); QFETCH(int, http); QFETCH(QString, result);
         for (bool manual : {false, true}) {
             Server server; server.body = body; server.status = http;
-            UpdateChecker checker(local, nullptr, server.endpoint());
+            UpdateChecker checker(local, nullptr, kRepo, server.endpoint());
             QSignalSpy done(&checker, &UpdateChecker::completed), available(&checker, &UpdateChecker::updateAvailable),
                        notices(&checker, &UpdateChecker::notice);
             checker.check(manual);
@@ -89,7 +90,7 @@ private slots:
             QCOMPARE(server.requests, 1);
             QCOMPARE(available.size(), result == "available" ? 1 : 0);
             QCOMPARE(notices.size(), manual && result != "available" ? 1 : 0);
-            QVERIFY(server.request.toLower().contains("user-agent: veyra-update-check"));
+            QVERIFY(server.request.toLower().contains("user-agent: boovi-update-check"));
             QVERIFY(!server.request.toLower().contains("authorization:"));
             if (result == "available") {
                 QVERIFY(!checker.latestVersion().isEmpty()); QVERIFY(!checker.releaseUrl().isEmpty());
@@ -98,7 +99,7 @@ private slots:
     }
     void timeoutAndCoalescing() {
         Server server; server.hang = true;
-        UpdateChecker checker("2.0.7", nullptr, server.endpoint(), 200);
+        UpdateChecker checker("2.0.7", nullptr, kRepo, server.endpoint(), 200);
         QSignalSpy done(&checker, &UpdateChecker::completed), notices(&checker, &UpdateChecker::notice);
         checker.check(false); checker.check(true); checker.check(true);
         QTRY_COMPARE_WITH_TIMEOUT(done.size(), 1, 2000);
@@ -110,7 +111,7 @@ private slots:
     }
     void startupOnce() {
         Server server; server.body = release("v2.0.7");
-        UpdateChecker checker("2.0.7-test-r2", nullptr, server.endpoint());
+        UpdateChecker checker("2.0.7-test-r2", nullptr, kRepo, server.endpoint());
         QSignalSpy done(&checker, &UpdateChecker::completed), notices(&checker, &UpdateChecker::notice);
         checker.startAutomaticCheck(); checker.startAutomaticCheck();
         QCOMPARE(server.requests, 0);
@@ -120,15 +121,23 @@ private slots:
     }
     void manualBeforeStartup() {
         Server server;
-        UpdateChecker checker("2.0.7", nullptr, server.endpoint());
+        UpdateChecker checker("2.0.7", nullptr, kRepo, server.endpoint());
         QSignalSpy done(&checker, &UpdateChecker::completed);
         checker.startAutomaticCheck(); checker.check(true);
         QTRY_COMPARE_WITH_TIMEOUT(done.size(), 1, 3000);
         QTest::qWait(2700); QCOMPARE(server.requests, 1);
     }
+    void noRepositoryNoRequest() {
+        Server server; server.body = release("v9.9.9");
+        UpdateChecker checker("2.0.7", nullptr, QString(), server.endpoint());
+        QSignalSpy done(&checker, &UpdateChecker::completed), available(&checker, &UpdateChecker::updateAvailable);
+        checker.check(true);
+        QCOMPARE(done.size(), 1); QCOMPARE(done[0][0].toString(), QString("disabled"));
+        QTest::qWait(300); QCOMPARE(server.requests, 0); QCOMPARE(available.size(), 0);
+    }
     void destructionInFlight() {
         Server server; server.hang = true;
-        auto checker = std::make_unique<UpdateChecker>("2.0.7", nullptr, server.endpoint());
+        auto checker = std::make_unique<UpdateChecker>("2.0.7", nullptr, kRepo, server.endpoint());
         checker->startAutomaticCheck(); checker->check(false);
         QTRY_COMPARE(server.requests, 1);
         checker.reset(); QTest::qWait(2700); QCOMPARE(server.requests, 1);

@@ -46,6 +46,7 @@ enum class SourceKind : uint8_t {
     ScreenCapture,
     Moonlight,    // Sunshine / GameStream host stream (moonlight-common-c transport)
     Xbox,         // Xbox home streaming (WebRTC, unofficial)
+    GuestClient,  // fork: a friend's BooVI share joined as a native client (WebRTC)
 };
 
 inline const char* sourceKindName(SourceKind k) {
@@ -58,6 +59,7 @@ inline const char* sourceKindName(SourceKind k) {
     case SourceKind::ScreenCapture: return "ScreenCapture";
     case SourceKind::Moonlight: return "Moonlight";
     case SourceKind::Xbox: return "Xbox";
+    case SourceKind::GuestClient: return "GuestClient";
     default: return "Unknown";
     }
 }
@@ -226,6 +228,7 @@ struct FramePacket {
     uint64_t sourceEpoch = 1;     // ResetCoordinator epoch at frame boundary
     int64_t arrivalHost100ns = 0; // capture callback steady_clock; 0 when unavailable
     int64_t decodedHost100ns = 0; // actual remote decoder output; same local clock
+    uint32_t compressedBytes = 0;  // access unit size of a network stream; 0 when not compressed here
 
     GpuTextureHandle color;       // canonical linear RGBA16F working texture
     HardwareSurfaceInput hardwareSurface; // decoded NV12/P010 surface when the

@@ -9,22 +9,27 @@
 # Build outputs and local presets
 /out/
 /build/
+/build-fork/
+/dist/
 /.vs/
 /vcpkg_installed/
 CMakeUserPresets.json
+*.zip
 
 # Diagnostics and captures
 /captures/
 /logs/
+*.log
 *.pdb
 *.ilk
 *.dmp
 *.etl
 
-# Unattended loop local control and scratch
-/loop/STOP
-/loop/tmp/
-/loop/local/
-# User-authorized runtime music is distributed only in binary packages.
+# Local secrets and per-machine settings, never committed
+*.dpapi
+/config/local/
+boovi.local.json
+
+# Startup music is distributed only in binary packages.
 startup-music.mp3
 BGM.MP3

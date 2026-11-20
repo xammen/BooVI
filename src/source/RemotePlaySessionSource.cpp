@@ -1,6 +1,9 @@
 #include "veyra/source/RemotePlaySessionSource.h"
 #include "veyra/Log.h"
 #include "veyra/remoteplay/StreamRecovery.h"
+#include "veyra/remoteplay/ControllerQueue.h"
+#include <algorithm>
+#include <vector>
 #include <cmath>
 #include <format>
 extern "C" {
@@ -9,7 +12,10 @@ extern "C" {
 namespace veyra::source {
 bool RemotePlaySessionSource::connect(RemotePlayConnectDesc desc) {
     close();
-    { std::lock_guard lock(mutex_); initialized_=started_=failed_=false; skipped_=publishedSequence_=0; recovery_={}; rates_={}; feedback_={}; controller_={}; pendingControllers_.clear(); snapshot_={}; }
+    { std::lock_guard lock(mutex_); initialized_=started_=failed_=false; skipped_=publishedSequence_=0; recovery_={}; rates_={}; feedback_={}; controller_={}; pendingControllers_.clear(); snapshot_={};
+      controllerWake_=CreateEventW(nullptr,FALSE,FALSE,nullptr);
+      // VEYRA_TEST_STREAM_NO_WAKE=1: the 1 ms looks of before 2026-11-20, for A/B runs.
+      frameEvent_=GetEnvironmentVariableW(L"VEYRA_TEST_STREAM_NO_WAKE",nullptr,0)?nullptr:CreateEventW(nullptr,FALSE,FALSE,nullptr); }
     owner_=std::jthread([this, request=std::move(desc)](std::stop_token stop) mutable { run(stop,std::move(request)); });
     std::unique_lock lock(mutex_);
     ready_.wait(lock,[&]{return initialized_;});
@@ -18,6 +24,8 @@ bool RemotePlaySessionSource::connect(RemotePlayConnectDesc desc) {
 }
 void RemotePlaySessionSource::run(std::stop_token stop, RemotePlayConnectDesc desc) {
     alive_.store(true);
+    // Set by controller(): the loops below wake on a new state instead of their 1 ms / 4 ms waits.
+    const HANDLE wake=[&]{std::lock_guard lock(mutex_);return static_cast<HANDLE>(controllerWake_);}();
     RemotePlaySource source;
     remoteplay::StreamRecovery recovery;
     bool repeatedTestDisconnect=false;
@@ -35,6 +43,8 @@ void RemotePlaySessionSource::run(std::stop_token stop, RemotePlayConnectDesc de
     std::jthread feeder;
     std::jthread monitor;
     try {
+        // A queued video packet wakes this loop like a queued controller state does.
+        if(wake&&!GetEnvironmentVariableW(L"VEYRA_TEST_STREAM_NO_WAKE",nullptr,0))desc.videoArrived=[wake]{SetEvent(wake);};
         const bool ok=source.connect(desc);
         if(!ok){retryWasRpInUse=source.nativeSnapshot().startupRetryAllowed;retry=recovery.poll(milliseconds(),false,true)==remoteplay::StreamRecovery::Action::Reconnect;}
         {std::lock_guard lock(mutex_);publishedInfo_=source.info();if(!initialized_)started_=ok;failed_=!ok&&!retry;initialized_=true;telemetryInbox_=source.telemetryInbox();
@@ -59,8 +69,9 @@ void RemotePlaySessionSource::run(std::stop_token stop, RemotePlayConnectDesc de
                     const auto r=source.submitLoginPin(pin);SecureZeroMemory(pin.data(),pin.size());
                     if(!r.ok)log::warn("remoteplay",std::format("{} code={}",r.operation,r.code));
                 }
+                serveGotoBed(source);
                 auto now=std::chrono::steady_clock::now();
-                if(now>=nextController) {
+                if(controllerFresh_.exchange(false)||now>=nextController) {
                     remoteplay::ControllerState controller;
                     {std::lock_guard lock(mutex_);controller=takeControllerLocked(remoteplay::monotonic100ns());}
                     const auto r=source.submitController(controller);
@@ -94,7 +105,7 @@ void RemotePlaySessionSource::run(std::stop_token stop, RemotePlayConnectDesc de
                 }
                 now=std::chrono::steady_clock::now();
                 const auto wait=std::clamp<int64_t>(std::chrono::duration_cast<std::chrono::microseconds>(nextController-now).count(),100,4000);
-                if(timer){LARGE_INTEGER due;due.QuadPart=-wait*10;if(SetWaitableTimer(timer.get(),&due,0,nullptr,nullptr,FALSE))WaitForSingleObject(timer.get(),20);else Sleep(1);}
+                if(timer){LARGE_INTEGER due;due.QuadPart=-wait*10;if(SetWaitableTimer(timer.get(),&due,0,nullptr,nullptr,FALSE)){const HANDLE waits[]={timer.get(),wake};WaitForMultipleObjects(wake?2:1,waits,FALSE,20);}else Sleep(1);}
                 else Sleep(1);
             }
         } else if(ok) {
@@ -142,8 +153,10 @@ void RemotePlaySessionSource::run(std::stop_token stop, RemotePlayConnectDesc de
                     const auto r=source.submitLoginPin(pin);SecureZeroMemory(pin.data(),pin.size());
                     if(!r.ok)log::warn("remoteplay",std::format("{} code={}",r.operation,r.code));
                 }
+                serveGotoBed(source);
                 const auto now=std::chrono::steady_clock::now();
-                if(!desc.request.viewOnly&&now>=nextController) {
+                // Fork: a fresh state goes out on this loop pass (about 1 ms) rather than the next 4 ms tick.
+                if(!desc.request.viewOnly&&(controllerFresh_.exchange(false)||now>=nextController)) {
                     remoteplay::ControllerState controller;
                     {std::lock_guard lock(mutex_);controller=takeControllerLocked(remoteplay::monotonic100ns());}
                     const auto r=source.submitController(controller);
@@ -195,7 +208,7 @@ void RemotePlaySessionSource::run(std::stop_token stop, RemotePlayConnectDesc de
                         recovery_.message=snapshot.state==remoteplay::SessionState::LoginPinRequired?L"等待 PS5 登录 PIN 超时，请重新连接。":native.startupRetryAllowed?L"PS5 仍被串流会话占用，请结束其他串流或稍后重试；无需重新配对。":!native.automaticRetryAllowed?L"PS5 已结束或拒绝串流，请检查主机状态后重新连接。":L"PS5 串流未恢复，请检查主机及网络后点击连接；无需重新配对。";
                         recovery_.message+=std::format(L"（终止码 {} / 错误 {}）",native.lastQuitReason,snapshot.errorCode);break;
                     }
-                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                    if(wake)WaitForSingleObject(wake,1);else std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 }
             }
         }
@@ -244,6 +257,7 @@ void RemotePlaySessionSource::publishDecoded(const AVFrame* frame,pipeline::Fram
     if(latest_){++skipped_;item.packet.flags|=latest_->packet.flags;
         item.packet.flags|=static_cast<pipeline::FrameFlags>(pipeline::FrameFlagBits::Drop);}
     latest_=std::move(item);
+    if(frameEvent_)SetEvent(frameEvent_);
 }
 SourceReadStatus RemotePlaySessionSource::read(pipeline::FramePacket& packet,const AVFrame** frame) {
     if(frame)*frame=nullptr;
@@ -256,6 +270,8 @@ SourceReadStatus RemotePlaySessionSource::read(pipeline::FramePacket& packet,con
 void RemotePlaySessionSource::close() noexcept {
     if(owner_.joinable()){owner_.request_stop();owner_.join();}
     std::lock_guard lock(mutex_);latest_.reset();view_.reset();info_={};started_=false;
+    if(controllerWake_){CloseHandle(controllerWake_);controllerWake_=nullptr;}
+    if(frameEvent_){CloseHandle(frameEvent_);frameEvent_=nullptr;}
     SecureZeroMemory(pin_.data(),pin_.size());pin_.clear();
 }
 void RemotePlaySessionSource::controller(remoteplay::ControllerState state){
@@ -266,7 +282,9 @@ void RemotePlaySessionSource::controller(remoteplay::ControllerState state){
         pendingControllers_.clear();pendingControllers_.push_back({controllerStamp_,{}});
         log::warn("remoteplay-input","Controller queue overflow; releasing before latest state");
     }
-    pendingControllers_.push_back({controllerStamp_,std::move(state)});
+    remoteplay::pushCoalesced(pendingControllers_,controllerStamp_,std::move(state));
+    controllerFresh_=true;
+    if(controllerWake_)SetEvent(controllerWake_);
 }
 remoteplay::ControllerState RemotePlaySessionSource::takeControllerLocked(remoteplay::HostTime now){
     if(now-controllerStamp_>1000000){pendingControllers_.clear();controller_={};return controller_;}
@@ -274,8 +292,28 @@ remoteplay::ControllerState RemotePlaySessionSource::takeControllerLocked(remote
         while(!pendingControllers_.empty()&&now-pendingControllers_.front().first>1000000)pendingControllers_.pop_front();
         controller_={};return controller_;
     }
-    if(!pendingControllers_.empty()){controller_=std::move(pendingControllers_.front().second);pendingControllers_.pop_front();}
+    if(!pendingControllers_.empty()){
+        controllerAgesMs_.push_back(float(now-pendingControllers_.front().first)/10000.f);
+        if(controllerAgesMs_.size()>=1000){
+            auto a=controllerAgesMs_;std::sort(a.begin(),a.end());
+            log::info("remoteplay-input-timing",std::format("queue wait ms p50={:.2f} p95={:.2f} p99={:.2f} max={:.2f} states={}",
+                a[a.size()/2],a[a.size()*95/100],a[a.size()*99/100],a.back(),a.size()));
+            controllerAgesMs_.clear();
+        }
+        controller_=std::move(pendingControllers_.front().second);pendingControllers_.pop_front();
+    }
     return controller_;
+}
+bool RemotePlaySessionSource::gotoBed(){
+    std::unique_lock lock(mutex_);bedRequested_=true;bedDone_=false;
+    if(!ready_.wait_for(lock,std::chrono::seconds(1),[&]{return bedDone_;})){bedRequested_=false;return false;}
+    return bedOk_;
+}
+void RemotePlaySessionSource::serveGotoBed(RemotePlaySource& source){
+    {std::lock_guard lock(mutex_);if(!std::exchange(bedRequested_,false))return;}
+    const auto r=source.gotoBed();
+    log::info("remoteplay",std::format("goto bed requested ok={} code={}",r.ok,r.code));
+    std::lock_guard lock(mutex_);bedOk_=r.ok;bedDone_=true;ready_.notify_all();
 }
 void RemotePlaySessionSource::loginPin(std::string pin){std::lock_guard lock(mutex_);SecureZeroMemory(pin_.data(),pin_.size());pin_=std::move(pin);}
 remoteplay::SessionInbox::Snapshot RemotePlaySessionSource::sessionSnapshot()const{

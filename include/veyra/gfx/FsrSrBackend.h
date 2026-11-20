@@ -30,8 +30,10 @@ public:
 
     // maxRender* is the largest render (source) extent, maxUpscale* the largest
     // output extent. hdr selects the high-dynamic-range input contract.
+    // fsr4Int8 asks for the FSR 4 INT8 provider on a non-AMD adapter and fails
+    // when it cannot be created; otherwise the SDK picks its default provider.
     bool initialize(ID3D12Device* device, uint32_t maxRenderWidth, uint32_t maxRenderHeight,
-                    uint32_t maxUpscaleWidth, uint32_t maxUpscaleHeight, bool hdr);
+                    uint32_t maxUpscaleWidth, uint32_t maxUpscaleHeight, bool hdr, bool fsr4Int8);
 
     // Records the upscale on the caller's command list. Resources must be in
     // the state declared here (color/motion/depth readable by compute, output

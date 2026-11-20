@@ -38,6 +38,7 @@
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QRegularExpression>
 #include <QDesktopServices>
 #include <QStandardPaths>
 #include <QKeyEvent>
@@ -88,15 +89,25 @@
 #pragma comment(lib, "setupapi.lib")
 #pragma comment(lib, "dinput8.lib")
 #include "veyra/remoteplay/ControllerInput.h"
+#include "veyra/remoteplay/PadPresence.h"
 #include "veyra/remoteplay/Discovery.h"
 #include "veyra/remoteplay/ProfileStore.h"
 #include "veyra/source/RemotePlaySource.h"
+#include "veyra/remoteplay/KbmMapper.h"
+#include "veyra/ui/RemotePlayInput.h"
+#include "veyra/remoteplay/LoginPinStore.h"
+#include "veyra/remoteplay/QuickProbe.h"
+#endif
+#if defined(VEYRA_ENABLE_REMOTEPLAY) || defined(VEYRA_ENABLE_MOONLIGHT)
+#include "veyra/ui/MoonlightInputCapture.h"
 #endif
 #ifdef VEYRA_ENABLE_XBOX
 #include "veyra/ui/XboxModel.h"
 #endif
+#ifdef VEYRA_ENABLE_GUEST_CLIENT
+#include "veyra/ui/GuestJoinModel.h"
+#endif
 #ifdef VEYRA_ENABLE_MOONLIGHT
-#include "veyra/ui/MoonlightInputCapture.h"
 #include "veyra/ui/MoonlightModel.h"
 #endif
 #include <future>
@@ -152,7 +163,7 @@ inline QString lastFailurePath() {
 inline QString injectionAdvice(const QString& modules) {
     QStringList parts;
     if (modules.contains(QStringLiteral("RTSSHooks64.dll"), Qt::CaseInsensitive) && !qApp->property("veyraSoftwareUi").toBool())
-        parts << QCoreApplication::translate("QmlPlayerBridge", "检测到 RivaTuner（小飞机 OSD）注入了 Veyra。请把 设置 → 监控软件兼容 设为“自动”并在小飞机运行时重启 Veyra：界面改用兼容绘制，OSD 只显示在视频上");
+        parts << QCoreApplication::translate("QmlPlayerBridge", "检测到 RivaTuner（小飞机 OSD）注入了 BooVI。请把 设置 → 监控软件兼容 设为“自动”并在小飞机运行时重启 BooVI：界面改用兼容绘制，OSD 只显示在视频上");
     return parts.join(QStringLiteral("；"));
 }
 // Messages and fixed table labels shown to the user, in the interface language
@@ -463,12 +474,13 @@ struct QmlPlayerBridge::Impl {
     std::wstring ps5Profile;                 // file name inside profileDirectory()
     QVariantList ps5ProfileList;
     bool ps5Watching = false;
-    struct Ps5Outcome { std::wstring message; std::vector<std::pair<std::string, std::string>> hosts; std::wstring savedPath; bool refreshProfiles = false; };
+    struct Ps5Outcome { std::wstring message; std::vector<std::pair<std::string, std::string>> hosts; std::wstring savedPath; bool refreshProfiles = false;
+                       bool connectAfter = false;    // fork: ps5Play() connects once the console is awake
+                       bool woke = false; };         // fork: and it had to wake it first
     std::mutex ps5Mutex;
     Ps5Outcome ps5Outcome;
     std::atomic<bool> ps5Done{false};
     bool ps5Busy = false;
-    QTimer* controllerTimer = nullptr;
     // PS5 手柄控制 (capture card dialog).
     QTimer* ps5ControlTimer = nullptr;
     QVariantMap ps5ControlState;
@@ -478,10 +490,39 @@ struct QmlPlayerBridge::Impl {
     bool ps5ControlNoPair = false;           // switched on without a pairing; cleared once pairings exist
 #ifdef VEYRA_ENABLE_REMOTEPLAY
     remoteplay::ControllerInput controller;
-    // One SDL pad reader shared by PS5 stream, PS5 手柄控制, PC and Xbox streaming.
+    // Fork: the PS5 stream's pad, keyboard and mouse, read and sent on their own thread
+    // (RemotePlayInput.h). Before kbmCapture: the capture's destructor still reaches it.
+    ui::RemotePlayInput ps5Input{engine};
+    // The capture side on the UI thread: cursor, hotkeys, focus loss (MoonlightInputCapture.h).
+    std::unique_ptr<ui::MoonlightInputCapture> kbmCapture;
+    bool ps5Focused = true;   // last focus state the input thread published; a change refreshes ps5
+    remoteplay::ControllerInput::Capabilities ps5PadSeen;   // last pad ps5() showed; a change refreshes ps5
+    remoteplay::PadPresence ps5PadPresence;   // fork: the overlay's "no pad" hint and arrival toast
+    uint64_t ps5PinSession = 0;   // fork: session the remembered login PIN was sent for (one try each)
+    // Fork: after a wake the PS5 waits on its "press the PS button" screen. The connect that
+    // follows a wake presses PS once, 1.5 s after the first decoded frame of that session.
+    bool ps5TapNextConnect = false;
+    bool ps5LastWoke = false;     // fork: the last ps5Play() woke the console from rest mode
+    uint64_t ps5TapSession = 0;   // session to tap, 0 for none
+    uint64_t ps5TapAt = 0;        // GetTickCount64() deadline, 0 until the first frame
+    remoteplay::ControllerInput::Capabilities ps5Pad() const {
+        return ps5Input.running() ? ps5Input.capabilities() : controller.capabilities();
+    }
+    void applyKbmSettings() {
+        remoteplay::KbmSettings k;
+        k.mouse = prefs.value("kbmMouse").toString() == QLatin1String("gyro") ? remoteplay::KbmSettings::Mouse::Gyro
+                                                                             : remoteplay::KbmSettings::Mouse::RightStick;
+        const remoteplay::KbmSettings defaults;
+        k.speed = float(prefs.value("kbmSpeed", int(std::lround(defaults.speed * 100))).toInt()) / 100.f;
+        k.curve = float(prefs.value("kbmCurve", int(defaults.curve * 100)).toInt()) / 100.f;
+        k.deadzone = float(prefs.value("kbmDeadzone", int(defaults.deadzone * 100)).toInt()) / 100.f;
+        k.precision = float(prefs.value("kbmPrecision", int(std::lround(defaults.precision * 100))).toInt()) / 100.f;
+        ps5Input.setKbmSettings(k);
+    }
+    // One SDL pad reader on the UI thread shared by PS5 手柄控制, PC and Xbox streaming.
     // Each user acquires it and only the last release stops it, so the timer of a
     // source that just ended never cuts off the pad the next source started using.
-    enum PadUser : unsigned { PadPs5 = 1, PadPs5Control = 2, PadMoonlight = 4, PadXbox = 8 };
+    enum PadUser : unsigned { PadPs5Control = 2, PadMoonlight = 4, PadXbox = 8 };
     unsigned padUsers = 0;
     bool acquirePad(unsigned user) {
         const bool ok = controller.start(); // no-op once initialized
@@ -973,6 +1014,11 @@ struct QmlPlayerBridge::Impl {
     bool xboxWasActive = false;
     int xboxStatsTicks = 0;
     std::unique_ptr<ui::XboxModel> xbox;   // last: joins its worker first
+#endif
+#ifdef VEYRA_ENABLE_GUEST_CLIENT
+    bool joinWasActive = false;
+    int joinStatsTicks = 0;
+    std::unique_ptr<ui::GuestJoinModel> join;
 #endif
 };
 

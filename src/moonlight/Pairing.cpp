@@ -9,7 +9,7 @@ namespace {
 
 constexpr int kRequestTimeoutMs = 5000;
 // What Sunshine shows in its list of paired clients.
-constexpr const char* kDeviceName = "Veyra";
+constexpr const char* kDeviceName = "BooVI";
 
 std::string tag(const xml::Node& root, const char* name) { return xml::textOf(root, name); }
 

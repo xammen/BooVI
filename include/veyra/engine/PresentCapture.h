@@ -6,6 +6,8 @@
 // Engine thread only. Kept free of the presenter's headers: EngineController.h
 // is included after Qt, whose `slots` macro breaks diagnostics/GpuTimer.h.
 #include <d3d12.h>
+#include <array>
+#include <atomic>
 #include <cstdint>
 
 namespace veyra::engine {
@@ -19,6 +21,7 @@ public:
         uint32_t hdrMode=0;              // 0 SDR, 1 scRGB (linear BT.709), 2 HDR10 (PQ BT.2020)
         float ditherStep=0;              // graph output dither step (RgbToNv12 reserved.y)
         bool generated=false;
+        int64_t sourceHost100ns=0;       // steady clock when a live source's picture reached this PC decoded; 0 unknown
     };
     virtual ~PresentCapture()=default;
     // true: commands were recorded into `list`; submitted() or discarded() follows.
@@ -29,22 +32,45 @@ public:
     virtual void discarded()=0;
 };
 
-// The presenter has one capture; a recording and the instant replay buffer
-// both take the presented frame through this.
+// The fork's remote guest. Real pictures only: a live source (console stream, capture card)
+// hands each one over right after the graph submitted it, on the graph's queue, so frame
+// generation and pacing hold that picture for the host's screen only (up to 30 ms at 4X).
+// The fluide feeds take the presented stream instead, generated frames included, at its
+// present. A file always hands its pictures over at their present.
+class EarlyCapture : public PresentCapture {
+public:
+    // Engine thread, cheap: record() would take a frame now. No command list is opened otherwise.
+    virtual bool wanted() const=0;
+    // Any thread: the consumer wants the presented stream (generated frames too), not the early tap.
+    virtual bool presentedFeed() const=0;
+};
+
+// The presenter has one capture; a recording, the instant replay buffer and the fork's
+// remote guest (GuestStreamer.h) all take the presented frame through this. Consumers are
+// added, never removed, and must outlive the engine thread.
 class PresentCaptureFanout final : public PresentCapture {
 public:
-    PresentCaptureFanout(PresentCapture& first,PresentCapture& second):first_(first),second_(second){}
+    PresentCaptureFanout(PresentCapture& first,PresentCapture& second){add(first);add(second);}
+    // Any thread; false when full. The engine thread sees the new consumer from its next frame.
+    bool add(PresentCapture& capture){
+        const size_t n=count_.load(std::memory_order_relaxed);
+        if(n>=kMax)return false;
+        consumers_[n]=&capture;
+        count_.store(n+1,std::memory_order_release);
+        return true;
+    }
     bool record(ID3D12GraphicsCommandList* list,const Frame& frame) override {
-        const bool a=first_.record(list,frame);
-        const bool b=second_.record(list,frame);
-        return a||b;
+        bool any=false;
+        for(size_t i=0,n=count_.load(std::memory_order_acquire);i<n;++i)any|=consumers_[i]->record(list,frame);
+        return any;
     }
     // Each one acts only on what it recorded itself.
-    void submitted(ID3D12Fence* fence,uint64_t value) override {first_.submitted(fence,value);second_.submitted(fence,value);}
-    void discarded() override {first_.discarded();second_.discarded();}
+    void submitted(ID3D12Fence* fence,uint64_t value) override {for(size_t i=0,n=count_.load(std::memory_order_acquire);i<n;++i)consumers_[i]->submitted(fence,value);}
+    void discarded() override {for(size_t i=0,n=count_.load(std::memory_order_acquire);i<n;++i)consumers_[i]->discarded();}
 private:
-    PresentCapture& first_;
-    PresentCapture& second_;
+    static constexpr size_t kMax=4;
+    std::array<PresentCapture*,kMax> consumers_{};
+    std::atomic<size_t> count_{0};
 };
 
 } // namespace veyra::engine

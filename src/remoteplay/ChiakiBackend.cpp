@@ -247,6 +247,10 @@ BackendResult ChiakiBackend::submitLoginPin(std::string_view pin){
     if(pin.empty()||pin.size()>8||!std::all_of(pin.begin(),pin.end(),[](char c){return c>='0'&&c<='9';}))return {false,-1105,"invalid_login_pin"};
     return p_->record(chiaki_session_set_login_pin(&p_->session,reinterpret_cast<const std::uint8_t*>(pin.data()),pin.size()),"chiaki_session_set_login_pin");
 }
+BackendResult ChiakiBackend::gotoBed(){
+    if(!p_||!p_->onOwner()||!p_->started)return {false,-1107,"goto_bed_without_session"};
+    return p_->record(chiaki_session_goto_bed(&p_->session),"chiaki_session_goto_bed");
+}
 BackendResult ChiakiBackend::submitController(const ControllerState& state){
     if(!p_||!p_->onOwner()||!p_->started)return {false,-1106,"controller_without_session"};
     ChiakiControllerState c;chiaki_controller_state_set_idle(&c);

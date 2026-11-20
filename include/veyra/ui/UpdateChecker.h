@@ -8,6 +8,8 @@
 
 namespace veyra::ui {
 // UI-only, bounded asynchronous metadata request; never touches the engine.
+// The releases come from the GitHub repository BOOVI_GITHUB_REPO names (owner/name, set at
+// configure time). Without one, checking is off and completes as "disabled".
 class UpdateChecker final : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool checking READ checking NOTIFY checkingChanged)
@@ -15,8 +17,7 @@ class UpdateChecker final : public QObject {
     Q_PROPERTY(QUrl releaseUrl READ releaseUrl NOTIFY releaseChanged)
 public:
     explicit UpdateChecker(QString currentVersion, QObject* parent = nullptr,
-        QUrl endpoint = QUrl(QStringLiteral("https://api.github.com/repos/Likely7/Veyra-NRVideo/releases/latest")),
-        int timeoutMs = 12000);
+        QString repo = QStringLiteral(BOOVI_GITHUB_REPO), QUrl endpoint = {}, int timeoutMs = 12000);
     ~UpdateChecker() override;
     bool checking() const { return reply_ != nullptr; }
     QString latestVersion() const { return latestVersion_; }
@@ -37,6 +38,7 @@ private:
     QTimer deadline_;
     QNetworkReply* reply_ = nullptr;
     QString currentVersion_, latestVersion_;
+    QString repo_;
     QUrl endpoint_, releaseUrl_;
     QByteArray body_;
     QString failure_;

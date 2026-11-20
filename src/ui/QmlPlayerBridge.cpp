@@ -170,6 +170,9 @@ QmlPlayerBridge::QmlPlayerBridge(engine::EngineController& engine, std::filesyst
 #ifdef VEYRA_ENABLE_XBOX
     setupXbox();
 #endif
+#ifdef VEYRA_ENABLE_GUEST_CLIENT
+    setupJoin();
+#endif
     // Before anything opens: the renderer reads the output choice at start().
     applyPreference(QStringLiteral("language"));
     applyPreference(QStringLiteral("audioDevice"));
@@ -281,6 +284,14 @@ QmlPlayerBridge::QmlPlayerBridge(engine::EngineController& engine, std::filesyst
             const bool on = p.value(QStringLiteral("edgeAegis")).toBool();
             if (s.fgMotionRefine != on) { s.fgMotionRefine = on; changed = true; }
         }
+        if (p.contains(QStringLiteral("fgHudGuard"))) {
+            const bool on = p.value(QStringLiteral("fgHudGuard")).toBool();
+            if (s.fgHudGuard != on) { s.fgHudGuard = on; changed = true; }
+        }
+        if (p.contains(QStringLiteral("fgFastGuard"))) {
+            const bool on = p.value(QStringLiteral("fgFastGuard")).toBool();
+            if (s.fgFastGuard != on) { s.fgFastGuard = on; changed = true; }
+        }
         if (p.contains(QStringLiteral("dlssgPerformance"))) {
             const bool on = p.value(QStringLiteral("dlssgPerformance")).toBool();
             if (s.dlssgLite != on) { s.dlssgLite = on; changed = true; }
@@ -341,6 +352,8 @@ QmlPlayerBridge::QmlPlayerBridge(engine::EngineController& engine, std::filesyst
             pr.outputRate = static_cast<engine::OutputRateMode>(std::clamp(saved.value(QStringLiteral("outputRate")).toInt(), 0, 2));
             pr.customFps = std::clamp(saved.value(QStringLiteral("customFps"), 60.0).toDouble(), 1.0, 1000.0);
             pr.variableRefresh = saved.value(QStringLiteral("vrr")).toBool();
+            pr.halfRateKeepsMultiplier = saved.value(QStringLiteral("halfRateKeepsMultiplier")).toBool();
+            pr.cameraAnticipation = static_cast<engine::CameraAnticipationMode>(std::clamp(saved.value(QStringLiteral("cameraAnticipation")).toInt(), 0, 3));
         }
         if (pr.valid()) impl_->engine.requestPresentation(pr);
         impl_->aspectMode = std::clamp(impl_->prefs.value(QStringLiteral("aspect")).toInt(), 0, 6);
@@ -441,6 +454,7 @@ QmlPlayerBridge::QmlPlayerBridge(engine::EngineController& engine, std::filesyst
         tickPs5();
         tickMoonlight();
         tickXbox();
+        tickJoin();
         // Geometry uses the source DAR and the same transform as mouse/compare.
         if (impl_->snapshot.running && impl_->videoWindow) {
             const bool fresh = impl_->aspectSession != impl_->snapshot.sessionId;
@@ -656,8 +670,8 @@ QmlPlayerBridge::QmlPlayerBridge(engine::EngineController& engine, std::filesyst
             if (!impl_->prefs.value(QStringLiteral("obsRivaTunerHintShown")).toBool()) {
                 impl_->prefs[QStringLiteral("obsRivaTunerHintShown")] = true;
                 (void)impl_->savePrefs();
-                emit notice(tr("检测到 OBS 游戏采集和小飞机（RTSS）同时注入 Veyra。两者默认的挂钩方式冲突，OBS 游戏采集可能抓不到画面（任何 D3D12 程序都一样）。"
-                               "在 RTSS 里添加 veyra_qml_ui.exe，并在它的设置中勾选“Use Microsoft Detours API hooking”；或在 OBS 改用窗口采集（Windows 10 1903+）"), false);
+                emit notice(tr("检测到 OBS 游戏采集和小飞机（RTSS）同时注入 BooVI。两者默认的挂钩方式冲突，OBS 游戏采集可能抓不到画面（任何 D3D12 程序都一样）。"
+                               "在 RTSS 里添加 BooVI.exe，并在它的设置中勾选“Use Microsoft Detours API hooking”；或在 OBS 改用窗口采集（Windows 10 1903+）"), false);
             }
         }
         // Overlays inject when they decide the window is a game, e.g. on entering fullscreen
@@ -683,7 +697,7 @@ QmlPlayerBridge::QmlPlayerBridge(engine::EngineController& engine, std::filesyst
         veyra::log::info("overlay-hooks", std::format("previous run: {} injected={}", kind.toStdString(), modules.toStdString()));
         if (advice.isEmpty()) return;
         const QString head = kind.startsWith(QStringLiteral("crash"))
-            ? tr("上次 Veyra 异常退出（崩溃在 %1）").arg(kind.mid(6).trimmed())
+            ? tr("上次 BooVI 异常退出（崩溃在 %1）").arg(kind.mid(6).trimmed())
             : tr("上次采集时显卡设备丢失");
         emit notice(head + QStringLiteral("；") + advice, true);
     });

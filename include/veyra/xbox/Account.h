@@ -3,7 +3,7 @@
 // xal-node's MSAL flow): a Microsoft device-code sign-in with the xbox.com web client id, then Xbox Live
 // user and XSTS tokens, then a streaming token for the "xhome" offering. The user signs in on Microsoft's
 // own page (microsoft.com/link); this program never sees the password. Only the refresh token is kept,
-// DPAPI-protected, under %LOCALAPPDATA%\Veyra\xbox.
+// DPAPI-protected, under %LOCALAPPDATA%\BooVI\xbox.
 //
 // Unofficial: the client id is Microsoft's, borrowed as every open-source client does; Microsoft can
 // change or block this at any time.
@@ -49,7 +49,7 @@ struct SavedTokens {
     std::string userHash;          // uhs, for display / diagnostics only
 };
 
-std::filesystem::path dataDirectory();   // %LOCALAPPDATA%\Veyra\xbox (VEYRA_XBOX_DATA overrides, for tests)
+std::filesystem::path dataDirectory();   // %LOCALAPPDATA%\BooVI\xbox (VEYRA_XBOX_DATA overrides, for tests)
 std::optional<SavedTokens> loadTokens(const std::filesystem::path& file);
 bool saveTokens(const std::filesystem::path& file, const SavedTokens& tokens);
 

@@ -63,6 +63,7 @@ public:
     BackendResult requestIdr();
     BackendResult submitController(const ControllerState&);
     BackendResult submitLoginPin(std::string_view);
+    BackendResult gotoBed();   // fork: asks the console to enter rest mode
     NativeSnapshot snapshot() const;
     ControllerFeedback takeFeedback();
 private:

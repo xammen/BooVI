@@ -21,6 +21,11 @@ public:
         bool hdr=false;          // HEVC Main10 from P010 inputs, BT.2020 PQ signalling
         uint32_t fps=60;         // rate-control frame rate
         uint32_t bitrateMbps=20; // VBR target
+        // Fork, partage (GuestStreamer.h): live streaming to a remote guest instead of a
+        // file. P2 with the ultra-low-latency tuning, CBR at bitrateKbps with a one-frame
+        // VBV, no periodic IDR (the receiver asks for one with a PLI: submit forceKey).
+        bool lowLatency=false;
+        uint32_t bitrateKbps=0;
     };
     struct Packet {
         std::vector<uint8_t> data;
@@ -43,6 +48,8 @@ public:
     // The oldest submitted frame. Without `wait`, false when it is still
     // encoding (ready stays false); with it, waits up to timeoutMs.
     bool takeOldest(Packet& packet,bool wait,uint32_t timeoutMs,bool& ready);
+    // Low-latency sessions: a new CBR target and frame rate (0 keeps it) without a new IDR.
+    bool setRate(uint32_t kbps,uint32_t fps=0);
     size_t inFlight() const;
     size_t capacity() const;
     void close();

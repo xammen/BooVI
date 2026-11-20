@@ -336,7 +336,7 @@ void QmlPlayerBridge::setPreOpenHook(std::function<void()> hook) {
     impl_->preOpen = std::move(hook);
 }
 
-QString QmlPlayerBridge::appName() const { return QStringLiteral("Veyra"); }
+QString QmlPlayerBridge::appName() const { return QStringLiteral("BooVI"); }
 QString QmlPlayerBridge::version() const { return QStringLiteral(VEYRA_DISPLAY_VERSION); }
 
 // --- audio sync (1.4.4 声音补偿, #12) ------------------------------------------

@@ -13,7 +13,7 @@ public class W {
 }
 "@
 New-Item -ItemType Directory -Force $Out | Out-Null
-$exe = Join-Path $App 'veyra_qml_ui.exe'
+$exe = Join-Path $App 'BooVI.exe'
 $p = Start-Process -FilePath $exe -PassThru
 Start-Sleep -Seconds $WaitSeconds
 $p.Refresh()

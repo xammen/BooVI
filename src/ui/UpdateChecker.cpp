@@ -17,8 +17,10 @@ QVersionNumber versionNumber(const QString& text, bool local) {
     return match.hasMatch() ? QVersionNumber::fromString(match.captured(1)) : QVersionNumber{};
 }
 }
-UpdateChecker::UpdateChecker(QString currentVersion, QObject* parent, QUrl endpoint, int timeoutMs)
-    : QObject(parent), currentVersion_(std::move(currentVersion)), endpoint_(std::move(endpoint)), timeoutMs_(timeoutMs) {
+UpdateChecker::UpdateChecker(QString currentVersion, QObject* parent, QString repo, QUrl endpoint, int timeoutMs)
+    : QObject(parent), currentVersion_(std::move(currentVersion)), repo_(std::move(repo)), endpoint_(std::move(endpoint)), timeoutMs_(timeoutMs) {
+    if (endpoint_.isEmpty() && !repo_.isEmpty())
+        endpoint_ = QUrl(QStringLiteral("https://api.github.com/repos/%1/releases/latest").arg(repo_));
     deadline_.setSingleShot(true);
     connect(&deadline_, &QTimer::timeout, this, [this] {
         if (reply_) { failure_ = QStringLiteral("timeout"); reply_->abort(); }
@@ -42,10 +44,15 @@ void UpdateChecker::startAutomaticCheck() {
 void UpdateChecker::check(bool manual) {
     if (checking()) { manual_ = manual_ || manual; return; }
     manual_ = manual;
+    if (repo_.isEmpty()) {
+        qInfo().noquote() << "[update-check] disabled";
+        emit completed(QStringLiteral("disabled"));
+        return;
+    }
     body_.clear(); failure_.clear();
     QNetworkRequest request(endpoint_);
     request.setRawHeader("Accept", "application/vnd.github+json");
-    request.setRawHeader("User-Agent", "Veyra-Update-Check");
+    request.setRawHeader("User-Agent", "BooVI-Update-Check");
     request.setRawHeader("X-GitHub-Api-Version", "2022-11-28");
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
     request.setMaximumRedirectsAllowed(3);
@@ -81,7 +88,7 @@ void UpdateChecker::finish() {
         const QUrl url(obj.value(QStringLiteral("html_url")).toString());
         const bool validUrl = url.scheme() == QStringLiteral("https") && url.host() == QStringLiteral("github.com")
             && url.userInfo().isEmpty() && url.port(-1) == -1 && !url.hasQuery() && !url.hasFragment()
-            && url.path() == QStringLiteral("/Likely7/Veyra-NRVideo/releases/tag/") + tag;
+            && url.path() == QStringLiteral("/%1/releases/tag/").arg(repo_) + tag;
         if (error.error != QJsonParseError::NoError || !document.isObject()
             || !obj.value(QStringLiteral("draft")).isBool() || obj.value(QStringLiteral("draft")).toBool()
             || !obj.value(QStringLiteral("prerelease")).isBool() || obj.value(QStringLiteral("prerelease")).toBool()

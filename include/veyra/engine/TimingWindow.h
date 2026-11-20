@@ -22,6 +22,12 @@ public:
     void add(double v,Clock::time_point now=Clock::now()){if(!std::isfinite(v)||v<0)return;expire(now);values_.push_back({v,now});if(values_.size()>1200)values_.pop_front();}
     void clear(){values_.clear();cached_=0;refresh_={};}
     size_t size()const{return values_.size();}
+    // Median of the window, computed on each call: for values read once a status refresh.
+    double median(Clock::time_point now=Clock::now())const{
+        expire(now);if(values_.empty())return 0;
+        std::vector<double> sorted;sorted.reserve(values_.size());for(const auto& sample:values_)sorted.push_back(sample.value);
+        std::nth_element(sorted.begin(),sorted.begin()+sorted.size()/2,sorted.end());return sorted[sorted.size()/2];
+    }
     double p95(Clock::time_point now=Clock::now())const{
         expire(now);if(values_.empty())return 0;
         if(now<refresh_)return cached_;

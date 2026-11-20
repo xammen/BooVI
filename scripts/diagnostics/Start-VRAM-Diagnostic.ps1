@@ -24,7 +24,7 @@ $exe=Join-Path $app 'veyra-vram-diagnostic.exe'
 foreach($file in @($exe,(Join-Path $app 'Qt6Core.dll'),(Join-Path $app 'qt.conf'),(Join-Path $app 'qml/Veyra/Main.qml'))) {
     if(-not(Test-Path -LiteralPath $file -PathType Leaf)){throw '请将诊断 EXE 和启动文件放到解压后的 Veyra 2.0.6 NVIDIA 主程序旁边。'}
 }
-if(@(Get-Process -Name 'veyra_qml_ui','veyra-vram-diagnostic','veyra-flash-diagnostic' -ErrorAction SilentlyContinue).Count -gt 0){throw '请先退出其他 Veyra 播放器，再启动诊断。'}
+if(@(Get-Process -Name 'BooVI','veyra-vram-diagnostic','veyra-flash-diagnostic' -ErrorAction SilentlyContinue).Count -gt 0){throw '请先退出其他 Veyra 播放器，再启动诊断。'}
 if(-not $ProfileSource){$ProfileSource=Join-Path $app 'runtime_local/user-data-2.0.0'}
 if(-not $OutputDirectory){$OutputDirectory=Join-Path $app ('logs/vram-diagnostic-'+(Get-Date -Format 'yyyyMMdd-HHmmss-fff'))}
 $output=[IO.Path]::GetFullPath($OutputDirectory)

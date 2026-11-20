@@ -383,7 +383,7 @@ bool ScreenCaptureSource::open(const SourceOpenDesc& desc){
     try{
         if(!ScreenCaptureOptions::parse(desc.path,p.options)||!desc.d3d12Device)throw winrt::hresult_error(E_INVALIDARG,L"屏幕采集参数无效");
         const auto& o=p.options;HWND window=o.kind==ScreenTargetKind::Window?reinterpret_cast<HWND>(o.target):nullptr;
-        if(window){GetWindowThreadProcessId(window,&p.targetPid);if(!IsWindow(window)||p.targetPid==GetCurrentProcessId())throw winrt::hresult_error(E_INVALIDARG,L"窗口已关闭或属于 Veyra");}
+        if(window){GetWindowThreadProcessId(window,&p.targetPid);if(!IsWindow(window)||p.targetPid==GetCurrentProcessId())throw winrt::hresult_error(E_INVALIDARG,L"窗口已关闭或属于 BooVI");}
         HMONITOR monitor=window?MonitorFromWindow(window,MONITOR_DEFAULTTONEAREST):reinterpret_cast<HMONITOR>(o.target);
         p.otherDesktop=window&&vdesk::shellCloaked(window);
         if(p.otherDesktop)log::info("screen","target window is on another virtual desktop; WGC captures it while that desktop is hidden");

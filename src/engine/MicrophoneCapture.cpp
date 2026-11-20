@@ -54,7 +54,7 @@ std::wstring friendlyName(IMMDevice* device){
     return name;
 }
 std::wstring describe(HRESULT hr){
-    if(hr==E_ACCESSDENIED)return L"Windows 不允许 Veyra 使用麦克风，请在 设置 → 隐私和安全性 → 麦克风 中允许桌面应用访问";
+    if(hr==E_ACCESSDENIED)return L"Windows 不允许 BooVI 使用麦克风，请在 设置 → 隐私和安全性 → 麦克风 中允许桌面应用访问";
     if(hr==HRESULT_FROM_WIN32(ERROR_NOT_FOUND)||hr==AUDCLNT_E_DEVICE_INVALIDATED||hr==E_NOTFOUND)
         return L"找不到所选麦克风，请插回设备或重新选择";
     if(hr==AUDCLNT_E_DEVICE_IN_USE)return L"麦克风被其他程序独占，请关闭独占模式后再试";

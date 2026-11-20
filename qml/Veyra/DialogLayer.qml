@@ -19,21 +19,21 @@ Rectangle {
     // Which dialog key shows this layer.
     property string key: ""
     readonly property bool shown: key.length > 0 && dialogHost.dialog === key
-    // M17: .dlg scale .9 -> 1 and translate 0 14px -> 0 over .55s --spring inside the
-    // scrim's .2s fade; closing runs the same back while the scrim fades out.
-    property real motionS: 0.9
+    // Arrives from 0.975 and 14px low over 420 ms, settling without overshoot; leaves faster
+    // (180 ms, accelerating) to 0.985 and 8px, a smaller move than its entrance (La Cuisine).
+    property real motionS: 0.975
     property real motionDy: 14
-    onShownChanged: { if (shown) { motionS = 0.9; motionDy = 14; enterAnim.restart() } else exitAnim.restart() }
+    onShownChanged: { if (shown) { exitAnim.stop(); motionS = 0.975; motionDy = 14; enterAnim.restart() } else { enterAnim.stop(); exitAnim.restart() } }
     onMotionSChanged: if (shown) dialogHost.motionScale = motionS
     ParallelAnimation {
         id: enterAnim
-        NumberAnimation { target: dlg; property: "motionS"; to: 1; duration: Theme.d(550); easing.bezierCurve: Theme.spring }
-        NumberAnimation { target: dlg; property: "motionDy"; to: 0; duration: Theme.d(550); easing.bezierCurve: Theme.spring }
+        NumberAnimation { target: dlg; property: "motionS"; to: 1; duration: Theme.d(Theme.durEnter); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.ease }
+        NumberAnimation { target: dlg; property: "motionDy"; to: 0; duration: Theme.d(Theme.durEnter); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.ease }
     }
     ParallelAnimation {
         id: exitAnim
-        NumberAnimation { target: dlg; property: "motionS"; to: 0.9; duration: Theme.d(550); easing.bezierCurve: Theme.spring }
-        NumberAnimation { target: dlg; property: "motionDy"; to: 14; duration: Theme.d(550); easing.bezierCurve: Theme.spring }
+        NumberAnimation { target: dlg; property: "motionS"; to: 0.985; duration: Theme.d(Theme.durExit); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easeExit }
+        NumberAnimation { target: dlg; property: "motionDy"; to: 8; duration: Theme.d(Theme.durExit); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easeExit }
     }
     opacity: shown ? 1 : 0
     visible: opacity > 0
@@ -43,7 +43,7 @@ Rectangle {
     // Keyed on shown/opacity, never on visible: an item without a parent always
     // reads invisible, so "visible ? host : null" never brought a dialog back.
     parent: (shown || opacity > 0) ? dialogHost : null
-    Behavior on opacity { NumberAnimation { duration: Theme.d(200) } }
+    Behavior on opacity { NumberAnimation { duration: Theme.d(dlg.shown ? 280 : Theme.durExit) } }
     transform: [
         Scale { origin.x: dlg.width / 2; origin.y: dlg.height / 2; xScale: dlg.motionS; yScale: dlg.motionS },
         Translate { y: dlg.motionDy }

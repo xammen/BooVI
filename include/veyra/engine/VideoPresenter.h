@@ -14,12 +14,31 @@
 #include <chrono>
 #include <array>
 #include <optional>
+#include <memory>
 namespace veyra::gfx { class D3D12DeviceContext; class CommandSlotRing; }
 namespace veyra::pipeline { class EnhanceGraph; }
 namespace veyra::sink { struct RgbaImage; }
 namespace veyra::engine {
+class CameraAnticipation;
 class VideoPresenter {
 public:
+    // Fork, camera anticipation (VideoPresenterAnticipation.cpp, docs/CAMERA_ANTICIPATION_2026-11-20.md):
+    // each picture is redrawn every screen refresh, shifted by what the stick has asked for since.
+    // Native presentation only (not XeSS, not the HDR copy path). The model must outlive the presenter.
+    struct AnticipationReport {
+        bool enabled=false,running=false;
+        double presentsPerSecond=0,intervalP50Ms=0,intervalP95Ms=0,intervalP99Ms=0,gpuTickMs=0,gpuPictureMs=0,cpuTickMs=0,measureWaitMs=0;
+        uint64_t ticks=0,pictures=0,missedMeasures=0;
+    };
+    void setAnticipation(CameraAnticipation* model);
+    void enableAnticipation(bool on);
+    bool anticipationEnabled()const;
+    // When the host had the next presented picture, on this PC's clock (host 100 ns).
+    void anticipationPicture(int64_t pictureTime100ns);
+    // Host time of the next refresh to draw, 0 while the stage is idle; anticipationTick draws it.
+    int64_t anticipationDue100ns()const;
+    bool anticipationTick(gfx::D3D12DeviceContext&);
+    AnticipationReport anticipationReport()const;
     // Live recording hook; the object must outlive every present() call.
     void setCapture(PresentCapture* capture){capture_=capture;}
     // Shared refresh/VRR states (the engine's); must outlive the presenter.
@@ -69,6 +88,9 @@ public:
     // just before it as RTSS and PresentMon do: the 1% low counts these, not
     // returns, whose spacing also carries the call's own 0.2-0.6 ms jitter.
     int64_t lastPresentCallHost100ns()const{return lastPresentCallHost100ns_;}
+    // Median of the last second's Present call to the vblank that showed it (DXGI frame
+    // statistics); -1 until the display reported one.
+    double scanoutP50Ms()const{return scanoutP50Ms_;}
     bool pacingActive()const{return sink_.pacingActive();}
     uint64_t generation()const{return generation_;}
     // Explicit integration-test capture only; never called by playback/export.
@@ -114,6 +136,12 @@ public:
 std::vector<diagnostics::GpuFrameTiming> takeGpuTimings(ID3D12Fence* fence){gpuTimer_.collect(presentationFence_?presentationFence_.Get():fence);return gpuTimer_.takeCompleted();}
 void recordGpuTimings(){gpuTimer_.recordCompleted();}
 private:
+    struct Anticipation;
+    std::shared_ptr<Anticipation> anticipation_;
+    bool anticipationIngest(gfx::D3D12DeviceContext&,pipeline::EnhanceGraph&,unsigned slot,bool generated);
+    void anticipationBlit(ID3D12GraphicsCommandList*,const float* dims);
+    void anticipationPresented(int64_t call100ns,bool tick,const RECT& client,bool staged);
+    void anticipationClose();
     // Custom: HDR10 static metadata for the display (MaxCLL / MaxFALL / mastering
     // peak). Sent only when it changes, and cleared when the HDR10 path stops.
     void applyHdrMetadata(pipeline::EnhanceGraph& graph,const HdrMetadataSettings& metadata,const HdrCurveSettings& resolvedCurve,pipeline::FrameIdentity identity);
@@ -128,6 +156,7 @@ private:
     gfx::ReflexSession reflex_;
     uint64_t reflexFrame_=0,reflexInputFrame_=0,generation_=0;
     int64_t lastPresentCallHost100ns_=0;
+    double scanoutP50Ms_=-1;
     bool providerOwnedPresentation_=false;
     PresentCapture* capture_=nullptr;
     Microsoft::WRL::ComPtr<ID3D12CommandQueue> presentationQueue_;

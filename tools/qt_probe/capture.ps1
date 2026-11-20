@@ -40,7 +40,7 @@ public class Cap {
 }
 "@
 New-Item -ItemType Directory -Force $Out | Out-Null
-$exe = Join-Path $App 'veyra_qml_ui.exe'
+$exe = Join-Path $App 'BooVI.exe'
 $launch = @('--page', $Page)
 if ($Clip -ne '') { $launch += $Clip }
 $p = Start-Process -FilePath $exe -ArgumentList $launch -PassThru

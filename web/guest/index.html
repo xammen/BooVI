@@ -1,0 +1,1497 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>BooVI · invité</title>
+<style>
+/* BooVI's sage palette (qml/Veyra/Theme.qml). */
+@font-face { font-family: "JetBrains Mono"; src: url("/font.ttf") format("truetype"); font-display: swap; }
+:root {
+  --bg: #0F0D14; --bg-stage: #07060A; --card: #17141D; --card2: #1B1822; --card3: #201C27;
+  --line: #29252F; --line2: #3B3644; --ring: rgba(255,255,255,.09); --ring2: rgba(255,255,255,.14);
+  --t1: #EBE8F0; --t2: #A29EAB; --t3: #8D8996;
+  --accent: #9B7BEA; --accent-text: #B9A2F4; --accent-hi: #DDD2FB; --accent-soft: rgba(155,123,234,.16);
+  --ok: #5FBF83; --warn: #F5C84B; --err: #FF5D5D;
+  --r-sm: 2px; --r-md: 4px; --r-lg: 8px;
+  --mono: "JetBrains Mono", Consolas, monospace;
+  --ease: cubic-bezier(.2,0,0,1);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg-stage); color: var(--t1); font-family: var(--mono); font-size: 13px; overflow: hidden; }
+video { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+/* the lab's stage covers the video while it draws the stream itself */
+#stage { position: fixed; inset: 0; width: 100%; height: 100%; background: #000; display: none; z-index: 1; }
+body.staged #stage { display: block; }
+.card { background: var(--card); border: 1px solid var(--ring); border-radius: var(--r-lg); box-shadow: 0 12px 40px rgba(0,0,0,.45); }
+.btn { font: inherit; font-size: 12px; color: var(--t1); background: var(--card3); border: 1px solid var(--ring2); border-radius: var(--r-md);
+       height: 32px; padding: 0 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: background .15s var(--ease), border-color .15s var(--ease); }
+.btn:hover { background: #2A2533; }
+.btn.primary { background: var(--t1); color: var(--bg); border-color: transparent; }
+.btn.primary:hover { background: #fff; }
+.btn.on { border-color: rgba(155,123,234,.45); background: var(--accent-soft); color: var(--accent-hi); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--t3); flex: none; }
+.dot.ok { background: var(--ok); box-shadow: 0 0 0 4px rgba(95,191,131,.16); }
+.dot.warn { background: var(--warn); box-shadow: 0 0 0 4px rgba(245,200,75,.16); }
+.dot.err { background: var(--err); box-shadow: 0 0 0 4px rgba(255,93,93,.16); }
+.dot.busy { background: var(--accent); animation: pulse 1.2s var(--ease) infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
+
+/* the gate: join / state */
+#gate { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px 0; overflow: auto; background: radial-gradient(120% 90% at 50% 40%, #13111A 0%, #0F0D14 60%, #0B0A0F 100%); transition: opacity .3s var(--ease); z-index: 5; }
+#gate.hidden { opacity: 0; pointer-events: none; }
+#gateCard { width: min(440px, calc(100vw - 32px)); padding: 28px; position: relative; overflow: hidden; flex: none; }
+#gateCard::before { content: ""; position: absolute; left: 1px; right: 1px; top: 1px; height: 1px; background: var(--accent); }
+.brand { display: flex; align-items: center; gap: 10px; color: var(--t2); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.brand b { color: var(--t1); font-weight: 500; letter-spacing: .02em; text-transform: none; font-size: 15px; }
+h1 { font-size: 22px; font-weight: 500; margin: 22px 0 8px; letter-spacing: -.01em; }
+.lead { color: var(--t2); line-height: 1.6; margin: 0 0 22px; }
+.state { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-md); margin-bottom: 18px; color: var(--t2); }
+.state span { color: var(--t1); }
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+.fine { color: var(--t3); font-size: 11px; line-height: 1.6; margin: 18px 0 0; }
+
+/* in game */
+#hud { position: fixed; top: 16px; right: 16px; padding: 14px 16px; min-width: 248px; z-index: 3; transition: opacity .2s var(--ease), transform .2s var(--ease); }
+#hud.off { opacity: 0; transform: translateY(-6px); pointer-events: none; }
+#hud .head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; color: var(--t2); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+#hud .head .grow { flex: 1; }
+.kv { display: grid; grid-template-columns: 1fr auto; gap: 5px 18px; font-size: 12px; }
+.kv .k { color: var(--t3); }
+.kv .v { color: var(--t1); text-align: right; font-variant-numeric: tabular-nums; }
+.kv .v.accent { color: var(--accent-text); }
+.kv .v.warn { color: var(--warn); }
+.sep { grid-column: 1 / -1; height: 1px; background: var(--line); margin: 4px 0; }
+#bar { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; padding: 6px; z-index: 3; transition: opacity .25s var(--ease), transform .25s var(--ease); }
+#bar.idle { opacity: 0; transform: translate(-50%, 8px); pointer-events: none; }
+#bar .chip { display: flex; align-items: center; gap: 8px; padding: 0 10px; color: var(--t2); font-size: 12px; height: 32px; }
+#bar .chip.btn { background: transparent; border-color: transparent; }
+#bar .chip.btn:hover { background: var(--card3); }
+#bar .div { width: 1px; height: 22px; background: var(--line); }
+#toast { position: fixed; top: 16px; left: 50%; transform: translate(-50%, -8px); padding: 10px 16px; opacity: 0; transition: all .22s var(--ease); z-index: 6; pointer-events: none; color: var(--t1); }
+#toast.on { opacity: 1; transform: translate(-50%, 0); }
+#toast.bad { border-color: rgba(255,93,93,.45); }
+#banner { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 18px 22px; z-index: 4; display: none; align-items: center; gap: 12px; }
+#banner.on { display: flex; }
+svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+/* the pad card: under the gate card before joining, top left in game */
+#pad { width: min(440px, calc(100vw - 32px)); padding: 16px 18px; flex: none; }
+#pad.floating { position: fixed; top: 16px; left: 16px; z-index: 4; width: min(400px, calc(100vw - 32px)); }
+#pad.floating.off { display: none; }
+#pad .head { display: flex; align-items: center; gap: 10px; }
+#pad .name { color: var(--t1); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#padClose { display: none; height: 24px; padding: 0 8px; }
+#pad.floating #padClose { display: inline-flex; }
+.tag { font-size: 11px; color: var(--t2); border: 1px solid var(--line2); border-radius: var(--r-sm); padding: 2px 6px; white-space: nowrap; }
+.tag:empty { display: none; }
+.tag.ok { color: var(--ok); border-color: rgba(95,191,131,.35); }
+.tag.warn { color: var(--warn); border-color: rgba(245,200,75,.35); }
+#pad .hint { color: var(--t2); line-height: 1.6; margin: 10px 0 0; font-size: 12px; }
+#pad .hint:empty { display: none; }
+#padActions { margin-top: 12px; }
+#padActions:empty { display: none; }
+#pad details { margin-top: 12px; color: var(--t2); font-size: 12px; line-height: 1.6; }
+#pad summary { cursor: pointer; color: var(--t3); }
+#pad details p { margin: 8px 0 0; }
+#pad ol { margin: 6px 0 0; padding-left: 18px; }
+#pad li { margin-bottom: 4px; }
+#pad b { color: var(--t1); font-weight: 500; }
+#remap { margin-top: 12px; }
+#remap .progress { height: 2px; background: var(--line); border-radius: 1px; overflow: hidden; }
+#remap .progress i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s var(--ease); }
+#remap .prompt { display: flex; align-items: center; gap: 16px; margin: 16px 0; }
+#remapGlyph { min-width: 64px; height: 64px; padding: 0 10px; display: grid; place-items: center; border: 1px solid rgba(155,123,234,.45); background: var(--accent-soft);
+              border-radius: var(--r-lg); color: var(--accent-hi); font-size: 22px; }
+#remapWhat { color: var(--t1); line-height: 1.5; }
+#remapSeen { color: var(--ok); font-size: 11px; margin-top: 4px; min-height: 16px; }
+#remapStep { color: var(--t3); font-size: 11px; margin-top: 8px; }
+/* the connection card: link test, what arrives, automatique or manuel */
+#net { position: fixed; left: 16px; bottom: 72px; width: min(380px, calc(100vw - 32px)); padding: 14px 16px; z-index: 4; transition: opacity .2s var(--ease), transform .2s var(--ease); }
+#net.off { opacity: 0; transform: translateY(6px); pointer-events: none; }
+#net .head { display: flex; align-items: center; gap: 8px; color: var(--t2); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+#net .head .grow { flex: 1; }
+#net .head .btn { height: 24px; padding: 0 8px; text-transform: none; letter-spacing: 0; }
+#netLine { color: var(--t1); font-size: 14px; margin: 10px 0 4px; font-variant-numeric: tabular-nums; }
+#netBar { height: 2px; background: var(--line); border-radius: 1px; overflow: hidden; margin: 8px 0; }
+#netBar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .25s var(--ease); }
+#netBar.off { display: none; }
+.muted { color: var(--t2); font-size: 12px; line-height: 1.6; }
+.muted b { color: var(--accent-text); font-weight: 500; }
+.note { color: var(--warn); font-size: 12px; line-height: 1.5; margin-top: 6px; }
+.note:empty { display: none; }
+.seg { display: inline-flex; padding: 2px; gap: 2px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-md); margin-top: 10px; flex-wrap: wrap; }
+.seg button { font: inherit; font-size: 12px; color: var(--t2); background: transparent; border: 0; border-radius: var(--r-sm); height: 26px; padding: 0 10px; cursor: pointer; }
+.seg button.on { background: var(--accent-soft); color: var(--accent-hi); }
+.seg button:disabled { color: var(--line2); cursor: default; }
+#manual[hidden] { display: none; }
+#manual .slider { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 12px; color: var(--t2); }
+#manual input[type=range] { flex: 1; accent-color: var(--accent); }
+#netNow { margin-top: 12px; }
+#netActions { margin-top: 12px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<video id="video" autoplay playsinline muted></video>
+<canvas id="stage"></canvas>
+<audio id="audio" autoplay></audio>
+
+<div id="gate">
+  <div class="card" id="gateCard">
+    <div class="brand"><b>BooVI</b> · invité</div>
+    <h1>tu es invité à jouer</h1>
+    <p class="lead">le stream ps5 de ton ami s'affiche ici, avec le son. branche une manette sur ce pc et appuie sur un bouton : elle joue sur la console.</p>
+    <div class="state"><i class="dot" id="gateDot"></i><div id="gateText"><span>prêt</span> · clique pour rejoindre</div></div>
+    <div class="row">
+      <button class="btn primary" id="join">rejoindre</button>
+      <button class="btn" id="joinMuted">sans le son</button>
+    </div>
+    <p class="fine">le gyroscope, le pavé tactile (sauf son clic) et les gâchettes adaptatives ne passent pas par le navigateur. la vibration marche avec chrome ou edge.</p>
+  </div>
+  <div class="card" id="pad">
+    <div class="head"><i class="dot" id="padDot2"></i><span class="name" id="padName">aucune manette détectée</span><span class="tag" id="padTag"></span>
+      <button class="btn" id="padClose" title="fermer">fermer</button></div>
+    <p class="hint" id="padHint"></p>
+    <div id="remap" hidden>
+      <div class="progress"><i id="remapBar"></i></div>
+      <div class="prompt"><span id="remapGlyph"></span><div><div id="remapWhat"></div><div id="remapSeen"></div></div></div>
+      <div class="row"><button class="btn" id="remapSkip">passer</button><button class="btn" id="remapCancel">annuler</button></div>
+      <div id="remapStep"></div>
+    </div>
+    <div class="row" id="padActions"></div>
+    <details id="padHelp">
+      <summary>ma manette n'est pas reconnue</summary>
+      <p>sans steam, une <b>steam controller</b> fait clavier et souris : le navigateur ne la voit pas comme une manette. trois façons de jouer avec :</p>
+      <ol>
+        <li><b>connecter une manette steam</b> ci-dessus (chrome ou edge) et choisis-la dans la liste. ferme steam avant, sinon il garde la manette.</li>
+        <li>avec steam ouvert : jeux → ajouter un jeu non-steam → chrome ou edge. ferme toutes les fenêtres du navigateur, relance-le depuis steam, rouvre ce lien : la manette devient une manette xbox.</li>
+        <li>ou, avec steam ouvert : paramètres → manette → disposition du bureau, choisis une disposition « manette » (gamepad).</li>
+      </ol>
+      <p>une autre manette : branche-la en usb, appuie sur un bouton, puis « configurer ma manette ».</p>
+    </details>
+  </div>
+</div>
+
+<div id="hud" class="card off">
+  <div class="head"><i class="dot" id="hudDot"></i><span id="hudState">connexion</span><span class="grow"></span><span id="hudMode"></span></div>
+  <div class="kv" id="kv"></div>
+</div>
+
+<div id="net" class="card off">
+  <div class="head"><i class="dot" id="netDot"></i><span>connexion</span><span class="grow"></span><button class="btn" id="netClose" title="fermer">fermer</button></div>
+  <div id="netLine">—</div>
+  <div id="netBar" class="off"><i></i></div>
+  <div class="muted" id="netBest"></div>
+  <div class="seg" id="segAuto"><button data-v="1">automatique</button><button data-v="0">manuel</button></div>
+  <div id="manual" hidden>
+    <div class="seg" id="segFeed"><button data-v="real">images réelles</button><button data-v="60">fluide 60</button><button data-v="120">fluide 120</button></div>
+    <div class="seg" id="segSize"><button data-v="1080">1080p</button><button data-v="native">native</button></div>
+    <div class="slider"><span>débit max</span><input type="range" id="mbps" min="5" max="100" step="1" value="100"><span id="mbpsText"></span></div>
+  </div>
+  <div class="muted" id="netNow"></div>
+  <div class="note" id="netHint"></div>
+  <div class="row" id="netActions"><button class="btn" id="retest">retester la connexion</button></div>
+</div>
+
+<div id="banner" class="card"><i class="dot busy"></i><span id="bannerText">reconnexion…</span></div>
+
+<div id="bar" class="card">
+  <button class="btn chip" id="padChip" title="manette"><i class="dot" id="padDot"></i><span id="padText">aucune manette détectée</span></button>
+  <div class="div"></div>
+  <button class="btn" id="btnSound" title="son (m)"><svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg><span>son</span></button>
+  <button class="btn" id="btnNet" title="connexion et qualité (q)"><svg viewBox="0 0 24 24"><path d="M2 9a15 15 0 0 1 20 0M5.5 12.5a10 10 0 0 1 13 0M9 16a5 5 0 0 1 6 0M12 19.5h.01"/></svg><span>qualité</span></button>
+  <button class="btn" id="btnHud" title="stats (h)"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg><span>stats</span></button>
+  <button class="btn" id="btnTest" title="test manette"><svg viewBox="0 0 24 24"><path d="M6 11h4M8 9v4M15 12h.01M18 10h.01"/><rect x="2" y="6" width="20" height="12" rx="4"/></svg><span>test</span></button>
+  <button class="btn" id="btnWarp" title="anticipation caméra (expérimental) : l'image suit le stick droit avant que le jeu ne réponde"><svg viewBox="0 0 24 24"><path d="M3 12h13M12 6l6 6-6 6M21 5v14"/></svg><span>anticipation</span></button>
+  <button class="btn" id="btnFull" title="plein écran (f)"><svg viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+</div>
+<div id="toast" class="card"></div>
+
+<script id="steampad">
+"use strict";
+// Valve's Steam Controllers over WebHID, after SDL 3.4.14 (src/joystick/hidapi/SDL_hidapi_steam.c for
+// the 2015 controller, wired 0x1102 and its dongle 0x1142; SDL_hidapi_steam_triton.c for the 2025 one).
+// The Bluetooth 2015 controller (0x1105, 0x1106) speaks a segmented protocol and is left out.
+// parse() turns one input report into the page's pad state: bits of the standard gamepad layout,
+// sticks (+y down), triggers 0..255. As in Steam's default layout, the right trackpad is the right
+// stick and a click on the left trackpad is the d-pad.
+const SteamPad = (() => {
+  const D0G = { 0x1102: "steam controller", 0x1142: "steam controller · sans fil" };
+  const TRITON = { 0x1302: "steam controller", 0x1303: "steam controller · bluetooth", 0x1304: "steam controller · sans fil", 0x1305: "steam controller · sans fil" };
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const stick = v => Math.round(clamp(v, -32767, 32767)) || 0;
+  const trigger = v => Math.round(clamp(v, 0, 1) * 255);
+  const PAD_GAIN = 1.25;   // the round pad's edge pushes the stick all the way
+  const TILT = 0.261799;   // the 2015 pads sit 15° off, SDL turns them back
+  // [controller bit, standard button]. 2015 grips: left = touchpad click, right = R3.
+  const D0G_BUTTONS = [[0x80, 0], [0x20, 1], [0x40, 2], [0x10, 3], [0x08, 4], [0x04, 5], [0x02, 6], [0x01, 7],
+    [0x1000, 8], [0x4000, 9], [0x400000, 10], [0x40000, 11], [0x100, 12], [0x800, 13], [0x400, 14], [0x200, 15],
+    [0x2000, 16], [0x8000, 17], [0x10000, 11]];
+  // 2025: the quick access button is the touchpad click, a right pad click is R3.
+  const TRITON_BUTTONS = [[0x1, 0], [0x2, 1], [0x4, 2], [0x8, 3], [0x80000, 4], [0x200, 5], [0x8000000, 6], [0x800000, 7],
+    [0x4000, 8], [0x40, 9], [0x8000, 10], [0x20, 11], [0x400000, 11], [0x2000, 12], [0x400, 13], [0x1000, 14], [0x800, 15],
+    [0x10000, 16], [0x10, 17]];
+  function bits(table, raw) { let b = 0; for (const [m, i] of table) if (raw & m) b |= 1 << i; return b; }
+  function rotate(x, y, a) { return [Math.cos(a) * x - Math.sin(a) * y, Math.sin(a) * x + Math.cos(a) * y]; }
+  // A left pad click at (x, y), +y up, as d-pad bits; diagonals give two.
+  function dpad(x, y) {
+    const m = Math.max(Math.abs(x), Math.abs(y));
+    if (m < 6000) return 0;
+    return (y > 0.4 * m ? 1 << 12 : 0) | (y < -0.4 * m ? 1 << 13 : 0) | (x < -0.4 * m ? 1 << 14 : 0) | (x > 0.4 * m ? 1 << 15 : 0);
+  }
+
+  // 2015: report 0, ValveInReport_t (version 1; type 1 state, type 3 the dongle's link events).
+  function parseD0G(dv, mem) {
+    if (dv.byteLength < 28 || dv.getUint16(0, true) !== 1) return null;
+    const type = dv.getUint8(2);
+    if (type === 3) return { wireless: dv.getUint8(4) === 1 ? "disconnect" : "connect" };
+    if (type !== 1) return null;
+    const raw = dv.getUint32(8, true) & 0xffffff;
+    const lx = dv.getInt16(16, true), ly = dv.getInt16(18, true);
+    // The left axes carry the stick or the left pad (finger-down bit). With both in use the
+    // controller alternates, and each keeps its last value.
+    const padDown = raw & 0x80000, both = raw & 0x800000;
+    if (padDown) { mem.pad = [lx, ly]; if (!both) mem.stick = [0, 0]; }
+    else { mem.stick = [lx, ly]; if (!both) mem.pad = [0, 0]; }
+    const [sx, sy] = mem.stick || [0, 0], [px, py] = mem.pad || [0, 0];
+    let buttons = bits(D0G_BUTTONS, raw);
+    if (raw & 0x20000) buttons |= padDown || both ? dpad(...rotate(px, py, -TILT)) : 1 << 10;   // older firmware: stick click
+    const [rx, ry] = raw & 0x100000 ? rotate(dv.getInt16(20, true), dv.getInt16(22, true), TILT) : [0, 0];
+    const t = n => trigger(((n << 7) | n) / 26000);
+    return { buttons, axes: [stick(sx), stick(-sy), stick(rx * PAD_GAIN), stick(-ry * PAD_GAIN)], l2: t(dv.getUint8(11)), r2: t(dv.getUint8(12)) };
+  }
+
+  // 2025: reports 0x42 (usb, dongle), 0x45 (bluetooth), 0x47 (with a trackpad timestamp); 0x46 and
+  // 0x79 are the dongle's link events.
+  function parseTriton(id, dv) {
+    if (id === 0x46 || id === 0x79) return dv.byteLength ? { wireless: dv.getUint8(0) === 1 ? "disconnect" : "connect" } : null;
+    if (id !== 0x42 && id !== 0x45 && id !== 0x47) return null;
+    const pads = id === 0x47 ? 19 : 17;
+    if (dv.byteLength < pads + 10) return null;
+    const i16 = o => dv.getInt16(o, true);
+    const raw = dv.getUint32(1, true);
+    let buttons = bits(TRITON_BUTTONS, raw);
+    if (raw & 0x4000000) buttons |= dpad(i16(pads), i16(pads + 2));
+    let rx = i16(13), ry = -i16(15);
+    // The right pad steers the right stick while touched and the stick is left alone.
+    if ((raw & 0x200000) && Math.hypot(rx, ry) < 4000) { rx = i16(pads + 6) * PAD_GAIN; ry = -i16(pads + 8) * PAD_GAIN; }
+    return { buttons, axes: [stick(i16(9)), stick(-i16(11)), stick(rx), stick(ry)], l2: trigger(i16(5) / 32767), r2: trigger(i16(7) / 32767) };
+  }
+
+  const isTriton = pid => pid in TRITON;
+  const msg = (n, bytes) => { const d = new Uint8Array(n); d.set(bytes); return d; };
+  return {
+    // Chrome hides a device's keyboard and mouse interfaces; what is left is the controller's.
+    supports: d => d.vendorId === 0x28de && (d.productId in D0G || isTriton(d.productId)) && d.collections.length > 0,
+    name: pid => D0G[pid] || TRITON[pid] || "steam controller",
+    isTriton,
+    parse: (pid, reportId, dv, mem) => isTriton(pid) ? parseTriton(reportId, dv) : reportId === 0 ? parseD0G(dv, mem) : null,
+    // Feature reports [id, data], in order: lizard mode off (no more keyboard and mouse), trackpads raw.
+    // The 2025 controller turns lizard mode back on by itself: resend every 3 s.
+    setup: pid => isTriton(pid) ? [[1, msg(63, [0x87, 3, 9, 0, 0])]]
+      : [[0, msg(64, [0x81])], [0, msg(64, [0x8e, 0])], [0, msg(64, [0x87, 12, 49, 2, 0, 7, 7, 0, 8, 7, 0, 24, 0, 0])]],
+    // Back to lizard mode once the page is gone, so the controller is a mouse again.
+    restore: pid => isTriton(pid) ? [[1, msg(63, [0x87, 3, 9, 1, 0])]]
+      : [[0, msg(64, [0x85])], [0, msg(64, [0x8e, 0])], [0, msg(64, [0x87, 3, 8, 0, 0])]],
+    // Rumble, 0..255 per side, as ["output" | "feature", id, data], resent every 40 ms while on: the
+    // 2025 controller's rumble report (its firmware stops after ~50 ms), the 2015 one's trackpad
+    // haptics as 40 ms pulse trains (left pad 1, right pad 0).
+    rumble: (pid, l, r) => {
+      if (isTriton(pid)) {
+        const d = new Uint8Array(9), v = new DataView(d.buffer);
+        v.setUint16(3, l * 257, true); v.setUint16(6, r * 257, true);
+        return [["output", 0x80, d]];
+      }
+      return [[1, l], [0, r]].filter(([, m]) => m > 0).map(([side, m]) => {
+        const on = 200 + Math.round(m / 255 * 1300), d = new Uint8Array(64), v = new DataView(d.buffer);
+        d[0] = 0x8f; d[1] = 7; d[2] = side; v.setUint16(3, on, true); v.setUint16(5, 2000 - on, true); v.setUint16(7, 20, true);
+        return ["feature", 0, d];
+      });
+    },
+  };
+})();
+</script>
+<script>
+"use strict";
+// ---- lab: the picture drawn through a WebGL stage instead of the <video>, camera anticipation
+// on top of it, and a simulated game to measure both without a console. All of it is off unless
+// a switch asks: the page shows the plain <video> by default.
+//   ?render=canvas     draw the stream on the stage (frames from MediaStreamTrackProcessor)
+//   ?render=webcodecs  decode the received H.264 with WebCodecs and draw that (a measurement)
+//   ?warp=1            camera anticipation on from the start (the bar's button does the same)
+//   ?sim=1             no host: a panorama that turns with the right stick, late by simlag ms (100)
+//   ?bench=1           with sim: steps the stick and times stick -> picture motion, with and without
+// Camera anticipation: the right stick turns the camera, and the stream shows it one full loop
+// later (pad -> host -> console -> game -> encoders -> here). The stage shifts the last picture
+// at once by the motion the game is about to produce, then each new picture replaces part of
+// the guess with the truth. How much a stick deflection moves the picture, and how late, is
+// learnt while playing: every new picture's global shift (brightness profiles of two frames
+// lined up) is set against the stick's history at each candidate delay.
+const lab = (() => {
+  const q = new URLSearchParams(location.search), el = id => document.getElementById(id);
+  const med = a => { if (!a.length) return -1; const s = [...a].sort((x, y) => x - y); return s[s.length >> 1]; };
+  const cfg = { render: q.get("render") || "video", warp: q.get("warp") === "1", sim: q.get("sim") === "1",
+                simLag: +(q.get("simlag") || 100), simFps: +(q.get("simfps") || 30), bench: q.get("bench") === "1" };
+  const st = { staged: false, desync: null, source: "", frames: 0, frameAt: 0, raf: 0, gap: 16.7,
+               wcdec: [], vsVideo: [], cost: [], shift: [0, 0], pollGap: [], padAge: [], padStep: [] };
+  let warpOn = cfg.warp;
+  const pad = { at: 0, stamp: 0 };
+
+  // ---- the stage: one texture, drawn shifted; past the picture's edge the border is stretched, blurred and dimmed
+  const SW = 160, SH = 90;
+  const VS = `#version 300 es
+out vec2 vUv;
+void main() { vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)); vUv = vec2(p.x, 1.0 - p.y); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }`;
+  const FS = `#version 300 es
+precision highp float;
+in vec2 vUv; out vec4 o;
+uniform sampler2D uTex; uniform vec2 uShift; uniform float uFlat;
+void main() {
+  if (uFlat > 0.5) { o = vec4(textureLod(uTex, vUv, uFlat - 1.0).rgb, 1.0); return; }
+  vec2 uv = vUv - uShift, c = clamp(uv, 0.0, 1.0);
+  float past = max(abs(uv.x - c.x), abs(uv.y - c.y));
+  vec3 col = textureLod(uTex, c, past > 0.0 ? min(6.0, 2.0 + past * 160.0) : 0.0).rgb;
+  o = vec4(col * (1.0 - 0.45 * smoothstep(0.0, 0.08, past)), 1.0);
+}`;
+  const stage = {
+    gl: null, fw: 0, fh: 0,
+    open() {
+      if (this.gl) return true;
+      const c = this.canvas = el("stage");
+      const gl = c.getContext("webgl2", { alpha: false, antialias: false, depth: false, stencil: false, desynchronized: true, powerPreference: "high-performance" });
+      if (!gl) return false;
+      this.gl = gl;
+      st.desync = !!(gl.getContextAttributes() || {}).desynchronized;
+      const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+      const p = gl.createProgram();
+      gl.attachShader(p, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(p); gl.useProgram(p);
+      this.uShift = gl.getUniformLocation(p, "uShift"); this.uFlat = gl.getUniformLocation(p, "uFlat");
+      const tex = () => { const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR); return t; };
+      this.smallTex = tex(); gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, SW, SH);
+      this.small = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, this.small);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.smallTex, 0);
+      this.tex = tex();
+      return true;
+    },
+    // mips: the blurred border and the small copy the motion estimate reads need them
+    upload(source, w, h, mips) {
+      const gl = this.gl; gl.bindTexture(gl.TEXTURE_2D, this.tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, mips ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR);
+      if (mips) gl.generateMipmap(gl.TEXTURE_2D);
+      this.fw = w; this.fh = h;
+    },
+    // dx, dy: the content's displacement in picture fractions (+x right, +y down)
+    draw(dx, dy) {
+      const gl = this.gl, c = this.canvas, dpr = window.devicePixelRatio || 1;
+      const W = Math.max(1, Math.round(c.clientWidth * dpr)), H = Math.max(1, Math.round(c.clientHeight * dpr));
+      if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, W, H); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+      if (!this.fw) return;
+      const k = Math.min(W / this.fw, H / this.fh), w = Math.round(this.fw * k), h = Math.round(this.fh * k);
+      gl.viewport((W - w) >> 1, (H - h) >> 1, w, h);
+      gl.uniform1f(this.uFlat, 0); gl.uniform2f(this.uShift, dx, dy); gl.drawArrays(gl.TRIANGLES, 0, 3);
+    },
+    // The picture at SW x SH into buf (RGBA); row 0 of buf is the picture's bottom row.
+    readSmall(buf) {
+      const gl = this.gl;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.small); gl.viewport(0, 0, SW, SH);
+      gl.uniform1f(this.uFlat, 1 + Math.max(0, Math.log2(this.fw / SW))); gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.readPixels(0, 0, SW, SH, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+    },
+  };
+
+  // ---- global motion between two pictures: the shift that lines up their column and row profiles
+  const motion = {
+    buf: new Uint8Array(SW * SH * 4), prev: null,
+    profiles() {
+      const b = this.buf, col = new Float32Array(SW), row = new Float32Array(SH);
+      const x0 = SW * 0.15 | 0, x1 = SW * 0.85 | 0, y0 = SH * 0.2 | 0, y1 = SH * 0.8 | 0;
+      for (let y = 0; y < SH; y++) {
+        const o = (SH - 1 - y) * SW * 4, inY = y >= y0 && y < y1;
+        for (let x = 0; x < SW; x++) {
+          const i = o + x * 4, l = b[i] * 0.3 + b[i + 1] * 0.59 + b[i + 2] * 0.11;
+          if (inY) col[x] += l;
+          if (x >= x0 && x < x1) row[y] += l;
+        }
+      }
+      const grad = (p, n) => { const g = new Float32Array(n); for (let i = 1; i < n - 1; i++) g[i] = p[i + 1] - p[i - 1]; return g; };
+      return { col: grad(col, SW), row: grad(row, SH) };
+    },
+    // cur[i] ~ prev[i - d]: the content moved by d samples. lo..hi leaves the picture's rim out.
+    shift(cur, prev, n, range, lo, hi) {
+      const sc = new Float32Array(2 * range + 1); let best = -2, bd = 0;
+      for (let d = -range; d <= range; d++) {
+        let sxy = 0, sxx = 0, syy = 0;
+        for (let i = Math.max(lo, lo + d); i < Math.min(hi, hi + d); i++) { const a = cur[i], p = prev[i - d]; sxy += a * p; sxx += a * a; syy += p * p; }
+        const s = sxx > 1 && syy > 1 ? sxy / Math.sqrt(sxx * syy) : 0;
+        sc[d + range] = s; if (s > best) { best = s; bd = d; }
+      }
+      let frac = 0; const k = bd + range;
+      if (k > 0 && k < 2 * range) { const a = sc[k - 1], c = sc[k + 1], den = a - 2 * sc[k] + c; if (den < 0) frac = 0.5 * (a - c) / den; }
+      return { d: bd + frac, score: Math.max(0, best) };
+    },
+    // Picture fractions the content moved since the previous call, and how sure (0..1) per axis.
+    measure() {
+      stage.readSmall(this.buf);
+      const cur = this.profiles(), prev = this.prev; this.prev = cur;
+      if (!prev) return null;
+      const x = this.shift(cur.col, prev.col, SW, 28, 4, SW - 4), y = this.shift(cur.row, prev.row, SH, 16, 9, SH - 9);
+      return { dx: x.d / SW, dy: y.d / SH, cx: x.score, cy: y.score };
+    },
+  };
+
+  // ---- what the stick does to the picture: a delay, and a speed per deflection, learnt per axis
+  const LAGS = 20, LAG_STEP = 20, EDGES = [0.06, 0.25, 0.45, 0.65, 0.85, 1.01];
+  const model = {
+    hist: [],            // right stick as sent, {t, x, y}; each value holds until the next entry
+    ax: [0, 1].map(() => ({ sxy: new Float64Array(LAGS), sxx: new Float64Array(LAGS), syy: 0, gain: 0, bins: EDGES.slice(1).map(() => ({ v: 0, s: 0, n: 0 })) })),
+    lag: 0, conf: 0,
+    note(t, x, y) {
+      const h = this.hist, l = h[h.length - 1];
+      if (l && l.x === x && l.y === y) return;
+      h.push({ t, x, y }); while (h.length > 2 && h[1].t < t - 2500) h.shift();
+    },
+    at(t) { const h = this.hist; for (let i = h.length - 1; i >= 0; i--) if (h[i].t <= t) return h[i]; return { x: 0, y: 0 }; },
+    // integral of f(stick) over [t0, t1], in f units x ms
+    sum(t0, t1, f) {
+      const h = this.hist; let acc = 0, end = t1;
+      for (let i = h.length - 1; i >= 0 && end > t0; i--) { const s = Math.max(h[i].t, t0); if (s < end) { acc += f(h[i]) * (end - s); end = s; } }
+      return acc;
+    },
+    // One new picture: v is its content speed (picture fractions per second) over the dt ms before t.
+    learn(t, dt, v, sure) {
+      const DECAY = 0.985;
+      // An axis learns only while its stick moved within the longest delay: what the picture does
+      // with the stick at rest says nothing about the stick, and must not wear the model away.
+      const span = LAGS * LAG_STEP + dt, live = [0, 1].map(k => sure[k] >= 0.5 && this.sum(t - span, t, k ? p => Math.abs(p.y) : p => Math.abs(p.x)) > 0.02 * span);
+      for (let k = 0; k < 2; k++) {
+        if (!live[k]) continue;
+        const a = this.ax[k]; a.syy = a.syy * DECAY + v[k] * v[k];
+        for (let j = 0; j < LAGS; j++) {
+          const s = this.sum(t - j * LAG_STEP - dt, t - j * LAG_STEP, k ? p => p.y : p => p.x) / dt;
+          a.sxy[j] = a.sxy[j] * DECAY + v[k] * s; a.sxx[j] = a.sxx[j] * DECAY + s * s;
+        }
+      }
+      // one delay for both axes: the one whose stick history explains the most motion
+      const e = new Float64Array(LAGS); let bj = -1, best = 0;
+      for (let j = 0; j < LAGS; j++) { for (const a of this.ax) if (a.sxx[j] > 0.3) e[j] += a.sxy[j] * a.sxy[j] / a.sxx[j]; if (e[j] > best) { best = e[j]; bj = j; } }
+      if (bj < 0) { this.conf = 0; return; }
+      let frac = 0;
+      if (bj > 0 && bj < LAGS - 1) { const den = e[bj - 1] - 2 * e[bj] + e[bj + 1]; if (den < 0) frac = 0.5 * (e[bj - 1] - e[bj + 1]) / den; }
+      this.lag = (bj + frac) * LAG_STEP;
+      const total = this.ax[0].syy + this.ax[1].syy;
+      this.conf = total > 0 ? Math.min(1, best / total) : 0;
+      for (let k = 0; k < 2; k++) {
+        const a = this.ax[k]; a.gain = a.sxx[bj] > 0.3 ? a.sxy[bj] / a.sxx[bj] : 0;
+        if (!live[k]) continue;
+        // the response curve: mean speed per deflection band, at the chosen delay
+        const s = this.sum(t - this.lag - dt, t - this.lag, k ? p => p.y : p => p.x) / dt, m = Math.abs(s);
+        for (let b = 0; b < a.bins.length; b++) if (m >= EDGES[b] && m < EDGES[b + 1]) { const c = a.bins[b]; c.v = c.v * 0.97 + v[k] * Math.sign(s); c.s = c.s * 0.97 + m; c.n = c.n * 0.97 + 1; }
+      }
+    },
+    // content speed for a deflection: the learnt band means joined by straight lines, else the plain gain
+    speed(k, s) {
+      const a = this.ax[k], m = Math.abs(s); if (m < EDGES[0]) return 0;
+      let lo = null, hi = null;
+      for (const c of a.bins) { if (c.n < 4) continue; const p = { s: c.s / c.n, v: c.v / c.n }; if (p.s <= m) lo = p; else if (!hi) hi = p; }
+      const v = lo && hi ? lo.v + (hi.v - lo.v) * (m - lo.s) / (hi.s - lo.s) : lo ? lo.v * m / lo.s : hi ? hi.v * m / hi.s : a.gain * m;
+      return v * Math.sign(s);
+    },
+    // content displacement the stick caused between t0 and t1 (picture fractions), not yet in the picture
+    ahead(t0, t1) {
+      const w = Math.min(1, Math.max(0, (this.conf - 0.25) / 0.3)), lim = 0.1;
+      const d = [0, 1].map(k => this.sum(t0, t1, k ? p => this.speed(1, p.y) : p => this.speed(0, p.x)) / 1000 * w);
+      return d.map(v => Math.max(-lim, Math.min(lim, v)));
+    },
+  };
+
+  // ---- frames in, pictures out
+  const seen = { stage: new Map(), video: new Map() };   // rtp timestamp -> expected display time, to compare the two paths
+  function compare(map, other, rtp, t, sign) {
+    if (rtp == null) return;
+    if (other.has(rtp)) { st.vsVideo.push(sign * (t - other.get(rtp))); other.delete(rtp); }
+    else { map.set(rtp, t); if (map.size > 120) map.delete(map.keys().next().value); }
+  }
+  const expectedShow = now => st.raf + Math.max(1, Math.ceil((now - st.raf) / st.gap)) * st.gap + st.gap;
+  function paint(now) {
+    // the stick is taken as held for one more refresh: that is when this draw reaches the screen
+    const d = warpOn && st.frameAt ? model.ahead(st.frameAt - model.lag, now + st.gap) : [0, 0];
+    st.shift = d; stage.draw(d[0], d[1]);
+  }
+  let lastTs = 0, lastAt = 0;
+  // A decoded picture: source is a VideoFrame or the <video>; ts in ms on the stream's clock.
+  function onFrame(source, w, h, ts, rtp) {
+    const now = performance.now(), learning = warpOn || cfg.sim;
+    stage.upload(source, w, h, learning);
+    if (learning) {
+      const m = motion.measure();
+      let dt = ts - lastTs; if (!(dt > 4 && dt < 250)) dt = now - lastAt;
+      if (m && dt > 4 && dt < 250) model.learn(now, dt, [m.dx * 1000 / dt, m.dy * 1000 / dt], [m.cx, m.cy]);
+      st.cost.push(performance.now() - now); if (st.cost.length > 240) st.cost.shift();
+    }
+    lastTs = ts; lastAt = now; st.frameAt = now; st.frames++;
+    paint(now);
+    const shownAt = expectedShow(now);
+    compare(seen.stage, seen.video, rtp, shownAt, 1);
+    if (rtp != null) {
+      const f = frames.get(rtp >>> 0);
+      if (f && offset != null) { win.disp.push(shownAt - (f.c / 1000 - offset)); if (f.d > 0) win.src.push(shownAt - (f.d / 1000 - offset)); }
+      shown = st.frames;
+    }
+    if (bench.onDraw) bench.onDraw(now, shownAt, true);
+  }
+  function tick(t) {
+    if (st.raf) { const g = t - st.raf; if (g > 2 && g < 100) st.gap += (Math.min(g, 50) - st.gap) * 0.05; }
+    st.raf = t;
+    if (st.staged && warpOn && stage.fw) { paint(performance.now()); if (bench.onDraw) bench.onDraw(performance.now(), t + st.gap, false); }
+    requestAnimationFrame(tick);
+  }
+  // One pump feeds the stage, for one track, while the stage shows: pumpId names the current one.
+  let track = null, pumpId = 0, pumping = 0;
+  const current = id => st.staged && id === pumpId;
+  async function pump(id) {
+    if (!("MediaStreamTrackProcessor" in window)) {   // the <video>'s own frames, one compositor frame late
+      st.source = "video";
+      return new Promise(done => { const cb = (now, md) => { if (!current(id)) return done(); onFrame(video, md.width, md.height, md.mediaTime * 1000, md.rtpTimestamp); video.requestVideoFrameCallback(cb); };
+                                   video.requestVideoFrameCallback(cb); });
+    }
+    st.source = "track";
+    const reader = new MediaStreamTrackProcessor({ track, maxBufferSize: 2 }).readable.getReader();
+    while (current(id)) {
+      const { value: frame, done } = await reader.read(); if (done) break;
+      const md = frame.metadata ? frame.metadata() : {};
+      try { if (current(id)) onFrame(frame, frame.displayWidth, frame.displayHeight, frame.timestamp / 1000, md.rtpTimestamp); } finally { frame.close(); }
+    }
+    reader.cancel().catch(() => {});
+  }
+  // WebCodecs on the received frames (legacy insertable streams): they still reach the normal decoder untouched.
+  function pumpEncoded(receiver) {
+    st.source = "webcodecs";
+    const { readable, writable } = receiver.createEncodedStreams(), fed = new Map();
+    let ready = false;
+    const dec = new VideoDecoder({ error: () => { ready = false; }, output: frame => {
+      const t = fed.get(frame.timestamp); fed.delete(frame.timestamp);
+      if (t != null) st.wcdec.push(performance.now() - t);
+      try { onFrame(frame, frame.displayWidth, frame.displayHeight, frame.timestamp / 90, frame.timestamp); } finally { frame.close(); }
+    } });
+    readable.pipeThrough(new TransformStream({ transform(chunk, out) {
+      try {
+        if (!ready && chunk.type === "key") { dec.configure({ codec: "avc1.64002a", optimizeForLatency: true, hardwareAcceleration: "prefer-hardware" }); ready = true; }
+        if (ready) { fed.set(chunk.timestamp, performance.now()); if (fed.size > 60) fed.delete(fed.keys().next().value);
+                     dec.decode(new EncodedVideoChunk({ type: chunk.type === "key" ? "key" : "delta", timestamp: chunk.timestamp, data: chunk.data })); }
+      } catch (_) { ready = false; }
+      out.enqueue(chunk);
+    } })).pipeTo(writable).catch(() => {});
+  }
+  function setStaged(on) {
+    if (on && !stage.open()) { toast("ce navigateur ne sait pas dessiner le stream (webgl2)", true); return false; }
+    st.staged = on; document.body.classList.toggle("staged", on);
+    if (on && track && pumping !== pumpId) { const id = pumping = pumpId; pump(id).catch(() => {}).finally(() => { if (pumping === id) pumping = 0; }); }
+    return true;
+  }
+  function onTrack(t, receiver) {
+    track = t; pumpId++;
+    if (cfg.render === "webcodecs" && receiver && receiver.createEncodedStreams && "VideoDecoder" in window) {
+      if (stage.open()) { st.staged = true; document.body.classList.add("staged"); pumping = pumpId; pumpEncoded(receiver); }   // fed by the decoder for the connection's life
+    } else if (cfg.render === "canvas" || warpOn || cfg.sim) setStaged(true);
+  }
+  function setWarp(on) {
+    if (on && !setStaged(true)) return;
+    warpOn = on; el("btnWarp").classList.toggle("on", on);
+    if (!on && cfg.render === "video" && !cfg.sim) setStaged(false);
+    toast(on ? "anticipation caméra : tourne la caméra quelques secondes, elle apprend le jeu" : "anticipation caméra arrêtée");
+  }
+
+  // ---- the simulated game: a panorama; the right stick turns the camera simLag ms later
+  const sim = {
+    W: 1280, H: 720, gx: 0.9 * 1280, gy: 0.6 * 720, cam: [0, 0], camT: 0, ideal: [0, 0], idealT: 0,
+    curve(s) { const m = Math.abs(s); return m < 0.1 ? 0 : Math.sign(s) * Math.pow((m - 0.1) / 0.9, 1.6); },
+    advance(pos, from, to) { pos[0] += model.sum(from, to, p => this.curve(p.x)) / 1000 * this.gx; pos[1] += model.sum(from, to, p => this.curve(p.y)) / 1000 * this.gy; },
+    idealAt(t) { if (t > this.idealT) { this.advance(this.ideal, this.idealT, t); this.idealT = t; } return this.ideal; },
+    start() {
+      const P = 2048, pano = document.createElement("canvas"); pano.width = pano.height = P;
+      const g = pano.getContext("2d"); let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      g.fillStyle = "#1b2430"; g.fillRect(0, 0, P, P);
+      for (let i = 0; i < 260; i++) { g.fillStyle = `hsl(${rnd() * 360 | 0} ${30 + rnd() * 50 | 0}% ${20 + rnd() * 60 | 0}%)`; const w = 20 + rnd() * 160, h = 20 + rnd() * 160; g.fillRect(rnd() * P, rnd() * P, w, h); }
+      for (let i = 0; i < 90; i++) { g.strokeStyle = `hsl(${rnd() * 360 | 0} 60% 70%)`; g.lineWidth = 2 + rnd() * 6; g.beginPath(); g.arc(rnd() * P, rnd() * P, 10 + rnd() * 90, 0, 7); g.stroke(); }
+      const c = this.canvas = document.createElement("canvas"); c.width = this.W; c.height = this.H; this.g = c.getContext("2d"); this.pano = pano; this.P = P;
+      this.camT = this.idealT = performance.now();
+      setInterval(() => this.frame(), 1000 / cfg.simFps); this.frame();
+      onTrack(c.captureStream().getVideoTracks()[0], null);
+    },
+    frame() {
+      const now = performance.now(), g = this.g, P = this.P;
+      this.advance(this.cam, this.camT - cfg.simLag, now - cfg.simLag); this.camT = now; this.idealAt(now);
+      const ox = ((this.cam[0] % P) + P) % P, oy = ((this.cam[1] % P) + P) % P;
+      for (let ty = -1; ty <= 0; ty++) for (let tx = -1; tx <= 1; tx++) g.drawImage(this.pano, -ox - tx * P, -oy - ty * P);
+      // the camera's position as two rows of 16 cells (1/8 px), for the bench to read back; then a still hud
+      const bits = [Math.round(this.cam[0] * 8) & 0xffff, Math.round(this.cam[1] * 8) & 0xffff];
+      for (let r = 0; r < 2; r++) for (let i = 0; i < 16; i++) { g.fillStyle = (bits[r] >> i) & 1 ? "#fff" : "#000"; g.fillRect(i * 40, r * 24, 40, 24); }
+      g.fillStyle = "rgba(0,0,0,.6)"; g.fillRect(24, this.H - 70, 300, 46); g.fillStyle = "#fff"; g.font = "20px monospace"; g.fillText("simulation · " + cfg.simLag + " ms", 36, this.H - 40);
+      g.fillRect(this.W / 2 - 1, this.H / 2 - 9, 2, 18); g.fillRect(this.W / 2 - 9, this.H / 2 - 1, 18, 2);
+    },
+    // the camera position written in the picture now on the stage (px), from the small copy
+    read() {
+      const b = motion.buf, out = [0, 0];
+      for (let r = 0; r < 2; r++) for (let i = 0; i < 16; i++) if (b[((SH - 1 - (r * 3 + 1)) * SW + i * 5 + 2) * 4] > 127) out[r] |= 1 << i;
+      return out.map(v => v / 8);
+    },
+  };
+
+  // ---- the bench: stick steps on the simulated game, anticipation off then on
+  const bench = { onDraw: null, result: null, stick: [0, 0], on: false };
+  bench.run = async function () {
+    const sleep = ms => new Promise(r => setTimeout(r, ms)), set = (x, y) => { bench.stick = [x, y]; model.note(performance.now(), x, y); };
+    const unwrap = (v, ref) => v + Math.round((ref - v) / 8192) * 8192;   // the 16-bit readback wraps every 8192 px
+    bench.on = true; warpOn = true;
+    for (let i = 0; i < 16; i++) { const a = i * 0.9; set(Math.cos(a) * (0.3 + 0.7 * ((i * 7) % 10) / 10), Math.sin(a) * (0.3 + 0.7 * ((i * 3) % 10) / 10)); await sleep(450); }
+    set(0, 0); await sleep(600);
+    const out = {};
+    for (const mode of ["off", "on", "off", "on"]) {
+      warpOn = mode === "on";
+      const r = out[mode] || (out[mode] = { draw: [], show: [], err: [], lagEq: [] });
+      for (let trial = 0; trial < 8; trial++) {
+        set(0, 0); await sleep(500 + Math.random() * 120);
+        let base = null, t0 = 0, done = false;
+        bench.onDraw = (now, shownAt) => {
+          const camFrame = unwrap(sim.read()[0], sim.cam[0]), eff = camFrame - st.shift[0] * sim.W;   // the camera the screen shows
+          if (base == null) { base = eff; return; }
+          if (!t0) return;
+          const ideal = sim.idealAt(now)[0], speed = sim.gx * sim.curve(bench.stick[0]);
+          if (!done && Math.abs(eff - base) >= 3) { done = true; r.draw.push(now - t0); r.show.push(shownAt - t0); }
+          if (now - t0 > 250) { r.err.push(Math.abs(ideal - eff)); if (speed) r.lagEq.push((ideal - eff) / speed * 1000); }
+        };
+        await sleep(120); sim.idealAt(performance.now());
+        t0 = performance.now(); set(0.8, 0); await sleep(650);
+        bench.onDraw = null;
+      }
+    }
+    set(0, 0); bench.on = false;
+    const r1 = v => Math.round(v * 10) / 10, sum = r => ({ n: r.draw.length, stickToDrawMs: r1(med(r.draw)), stickToScreenMs: r1(med(r.show)), steadyErrorPx: r1(med(r.err)), steadyLagMs: r1(med(r.lagEq)) });
+    bench.result = { simLagMs: cfg.simLag, simFps: cfg.simFps, refreshMs: r1(st.gap), learntLagMs: r1(model.lag), confidence: r1(model.conf),
+                     gain: model.ax.map(a => r1(a.gain)), measureCostMs: r1(med(st.cost)), off: sum(out.off), on: sum(out.on) };
+  };
+
+  requestAnimationFrame(tick);
+  if (cfg.sim || cfg.bench) setInterval(() => { if (!bench.on && typeof readPad === "function") { const s = readPad(performance.now()); model.note(performance.now(), s.axes[2] / 32767, s.axes[3] / 32767); } }, 4);
+  return {
+    cfg, st, model, bench, onTrack, setWarp,
+    get staged() { return st.staged; }, get warp() { return warpOn; },
+    // Every pad read (poll): the right stick for the anticipation's history, and how fresh a
+    // read is: the time between reads, and for a real pad the age of a changed sample when the
+    // page first sees it and the time between the browser's own updates of it.
+    input(now, s) {
+      if (warpOn && !cfg.sim) model.note(now, s.axes[2] / 32767, s.axes[3] / 32767);
+      if (pad.at) { st.pollGap.push(now - pad.at); if (st.pollGap.length > 4000) st.pollGap.shift(); }
+      pad.at = now;
+      const gp = s.connected && !s.synthetic && typeof currentPad === "function" ? currentPad() : null;
+      if (gp && gp.timestamp && gp.timestamp !== pad.stamp) {
+        if (pad.stamp) { st.padAge.push(now - gp.timestamp); st.padStep.push(gp.timestamp - pad.stamp); if (st.padAge.length > 2000) { st.padAge.shift(); st.padStep.shift(); } }
+        pad.stamp = gp.timestamp;
+      }
+    },
+    // The <video> showed a frame while the stage draws: its receive and decode times (track
+    // frames carry none) set against the stage's own draw of that frame, and the two paths compared.
+    videoShown(md, shownAt) {
+      const rtp = md.rtpTimestamp, mine = rtp != null ? seen.stage.get(rtp) : null;
+      if (mine != null && md.receiveTime) {
+        win.rxdisp.push(mine - md.receiveTime);
+        const f = frames.get(rtp >>> 0); if (f && offset != null) win.net.push(md.receiveTime - (f.s / 1000 - offset));
+      }
+      if (md.processingDuration != null) win.dec.push(md.processingDuration * 1000);
+      compare(seen.video, seen.stage, rtp, shownAt, -1);
+    },
+    startSim() { document.getElementById("gate").classList.add("hidden"); document.getElementById("hud").classList.remove("off"); sim.start(); if (cfg.bench) setTimeout(() => bench.run(), 1500); else if (autoTest) setTest(true); },
+    rows() {
+      const rows = [["écran", fmt(1000 / st.gap, 0) + " Hz"]];
+      if (st.padAge.length) rows.push(["manette → page", fmt(med(st.padAge)) + " ms"]);
+      if (!st.staged) return rows;
+      rows.push(null, ["rendu", "canvas" + (st.desync ? " · direct" : "") + " (" + st.source + ")"]);
+      if (warpOn) rows.push(["anticipation", model.conf > 0.25 ? fmt(model.lag, 0) + " ms · " + fmt(model.conf * 100, 0) + " %" : "apprend…", "accent"]);
+      return rows;
+    },
+    report() {
+      const sorted = [...st.pollGap].sort((a, b) => a - b);
+      const r = { hz: 1000 / st.gap, pollgap: med(st.pollGap), pollgap95: sorted.length ? sorted[Math.floor(sorted.length * 0.95)] : -1, padage: med(st.padAge), padstep: med(st.padStep) };
+      if (st.staged) Object.assign(r, { render: st.source, vsvideo: med(st.vsVideo), wcdec: med(st.wcdec), desync: st.desync ? 1 : 0, warp: warpOn ? 1 : 0, wlag: model.lag, wconf: model.conf });
+      st.vsVideo = []; st.wcdec = []; st.pollGap = []; st.padAge = []; st.padStep = [];
+      return r;
+    },
+  };
+})();
+</script>
+
+<script>
+"use strict";
+// ---- token: from the link, then kept for this tab only and taken out of the address bar.
+// A friend's access (?a=, long-lived, revocable by the host) is kept on this browser instead,
+// so coming back to the page is enough to play again.
+const params = new URLSearchParams(location.search);
+const token = params.get("t") || (params.get("a") ? "" : sessionStorage.getItem("boovi-token")) || "";
+let access = "";
+try { access = token ? "" : (params.get("a") || localStorage.getItem("boovi-access") || ""); } catch (_) { access = params.get("a") || ""; }
+if (params.get("t")) sessionStorage.setItem("boovi-token", token);
+if (params.get("a")) { try { localStorage.setItem("boovi-access", access); } catch (_) {} }
+if (params.get("t") || params.get("a")) history.replaceState(null, "", location.pathname + (params.get("test") ? "?test=1" : ""));
+const credential = () => access ? { access } : { token };
+const autoTest = params.get("test") === "1";
+// relay=1 forces Cloudflare's TURN relay (tests): only relay candidates are gathered.
+const forceRelay = params.get("relay") === "1";
+
+const $ = id => document.getElementById(id);
+const video = $("video"), audio = $("audio");
+const fmt = (v, d = 1) => v == null || !isFinite(v) || v < 0 ? "—" : v.toFixed(d).replace(".", ",");
+const median = a => { if (!a.length) return -1; const s = [...a].sort((x, y) => x - y); return s[s.length >> 1]; };
+
+let pc = null, channels = {}, attempt = 0, stopped = false, wantSound = true, connectedOnce = false, reconnectTimer = 0;
+
+function toast(text, bad) {
+  const t = $("toast"); t.textContent = text; t.classList.toggle("bad", !!bad); t.classList.add("on");
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => t.classList.remove("on"), 3200);
+}
+function gate(state, text, kind) {
+  $("gateDot").className = "dot " + (kind || "");
+  $("gateText").innerHTML = "<span>" + state + "</span>" + (text ? " · " + text : "");
+}
+function banner(text) { $("banner").classList.toggle("on", !!text); if (text) $("bannerText").textContent = text; }
+
+// ---- a friend's access: knock until the host's PC lets this visit in (202 meanwhile)
+const visitText = {
+  asking: h => ["en attente", "en attente de l'accord de " + h, "busy"],
+  waking: () => ["réveil de la ps5…", "la console sort de veille", "busy"],
+  connecting: () => ["connexion…", "la ps5 se connecte au pc de ton ami", "busy"],
+};
+const visitEnd = {
+  invalid: () => ["lien invalide ou révoqué", "demande un nouveau lien à ton ami"],
+  expired: () => ["accès expiré", "demande à ton ami de le prolonger"],
+  hours: () => ["en dehors de tes heures", "ton ami a limité cet accès à certaines heures"],
+  closed: h => ["accueil fermé", h + " n'accueille pas d'invité en ce moment"],
+  busy: () => ["la console est occupée", "réessaie un peu plus tard"],
+  refused: (h, d) => [h + " a refusé", d || "réessaie un peu plus tard"],
+  ended: (h, d) => ["visite terminée", d || h + " a coupé la visite"],
+  failed: (h, d) => ["la console n'a pas démarré", d || "réessaie un peu plus tard"],
+  locked: () => ["trop d'essais", "attends une minute"],
+};
+async function knock() {
+  for (;;) {
+    if (stopped) return null;
+    const r = await fetch("/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(credential()) });
+    const j = await r.json().catch(() => ({}));
+    if (r.status === 200) return { r, j };
+    const host = j.host || "ton ami";
+    if (r.status === 202 && visitText[j.state]) {
+      const [state, text, kind] = visitText[j.state](host);
+      if (connectedOnce) banner(state); else gate(state, text, kind);
+      $("hudDot").className = "dot warn"; $("hudState").textContent = state;
+      await new Promise(done => setTimeout(done, 1000));
+      continue;
+    }
+    if (r.status === 403 && (j.state === "invalid" || !j.state)) { try { localStorage.removeItem("boovi-access"); } catch (_) {} }
+    const [state, text] = (visitEnd[j.state] || visitEnd.failed)(host, j.detail);
+    fatal(state, text);
+    return null;
+  }
+}
+
+// ---- connection: the host offers, this page answers (POST /session, POST /answer)
+async function connect() {
+  clearTimeout(reconnectTimer);
+  if (stopped) return;
+  if (!token && !access) { gate("lien incomplet", "demande un nouveau lien à ton ami", "err"); return; }
+  closePeer();
+  attempt++;
+  if (connectedOnce) banner("reconnexion… (" + attempt + ")"); else gate("connexion", "préparation du stream", "busy");
+  try {
+    let r, offer;
+    if (access) {
+      const got = await knock();
+      if (!got) return;
+      ({ r, j: offer } = got);
+      if (!connectedOnce) gate("connexion", "préparation du stream", "busy");
+    } else {
+      r = await fetch("/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) });
+      offer = await r.json().catch(() => ({}));
+    }
+    if (r.status === 403) { fatal("lien invalide ou expiré", "demande un nouveau lien à ton ami"); return; }
+    if (!r.ok) throw new Error(offer.error || ("http " + r.status));
+    pc = new RTCPeerConnection({ iceServers: offer.ice || [], bundlePolicy: "max-bundle", iceTransportPolicy: forceRelay ? "relay" : "all",
+                                 encodedInsertableStreams: lab.cfg.render === "webcodecs" });
+    const peer = pc;
+    pc.ontrack = e => {
+      // No jitter buffer to speak of: the picture shows as soon as it is decoded.
+      try { e.receiver.jitterBufferTarget = 0; } catch (_) {}
+      try { e.receiver.playoutDelayHint = 0; } catch (_) {}
+      if (e.track.kind === "video") { video.srcObject = new MediaStream([e.track]); video.play().catch(() => {}); watchFrames(); lab.onTrack(e.track, e.receiver); }
+      else { audio.srcObject = new MediaStream([e.track]); audio.muted = !wantSound; audio.play().catch(() => {}); }
+    };
+    pc.ondatachannel = e => openChannel(e.channel);
+    pc.onconnectionstatechange = () => {
+      if (peer !== pc) return;
+      const s = pc.connectionState;
+      if (s === "connected") onConnected();
+      if (s === "failed" || s === "disconnected" || s === "closed") lost();
+    };
+    await pc.setRemoteDescription({ type: "offer", sdp: offer.sdp });
+    await pc.setLocalDescription(await pc.createAnswer());
+    await new Promise(done => {
+      if (pc.iceGatheringState === "complete") return done();
+      const t = setTimeout(done, 1500);
+      pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === "complete") { clearTimeout(t); done(); } };
+    });
+    const a = await fetch("/answer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...credential(), id: offer.id, sdp: pc.localDescription.sdp }) });
+    if (a.status === 403) { fatal("lien invalide ou expiré", "demande un nouveau lien à ton ami"); return; }
+    if (!a.ok) { const j = await a.json().catch(() => ({})); throw new Error(j.error || ("http " + a.status)); }
+    setTimeout(() => { if (peer === pc && pc.connectionState !== "connected") lost(); }, 12000);
+  } catch (err) {
+    lost(String(err.message || err));
+  }
+}
+function closePeer() {
+  for (const c of Object.values(channels)) try { c.close(); } catch (_) {}
+  channels = {};
+  if (pc) { const old = pc; pc = null; try { old.close(); } catch (_) {} }
+}
+function lost(why) {
+  if (stopped) return;
+  closePeer();
+  const wait = Math.min(5000, 600 * Math.pow(2, Math.min(attempt, 3)));
+  if (connectedOnce) banner("connexion perdue · reconnexion…"); else gate("pas de réponse", why ? why + " · nouvel essai" : "nouvel essai dans un instant", "warn");
+  $("hudDot").className = "dot warn"; $("hudState").textContent = "reconnexion";
+  clearTimeout(reconnectTimer); reconnectTimer = setTimeout(connect, wait);
+}
+function fatal(state, text) {
+  stopped = true; closePeer(); banner("");
+  $("hudDot").className = "dot err"; $("hudState").textContent = state;
+  $("gate").classList.remove("hidden"); gate(state, text, "err");
+  $("join").textContent = "réessayer"; $("join").disabled = false;
+  placePad();
+}
+function onConnected() {
+  attempt = 0; connectedOnce = true; banner("");
+  gate("connecté", "", "ok");
+  $("gate").classList.add("hidden");
+  $("hudDot").className = "dot ok"; $("hudState").textContent = "connecté";
+  toast("connecté · bon jeu");
+  placePad();
+  if (autoTest) setTest(true);
+}
+
+// ---- data channels
+function openChannel(ch) {
+  channels[ch.label] = ch;
+  if (ch.label === "input") ch.binaryType = "arraybuffer";
+  if (ch.label === "stats") { ch.onmessage = e => onStats(JSON.parse(e.data)); ch.onopen = () => { syncBurst(); }; }
+  if (ch.label === "feedback") ch.onmessage = e => onFeedback(JSON.parse(e.data));
+  if (ch.label === "probe") { ch.binaryType = "arraybuffer"; ch.onmessage = e => onProbe(e.data); }
+  if (ch.label === "stats") ch.addEventListener("open", () => { sendWish(); setTimeout(startProbe, 600); });
+}
+const send = (label, data) => { const c = channels[label]; if (c && c.readyState === "open") { try { c.send(data); return true; } catch (_) {} } return false; };
+
+// ---- clock sync: offset = host clock - page clock (ms), from the lowest-rtt pong
+const pongs = [];
+let offset = null, rtt = -1;
+function ping() { send("stats", JSON.stringify({ t: "ping", c: performance.now() })); }
+function syncBurst() { for (let i = 0; i < 8; i++) setTimeout(ping, i * 60); }
+setInterval(ping, 500);
+
+const frames = new Map();   // rtp timestamp -> host times
+const win = { disp: [], src: [], rxdisp: [], dec: [], net: [], inhost: [], inps5: [] };
+let hostMode = "guest";
+function onStats(m) {
+  if (m.t === "pong") {
+    const now = performance.now(), r = now - m.c;
+    pongs.push({ r, off: m.h / 1000 - (m.c + r / 2) });
+    if (pongs.length > 20) pongs.shift();
+    const best = pongs.reduce((a, b) => (b.r < a.r ? b : a));
+    offset = best.off; rtt = median(pongs.map(p => p.r));
+  } else if (m.t === "f") {
+    frames.set(m.r >>> 0, m);
+    if (frames.size > 400) frames.delete(frames.keys().next().value);
+  } else if (m.t === "ack") {
+    if (offset == null) return;
+    for (const [seq, recvUs, handedUs] of m.a) {
+      const sentAt = sentInputs.get(seq);
+      if (sentAt == null) continue;
+      win.inhost.push(recvUs / 1000 - offset - sentAt);
+      if (handedUs > 0) win.inps5.push(handedUs / 1000 - offset - sentAt);
+    }
+  } else if (m.t === "st") {
+    hostMode = m.mode;
+    $("hudMode").textContent = { guest: "tu joues", together: "à deux", watch: "tu regardes" }[m.mode] || "";
+    if (m.feed) { host = m; renderNet(); }
+  } else if (m.t === "probe-end") {
+    setTimeout(finishProbe, 400);
+  } else if (m.t === "bye") {
+    if (m.why === "kick") fatal("l'hôte t'a déconnecté", "le lien a changé");
+    else if (m.why === "sharing stopped") fatal("partage arrêté", "ton ami a arrêté de partager");
+  }
+}
+function onFeedback(m) {
+  if (m.t !== "rumble") return;
+  steam.rumble = [m.l, m.r];
+  const gp = currentPad();
+  const act = gp && gp.vibrationActuator;
+  if (!act) return;
+  if (!m.l && !m.r) { act.reset && act.reset().catch(() => {}); return; }
+  act.playEffect("dual-rumble", { duration: 1000, strongMagnitude: m.l / 255, weakMagnitude: m.r / 255 }).catch(() => {});
+}
+
+// ---- what this page receives. The host sets the most it allows (host.max); here the guest
+// picks automatique (the host follows the link test and the losses) or a mode of their own.
+// Kept per browser.
+const FEEDS = ["real", "60", "120"], SIZES = ["720", "1080", "native"];
+let host = null;   // the host's last "st": feed, size, kbps, w, h, src, auto, link, tested, max, best
+const quality = (() => {
+  try { return Object.assign({ auto: true, feed: "120", size: "native", mbps: 100 }, JSON.parse(localStorage.getItem("boovi-quality") || "{}")); }
+  catch (_) { return { auto: true, feed: "120", size: "native", mbps: 100 }; }
+})();
+// A link may carry a choice: ?auto=0&feed=120&size=native&mbps=60 (tests, or a host's suggestion).
+if (params.get("auto") != null) quality.auto = params.get("auto") !== "0";
+if (FEEDS.includes(params.get("feed"))) quality.feed = params.get("feed");
+if (SIZES.includes(params.get("size"))) quality.size = params.get("size");
+if (Number(params.get("mbps")) > 0) quality.mbps = Number(params.get("mbps"));
+function sendWish() {
+  try { localStorage.setItem("boovi-quality", JSON.stringify(quality)); } catch (_) {}
+  send("stats", JSON.stringify({ t: "want", auto: quality.auto ? 1 : 0, feed: quality.feed, size: quality.size, mbps: quality.mbps }));
+}
+const feedLabel = f => f === "120" ? "fluide 120" : f === "60" ? "fluide 60" : "images réelles";
+const sizeLabel = (s, h) => s === "native" ? (h ? h + "p" : "native") : s + "p";
+
+// ---- link test: the host sends a rising ramp of padding on the "probe" channel (same path as
+// the picture: direct or through the relay). Each step's arrival rate, loss and queueing delay
+// (one-way delay over its lowest) say how much the path carries; two congested steps in a row
+// stop the ramp. The result goes to the host, which picks the mode in automatique.
+const probe = { on: false, steps: [], minOwd: Infinity, stopped: false, media: [], result: null, t0: 0, timer: 0 };
+function startProbe() {
+  if (probe.on || !send("stats", JSON.stringify({ t: "probe" }))) return;
+  Object.assign(probe, { on: true, steps: [], minOwd: Infinity, stopped: false, media: [], t0: performance.now() });
+  clearTimeout(probe.timer); probe.timer = setTimeout(finishProbe, 7000);
+  showNet(true); renderNet();
+}
+function stepStats(s) {
+  const rate = s.n > 1 ? s.bytes * (s.n - 1) / s.n * 8 / Math.max(1, s.last - s.first) : 0;   // kb/s (bits per ms)
+  const loss = 1 - s.n / (s.hi - s.lo + 1), queue = median(s.owd) - probe.minOwd;
+  return { target: s.target, rate, loss, queue, congested: loss > 0.02 || queue > 20 || rate < 0.7 * s.target };
+}
+function onProbe(buf) {
+  if (!probe.on || !(buf instanceof ArrayBuffer) || buf.byteLength < 20) return;
+  const dv = new DataView(buf);
+  if (dv.getUint8(0) !== 81) return;
+  const step = dv.getUint8(1), seq = dv.getUint32(4, true), owd = performance.now() - dv.getFloat64(8, true);
+  const now = performance.now();
+  let s = probe.steps[step];
+  if (!s) {
+    s = probe.steps[step] = { target: dv.getUint32(16, true), count: dv.getUint16(2, true), n: 0, bytes: 0, first: now, last: now, lo: seq, hi: seq, owd: [] };
+    const a = probe.steps[step - 1], b = probe.steps[step - 2];
+    if (!probe.stopped && a && b && stepStats(a).congested && stepStats(b).congested) { probe.stopped = true; send("stats", JSON.stringify({ t: "probe-stop" })); }
+    renderNet();
+  }
+  s.n++; s.bytes += buf.byteLength; s.last = now; s.lo = Math.min(s.lo, seq); s.hi = Math.max(s.hi, seq); s.owd.push(owd);
+  if (owd < probe.minOwd) probe.minOwd = owd;
+}
+function finishProbe() {
+  if (!probe.on) return;
+  probe.on = false; clearTimeout(probe.timer);
+  const steps = probe.steps.filter(s => s && s.n >= 10).map(stepStats);
+  if (!steps.length) { probe.result = { failed: true }; renderNet(); return; }
+  // What arrived at the fastest step, plus the picture and sound received meanwhile.
+  const media = probe.media.length ? probe.media.reduce((a, b) => a + b, 0) / probe.media.length : 0;
+  const clean = steps.filter(s => !s.congested);
+  const kbps = Math.max(...steps.map(s => s.rate)) + media;
+  const loss = clean.length ? clean.reduce((a, s) => a + Math.max(0, s.loss), 0) / clean.length : Math.max(0, steps[0].loss);
+  probe.result = { kbps, rtt: kv.ping, loss, path: kv.path, at: Date.now() };
+  send("stats", JSON.stringify({ t: "link", kbps, rtt: kv.ping, loss, path: kv.path || "" }));
+  renderNet();
+  netAutoHide();
+}
+
+let netPinned = false, netHideTimer = 0;
+function showNet(on) { $("net").classList.toggle("off", !on); $("btnNet").classList.toggle("on", on); if (on) renderNet(); }
+function netAutoHide() { clearTimeout(netHideTimer); if (!netPinned) netHideTimer = setTimeout(() => { if (!netPinned) showNet(false); }, 10000); }
+function segSet(id, value, disabled) {
+  for (const b of $(id).querySelectorAll("button")) { b.classList.toggle("on", b.dataset.v === value); b.disabled = !!(disabled && disabled(b.dataset.v)); }
+}
+function renderNet() {
+  const r = probe.result, max = host && host.max;
+  if (probe.on) {
+    const steps = probe.steps.filter(Boolean), last = steps[steps.length - 1];
+    $("netDot").className = "dot busy";
+    $("netLine").textContent = "test de la connexion…" + (last ? " " + fmt(last.target / 1000, 0) + " Mb/s" : "");
+    $("netBar").classList.remove("off");
+    $("netBar").firstElementChild.style.width = (last ? Math.min(100, 100 * (steps.length) / Math.max(1, last.count)) : 4) + "%";
+  } else {
+    $("netBar").classList.add("off");
+    if (r && r.failed) { $("netDot").className = "dot warn"; $("netLine").textContent = "test impossible · le stream continue"; }
+    else if (r) {
+      $("netDot").className = "dot " + (r.loss > 0.02 ? "warn" : "ok");
+      $("netLine").textContent = "connexion : " + fmt(r.kbps / 1000, 0) + " Mb/s · ping " + fmt(r.rtt, 0) + " ms" + (r.path ? " · " + r.path : "") + (r.loss > 0.005 ? " · perte " + fmt(r.loss * 100) + " %" : "");
+    } else { $("netDot").className = "dot"; $("netLine").textContent = "connexion pas encore testée"; }
+  }
+  const best = host && host.best && host.tested ? host.best : null;
+  $("netBest").innerHTML = best ? "conseillé : <b>" + feedLabel(best.feed) + " · " + sizeLabel(best.size, host.src) + "</b> (25 % de marge)" : "";
+  segSet("segAuto", quality.auto ? "1" : "0");
+  $("manual").hidden = quality.auto;
+  const maxFeed = max ? FEEDS.indexOf(max.feed) : 2, maxSize = max ? SIZES.indexOf(max.size) : 2;
+  segSet("segFeed", quality.feed, v => FEEDS.indexOf(v) > maxFeed);
+  segSet("segSize", quality.size, v => SIZES.indexOf(v) > maxSize);
+  $("segSize").querySelector('[data-v="native"]').textContent = host && host.src > 1080 ? "native · " + host.src + "p" : "native";
+  const capMbps = max ? Math.round(max.kbps / 1000) : 100;
+  $("mbps").max = capMbps;
+  $("mbps").value = Math.min(quality.mbps, capMbps);
+  $("mbpsText").textContent = Math.min(quality.mbps, capMbps) >= capMbps ? "à fond · " + capMbps + " Mb/s" : quality.mbps + " Mb/s";
+  // What arrives, as the page counts it.
+  const hz = lab.st.gap > 0 ? 1000 / lab.st.gap : 0;
+  if (host) {
+    const fps = kv.fps > 0 ? Math.round(kv.fps) : 0;
+    $("netNow").innerHTML = "reçu : <b>" + (fps ? fps + " i/s " : "") + (host.feed === "real" ? "réelles" : "générées par l'hôte") + " · " + (host.h ? host.h + "p" : "—") + "</b> · "
+      + fmt(host.kbps / 1000, 0) + " Mb/s" + (quality.auto ? " · auto" : "") + "<br>ton écran : " + (hz ? Math.round(hz) + " Hz" : "—");
+    $("netHint").textContent = host.feed === "120" && hz && hz < 75 ? "ton écran affiche " + Math.round(hz) + " images par seconde : fluide 60 suffit, et prend moins de débit." : "";
+  } else { $("netNow").textContent = ""; $("netHint").textContent = ""; }
+}
+for (const b of $("segAuto").querySelectorAll("button")) b.onclick = () => { quality.auto = b.dataset.v === "1"; netPinned = true; sendWish(); renderNet(); };
+for (const b of $("segFeed").querySelectorAll("button")) b.onclick = () => { quality.feed = b.dataset.v; netPinned = true; sendWish(); renderNet(); };
+for (const b of $("segSize").querySelectorAll("button")) b.onclick = () => { quality.size = b.dataset.v; netPinned = true; sendWish(); renderNet(); };
+$("mbps").oninput = () => { quality.mbps = Number($("mbps").value); netPinned = true; renderNet(); };
+$("mbps").onchange = () => { quality.mbps = Number($("mbps").value) >= Number($("mbps").max) ? 200 : Number($("mbps").value); sendWish(); renderNet(); };
+$("retest").onclick = () => { netPinned = true; startProbe(); };
+$("netClose").onclick = () => { netPinned = false; showNet(false); };
+$("net").addEventListener("pointerenter", () => { netPinned = true; });
+
+// ---- picture timing: requestVideoFrameCallback gives each shown frame's RTP timestamp
+let shown = 0, lastShown = 0;
+function watchFrames() {
+  if (!("requestVideoFrameCallback" in HTMLVideoElement.prototype) || watchFrames.on) return;
+  watchFrames.on = true;
+  const cb = (now, md) => {
+    // while the lab's stage draws the stream it keeps the numbers; the video's own only compare
+    if (lab.staged) { lab.videoShown(md, md.expectedDisplayTime || now); video.requestVideoFrameCallback(cb); return; }
+    shown = md.presentedFrames;
+    const f = md.rtpTimestamp != null ? frames.get(md.rtpTimestamp >>> 0) : null;
+    const shownAt = md.expectedDisplayTime || now;
+    if (f && offset != null) {
+      win.disp.push(shownAt - (f.c / 1000 - offset));
+      if (f.d > 0) win.src.push(shownAt - (f.d / 1000 - offset));   // from the picture's decode on the host (a live source)
+      if (md.receiveTime) win.net.push(md.receiveTime - (f.s / 1000 - offset));
+    }
+    if (md.receiveTime) win.rxdisp.push(shownAt - md.receiveTime);
+    if (md.processingDuration != null) win.dec.push(md.processingDuration * 1000);
+    video.requestVideoFrameCallback(cb);
+  };
+  video.requestVideoFrameCallback(cb);
+}
+
+// ---- pads. Three sources give one state, read every animation frame and every 4 ms and sent in
+// full on change, 50 ms keepalive:
+// - the Gamepad API: the browser's standard layout, or the player's own mapping for a pad the
+//   browser reads in another layout (configurer ma manette);
+// - a Steam Controller over WebHID (SteamPad above), for the one Chrome cannot see without Steam;
+// - the test sweep.
+// state: { connected, synthetic, buttons (bit i = standard button i), axes [lx, ly, rx, ry] int16,
+// l2, r2 0..255, name, kind: "standard" | "remap" | "non-standard" | "steam-hid" | "none" | "test" }
+const sentInputs = new Map();
+let seq = 0, lastBytes = "", lastSend = 0, testOn = false, testT0 = 0, lastPad = null;
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const axis = v => Math.round(clamp(v || 0, -1, 1) * 32767);
+const NO_PAD = { connected: false, synthetic: false, buttons: 0, axes: [0, 0, 0, 0], l2: 0, r2: 0, name: "", kind: "none" };
+
+const gamepads = () => [...(navigator.getGamepads ? navigator.getGamepads() : [])].filter(p => p && p.connected);
+function currentPad() {
+  let best = null;
+  for (const p of gamepads()) if (!best || (p.mapping === "standard" && best.mapping !== "standard")) best = p;
+  return best;
+}
+// "Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 0ce6)" -> "Wireless Controller"
+const padName = gp => gp.id.replace(/\s*\((?:STANDARD GAMEPAD\s*)?Vendor:[^)]*\)\s*$/i, "").replace(/^[0-9a-f]{4}-[0-9a-f]{4}-/i, "").trim().slice(0, 60) || "manette";
+const looksValve = id => /valve|steam|28de/i.test(id);
+
+// The player's mapping, per pad (gamepad id), in localStorage: { target: binding }. Targets are
+// "b<i>" for standard button i (6, 7 the analog triggers) and "a<i>" for stick axis i (lx ly rx ry).
+// A binding: { t: "b", i } a button; { t: "a", i, s, r } an axis pushed toward sign s from its rest r
+// (0 a stick, -1 a trigger read as an axis); { t: "h", i, v } one position of a d-pad hat read as a
+// single axis (8 positions over -1..1, rest outside).
+const maps = new Map();
+const mapKey = id => "boovi-pad-map:" + id;
+function mapFor(gp) {
+  if (!maps.has(gp.id)) {
+    let m = null;
+    try { m = JSON.parse(localStorage.getItem(mapKey(gp.id)) || "null"); } catch (_) {}
+    maps.set(gp.id, m && typeof m === "object" ? m : null);
+  }
+  return maps.get(gp.id);
+}
+function storeMap(id, map) {
+  maps.set(id, map);
+  try { map ? localStorage.setItem(mapKey(id), JSON.stringify(map)) : localStorage.removeItem(mapKey(id)); } catch (_) {}
+}
+const hatIndex = v => ((Math.round((v + 1) * 3.5) % 8) + 8) % 8;
+function bindValue(b, gp) {
+  if (b.t === "b") { const x = gp.buttons[b.i]; return x ? x.value || (x.pressed ? 1 : 0) : 0; }
+  const a = gp.axes[b.i];
+  if (a == null) return 0;
+  if (b.t === "h") { if (Math.abs(a) > 1.05) return 0; const d = Math.abs(hatIndex(a) - hatIndex(b.v)); return Math.min(d, 8 - d) <= 1 ? 1 : 0; }
+  return clamp((b.s * a - b.r) / (1 - b.r), 0, 1);
+}
+const stickValue = (b, gp) => b.t === "a" && b.r === 0 ? clamp(b.s * (gp.axes[b.i] || 0), -1, 1) : bindValue(b, gp);
+function applyMap(gp, map) {
+  const out = { buttons: 0, axes: [0, 0, 0, 0], l2: 0, r2: 0 };
+  for (const k in map) {
+    const n = +k.slice(1);
+    if (k[0] === "a") { out.axes[n] = axis(stickValue(map[k], gp)); continue; }
+    const v = bindValue(map[k], gp);
+    if (n === 6) out.l2 = Math.round(v * 255);
+    if (n === 7) out.r2 = Math.round(v * 255);
+    if (v > 0.5) out.buttons |= 1 << n;
+  }
+  return out;
+}
+function readStandard(gp) {
+  let buttons = 0;
+  for (let i = 0; i < Math.min(gp.buttons.length, 18); i++) if (gp.buttons[i].pressed) buttons |= 1 << i;
+  const trig = i => gp.buttons[i] ? Math.round(gp.buttons[i].value * 255) : 0;
+  return { buttons, axes: [0, 1, 2, 3].map(i => axis(gp.axes[i])), l2: trig(6), r2: trig(7) };
+}
+
+// ---- configurer ma manette: each DualSense control in turn; the first button pressed or axis
+// moved past half way is bound to it, then the page waits for its release.
+const TARGETS = [
+  ["b0", "✕", "appuie sur croix"], ["b1", "○", "appuie sur rond"], ["b2", "□", "appuie sur carré"], ["b3", "△", "appuie sur triangle"],
+  ["b4", "L1", "appuie sur L1"], ["b5", "R1", "appuie sur R1"], ["b6", "L2", "appuie à fond sur L2"], ["b7", "R2", "appuie à fond sur R2"],
+  ["a0", "L →", "pousse le stick gauche vers la droite"], ["a1", "L ↓", "pousse le stick gauche vers le bas"],
+  ["a2", "R →", "pousse le stick droit vers la droite"], ["a3", "R ↓", "pousse le stick droit vers le bas"],
+  ["b10", "L3", "clique le stick gauche"], ["b11", "R3", "clique le stick droit"],
+  ["b9", "options", "appuie sur options"], ["b8", "create", "appuie sur create (share)"],
+  ["b12", "↑", "croix directionnelle : haut"], ["b13", "↓", "croix directionnelle : bas"],
+  ["b14", "←", "croix directionnelle : gauche"], ["b15", "→", "croix directionnelle : droite"],
+  ["b16", "PS", "appuie sur le bouton PS"], ["b17", "pavé", "clique le pavé tactile"]];
+let remap = null;   // { id, step, map, base, held }
+function startRemap() {
+  const gp = currentPad();
+  if (!gp) return;
+  remap = { id: gp.id, step: 0, map: {}, base: null, held: null };
+  renderPad(); showPad(true);
+}
+function remapNext() {
+  remap.held = null; remap.base = null;
+  if (++remap.step < TARGETS.length) { $("remapSeen").textContent = ""; renderRemap(); return; }
+  const done = Object.keys(remap.map).length > 0;
+  if (done) storeMap(remap.id, remap.map);
+  remap = null;
+  toast(done ? "manette configurée · gardée sur ce pc" : "rien n'a été configuré", !done);
+  renderPad();
+}
+function remapTick() {
+  const gp = remap && gamepads().find(p => p.id === remap.id);
+  if (!gp) return;
+  if (remap.held) {
+    const [k, b] = remap.held;
+    if (Math.abs(k[0] === "a" ? stickValue(b, gp) : bindValue(b, gp)) < 0.3) remapNext();
+    return;
+  }
+  if (!remap.base) { remap.base = { b: gp.buttons.map(x => x.pressed), a: [...gp.axes] }; return; }
+  let bind = null;
+  gp.buttons.forEach((x, i) => { if (!bind && x.pressed && !remap.base.b[i]) bind = { t: "b", i }; });
+  gp.axes.forEach((a, i) => {
+    const rest = remap.base.a[i];
+    if (bind || Math.abs(a - rest) < 0.5) return;
+    if (Math.abs(rest) > 1.05) { if (Math.abs(a) <= 1.05) bind = { t: "h", i, v: a }; return; }
+    const s = a > rest ? 1 : -1;
+    bind = { t: "a", i, s, r: s * rest < -0.5 ? -1 : 0 };
+  });
+  if (!bind) return;
+  const k = TARGETS[remap.step][0];
+  remap.map[k] = bind; remap.held = [k, bind];
+  $("remapSeen").textContent = "reçu : " + (bind.t === "b" ? "bouton " + bind.i : bind.t === "h" ? "croix (axe " + bind.i + ")" : "axe " + bind.i + (bind.s > 0 ? " +" : " −"));
+}
+
+// ---- Steam Controller over WebHID: picked once (connecter une manette steam), reopened on later visits.
+const steam = { devs: new Set(), dev: null, state: null, name: "", mem: new WeakMap(), rumble: [0, 0], rumbling: false };
+async function steamSend(d, list) {
+  for (const [kind, id, data] of list) {
+    try { await (kind === "output" ? d.sendReport(id, data) : d.sendFeatureReport(id, data)); } catch (_) {}
+  }
+}
+const steamSetup = d => steamSend(d, SteamPad.setup(d.productId).map(([id, data]) => ["feature", id, data]));
+async function steamAdd(devices) {
+  for (const d of devices) {
+    if (steam.devs.has(d) || !SteamPad.supports(d)) continue;
+    try { if (!d.opened) await d.open(); } catch (_) { continue; }
+    steam.devs.add(d);
+    steam.mem.set(d, {});
+    d.addEventListener("inputreport", e => steamReport(d, e.reportId, e.data));
+    steamSetup(d);
+  }
+  renderPad();
+}
+function steamReport(d, reportId, data) {
+  const r = SteamPad.parse(d.productId, reportId, data, steam.mem.get(d));
+  if (!r) return;
+  if (r.wireless) {
+    if (r.wireless === "connect") steamSetup(d);
+    else if (steam.dev === d) { steam.state = null; steam.dev = null; }
+    return;
+  }
+  const first = !steam.state;
+  steam.state = r; steam.dev = d; steam.name = SteamPad.name(d.productId);
+  poll();   // a report goes out at once
+  if (first) toast(steam.name + " connectée");
+}
+function steamDrop(d) {
+  steam.devs.delete(d);
+  if (steam.dev === d) { steam.state = null; steam.dev = null; }
+}
+async function steamConnect() {
+  try {
+    const picked = await navigator.hid.requestDevice({ filters: [{ vendorId: 0x28de }] });
+    if (!picked.length) return;
+    await steamAdd(picked);
+    if (!steam.devs.size) toast("cette manette valve n'est pas prise en charge", true);
+  } catch (err) { toast("webhid : " + (err.message || err), true); }
+}
+if (navigator.hid) {
+  navigator.hid.getDevices().then(steamAdd).catch(() => {});
+  navigator.hid.addEventListener("connect", e => steamAdd([e.device]));
+  navigator.hid.addEventListener("disconnect", e => steamDrop(e.device));
+  setInterval(() => { for (const d of steam.devs) if (SteamPad.isTriton(d.productId)) steamSetup(d); }, 3000);
+  setInterval(() => {
+    const d = steam.dev, [l, r] = steam.rumble;
+    if (!d || (!l && !r && !steam.rumbling)) return;
+    steam.rumbling = l > 0 || r > 0;
+    steamSend(d, SteamPad.rumble(d.productId, l, r));
+  }, 40);
+}
+
+function readPad(now) {
+  if (testOn) {
+    // Synthetic sweep: the right stick turns once every 2 s. No button: on a real console a
+    // press would act on whatever screen is showing.
+    const t = (now - testT0) / 1000;
+    return { ...NO_PAD, connected: true, synthetic: true, axes: [0, 0, axis(Math.cos(t * Math.PI)), axis(Math.sin(t * Math.PI))], name: "test manette", kind: "test" };
+  }
+  if (steam.state) return { ...NO_PAD, ...steam.state, connected: true, name: steam.name, kind: "steam-hid" };
+  const gp = currentPad();
+  if (!gp) return NO_PAD;
+  const pad = { ...NO_PAD, connected: true, name: padName(gp) };
+  if (remap) return { ...pad, kind: "remap" };   // nothing reaches the console while configuring
+  const map = mapFor(gp);
+  if (map) return { ...pad, ...applyMap(gp, map), kind: "remap" };
+  return { ...pad, ...readStandard(gp), kind: gp.mapping === "standard" ? "standard" : "non-standard" };
+}
+function encodeInput(state) {
+  const b = new ArrayBuffer(28), v = new DataView(b);
+  v.setUint8(0, 0x50); v.setUint8(1, (state.synthetic ? 1 : 0) | (state.connected ? 2 : 0));
+  v.setUint16(2, state.seq, true); v.setFloat64(4, state.at, true); v.setUint32(12, state.buttons >>> 0, true);
+  for (let i = 0; i < 4; i++) v.setInt16(16 + 2 * i, state.axes[i], true);
+  v.setUint8(24, state.l2); v.setUint8(25, state.r2);
+  return b;
+}
+function padLabel(s) {
+  if (!s.connected) return "aucune manette détectée";
+  if (s.synthetic) return "test manette · stick droit";
+  if (s.kind === "steam-hid") return s.name;
+  const n = s.name.toLowerCase();
+  return n.includes("dualsense") || n.includes("0ce6") ? "dualsense" : n.includes("054c") ? "dualshock 4" : n.includes("xbox") || n.includes("xinput") ? "manette xbox" : s.name;
+}
+function poll() {
+  const now = performance.now();
+  remapTick();
+  const s = readPad(now);
+  lastPad = s;
+  const key = [s.connected, s.buttons, s.axes.join(","), s.l2, s.r2].join("|");
+  const changed = key !== lastBytes;
+  lab.input(now, s);
+  if (changed || now - lastSend >= 50) {
+    seq = (seq + 1) & 0xffff;
+    if (send("input", encodeInput({ ...s, seq, at: now }))) {
+      sentInputs.set(seq, now);
+      if (sentInputs.size > 2000) sentInputs.delete(sentInputs.keys().next().value);
+      lastSend = now; lastBytes = key;
+    }
+  }
+  const label = padLabel(s) + (hostMode === "watch" ? " · l'hôte joue seul" : "");
+  if (poll.label !== label) {
+    poll.label = label;
+    $("padText").textContent = label;
+    $("padDot").className = "dot " + (s.connected ? "ok" : "err");
+  }
+  if (situation() !== renderPad.at) renderPad();
+}
+
+function setTest(on) { testOn = on; testT0 = performance.now(); $("btnTest").classList.toggle("on", on); toast(on ? "test manette : le stick droit tourne" : "test manette arrêté"); }
+
+// ---- the pad card: what the page sees, and what to do about it
+const padUi = { open: false, dismissed: "" };
+function situation() {
+  if (remap) return "remap";
+  if (testOn) return "test";
+  if (steam.state) return "steam";
+  const gp = currentPad();
+  if (!gp) return steam.devs.size ? "steam-wait" : "none";
+  if (mapFor(gp)) return "mapped";
+  return gp.mapping === "standard" ? "standard" : "non-standard";
+}
+const NAGS = new Set(["none", "steam-wait", "non-standard"]);
+function showPad(open) { padUi.open = open; if (!open) padUi.dismissed = situation(); placePad(); }
+// Under the gate card before joining; in game, top left while something needs the player.
+function placePad() {
+  const pad = $("pad"), inGame = $("gate").classList.contains("hidden");
+  if (inGame !== pad.classList.contains("floating")) (inGame ? document.body : $("gate")).appendChild(pad);
+  pad.classList.toggle("floating", inGame);
+  const sit = situation();
+  pad.classList.toggle("off", !(padUi.open || sit === "remap" || (NAGS.has(sit) && padUi.dismissed !== sit)));
+}
+function renderRemap() {
+  const [, glyph, what] = TARGETS[remap.step];
+  $("remapGlyph").textContent = glyph;
+  $("remapWhat").textContent = what;
+  $("remapBar").style.width = (remap.step / TARGETS.length * 100) + "%";
+  $("remapStep").textContent = (remap.step + 1) + " / " + TARGETS.length + " · « passer » laisse cette touche sans rien";
+}
+function renderPad() {
+  const sit = renderPad.at = situation(), gp = currentPad();
+  const views = {
+    none: ["err", "aucune manette détectée", "", "", "appuie sur un bouton de ta manette. toujours rien ? c'est souvent une steam controller : voir ci-dessous."],
+    "steam-wait": ["busy", "steam controller ouverte", "webhid", "", "allume-la ou appuie sur un bouton : elle apparaît dès son premier signal."],
+    steam: ["ok", steam.name, "webhid", "ok", "pavé droit = stick droit · clic du pavé gauche = croix · poignée gauche = pavé tactile, droite = R3 · steam = PS"],
+    test: ["ok", "test manette", "", "", "le stick droit tourne tout seul."],
+    standard: ["ok", gp && padName(gp), "mapping standard", "ok", ""],
+    "non-standard": ["warn", gp && padName(gp), "mapping non standard", "warn", "le navigateur ne connaît pas la disposition de cette manette : configure-la une fois (30 s), c'est gardé sur ce pc."],
+    mapped: ["ok", gp && padName(gp), "configurée", "ok", ""],
+    remap: ["busy", gp && padName(gp), "configuration", "", ""],
+  };
+  const [dot, name, tag, tagKind, hint] = views[sit];
+  $("padDot2").className = "dot " + dot;
+  $("padName").textContent = name || "manette";
+  $("padTag").textContent = tag; $("padTag").className = "tag " + tagKind;
+  $("padHint").textContent = hint;
+  $("remap").hidden = sit !== "remap";
+  if (sit === "remap") renderRemap(); else $("remapSeen").textContent = "";
+  const actions = {
+    none: [["connecter une manette steam", steamConnect, true]],
+    "steam-wait": [["connecter une manette steam", steamConnect]],
+    standard: [["remapper", startRemap]],
+    "non-standard": [["configurer ma manette", startRemap, true], ["connecter une manette steam", steamConnect]],
+    mapped: [["refaire", startRemap], ["réinitialiser", () => { storeMap(gp.id, null); toast("disposition d'origine"); renderPad(); }]],
+  }[sit] || [];
+  const row = $("padActions");
+  row.textContent = "";
+  for (const [label, act, primary] of actions) {
+    if (act === steamConnect && !navigator.hid) continue;
+    const b = document.createElement("button");
+    b.className = "btn" + (primary ? " primary" : "");
+    b.textContent = label; b.onclick = act;
+    row.appendChild(b);
+  }
+  if (sit === "none" || (sit === "non-standard" && gp && looksValve(gp.id))) $("padHelp").open = true;
+  if (sit === "steam" || sit === "standard") $("padHelp").open = false;
+  placePad();
+}
+$("remapSkip").onclick = () => remap && remapNext();
+$("remapCancel").onclick = () => { remap = null; toast("configuration annulée"); renderPad(); };
+$("padClose").onclick = () => showPad(false);
+$("padChip").onclick = () => showPad($("pad").classList.contains("off"));
+(function frame() { poll(); requestAnimationFrame(frame); })();
+setInterval(poll, 4);   // keeps reading when the tab is in the background or rAF is slow
+window.addEventListener("gamepadconnected", e => toast("manette branchée · " + padName(e.gamepad)));
+window.addEventListener("gamepaddisconnected", () => toast("manette débranchée", true));
+
+// ---- stats: receive side every second, the latency report to the host every 2 s
+let lastStats = null, kv = {}, reportTick = 0;
+async function stats() {
+  if (!pc || pc.connectionState !== "connected") return;
+  const report = await pc.getStats();
+  let inbound = null, sound = null, pair = null;
+  report.forEach(r => {
+    if (r.type === "inbound-rtp" && r.kind === "video") inbound = r;
+    if (r.type === "inbound-rtp" && r.kind === "audio") sound = r;
+    if (r.type === "candidate-pair" && r.nominated && r.state === "succeeded") pair = r;
+  });
+  if (!inbound) return;
+  const now = performance.now();
+  let kbps = 0, akbps = 0, fps = 0, loss = 0, jb = -1, dropped = 0;
+  if (lastStats) {
+    const dt = (now - lastStats.at) / 1000;
+    kbps = (inbound.bytesReceived - lastStats.bytes) * 8 / dt / 1000;
+    if (sound) akbps = (sound.bytesReceived - lastStats.abytes) * 8 / dt / 1000;
+    fps = (shown - lastStats.shown) / dt;   // presentedFrames: what the screen showed
+    dropped = Math.max(0, (inbound.framesDropped || 0) - lastStats.dropped);
+    const lost = (inbound.packetsLost || 0) - lastStats.lost, got = inbound.packetsReceived - lastStats.packets;
+    loss = got + lost > 0 ? Math.max(0, lost) / (got + lost) : 0;
+    const emitted = (inbound.jitterBufferEmittedCount || 0) - lastStats.emitted;
+    if (emitted > 0) jb = ((inbound.jitterBufferDelay || 0) - lastStats.jbDelay) / emitted * 1000;
+  }
+  lastStats = { at: now, bytes: inbound.bytesReceived, abytes: sound ? sound.bytesReceived : 0, shown, lost: inbound.packetsLost || 0, packets: inbound.packetsReceived,
+                emitted: inbound.jitterBufferEmittedCount || 0, jbDelay: inbound.jitterBufferDelay || 0, dropped: inbound.framesDropped || 0 };
+  if (probe.on && kbps > 0) probe.media.push(kbps + akbps);
+  const netRtt = pair && pair.currentRoundTripTime != null ? pair.currentRoundTripTime * 1000 : rtt;
+  const local = pair && report.get(pair.localCandidateId), remote = pair && report.get(pair.remoteCandidateId);
+  const relayed = (local && local.candidateType === "relay") || (remote && remote.candidateType === "relay");
+  kv = { ping: netRtt, kbps, akbps, fps, loss, jb, dropped, w: inbound.frameWidth, h: inbound.frameHeight,
+         path: pair ? (relayed ? "relais cloudflare" : "direct") : "", cand: local && remote ? local.candidateType + "/" + remote.candidateType : "",
+         disp: median(win.disp), src: median(win.src), rxdisp: median(win.rxdisp), dec: median(win.dec), net: median(win.net),
+         inhost: median(win.inhost), inps5: median(win.inps5) };
+  render();
+  if (!$("net").classList.contains("off") && !probe.on) renderNet();
+  if (++reportTick % 2 === 0) {
+    send("stats", JSON.stringify({ t: "rep", disp: kv.disp, src: kv.src, rxdisp: kv.rxdisp, dec: kv.dec, net: kv.net, inhost: kv.inhost, inps5: kv.inps5,
+                                   rtt: netRtt, fps, kbps, loss, jb, drop: dropped, n: win.disp.length, test: testOn ? 1 : 0,
+                                   pad: lastPad ? lastPad.name : "", map: lastPad ? lastPad.kind : "none", ...lab.report() }));
+    for (const k in win) win[k] = [];
+  }
+}
+setInterval(stats, 1000);
+function render() {
+  const rows = [
+    ["chemin", kv.path || "—"], ["ping", fmt(kv.ping) + " ms"], ["débit", fmt(kv.kbps / 1000) + " Mb/s"], ["images", fmt(kv.fps, 0) + " i/s"],
+    ["reçu", host ? feedLabel(host.feed) + (quality.auto ? " · auto" : "") : "—", "accent"], ["images jetées", fmt(kv.dropped, 0) + " /s", kv.dropped > 0 ? "warn" : ""],
+    ["définition", kv.w ? kv.w + "×" + kv.h : "—"], ["perte", fmt(kv.loss * 100) + " %", kv.loss > 0.01 ? "warn" : ""],
+    null,
+    ["hôte → écran", fmt(kv.src >= 0 ? kv.src : kv.disp) + " ms", "accent"], ["réseau", fmt(kv.net) + " ms"], ["décodage", fmt(kv.dec) + " ms"],
+    ["reçu → affiché", fmt(kv.rxdisp) + " ms"], ["manette → ps5", fmt(kv.inps5) + " ms", "accent"], ...lab.rows()];
+  $("kv").innerHTML = rows.map(r => r ? '<div class="k">' + r[0] + '</div><div class="v ' + (r[2] || "") + '">' + r[1] + "</div>" : '<div class="sep"></div>').join("");
+}
+
+// ---- controls
+function startJoin(sound) {
+  wantSound = sound; stopped = false; attempt = 0;
+  $("join").disabled = true;
+  audio.muted = !sound;
+  $("btnSound").classList.toggle("on", !sound);
+  connect();
+}
+$("join").onclick = () => startJoin(true);
+$("joinMuted").onclick = () => startJoin(false);
+$("btnSound").onclick = () => { wantSound = !wantSound; audio.muted = !wantSound; $("btnSound").classList.toggle("on", !wantSound); toast(wantSound ? "son activé" : "son coupé"); };
+$("btnHud").onclick = () => $("hud").classList.toggle("off");
+$("btnNet").onclick = () => { const on = $("net").classList.contains("off"); netPinned = on; showNet(on); };
+$("btnTest").onclick = () => setTest(!testOn);
+$("btnWarp").onclick = () => lab.setWarp(!lab.warp);
+$("btnFull").onclick = () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => {});
+window.addEventListener("keydown", e => {
+  if (e.key === "f") $("btnFull").onclick();
+  if (e.key === "h") $("btnHud").onclick();
+  if (e.key === "q") $("btnNet").onclick();
+  if (e.key === "m") $("btnSound").onclick();
+});
+// Closing the tab tells the host at once, so its own pad takes over without waiting.
+// A Steam Controller goes back to keyboard and mouse.
+window.addEventListener("pagehide", () => {
+  send("stats", JSON.stringify({ t: "bye" }));
+  for (const d of steam.devs) steamSend(d, SteamPad.restore(d.productId).map(([id, data]) => ["feature", id, data]));
+});
+let idleTimer = 0;
+function wake() { $("bar").classList.remove("idle"); clearTimeout(idleTimer); idleTimer = setTimeout(() => $("bar").classList.add("idle"), 2500); }
+window.addEventListener("mousemove", wake); wake();
+render();
+if (lab.cfg.sim) lab.startSim();
+else {
+  if (!token && !access) gate("lien incomplet", "demande un nouveau lien à ton ami", "err");
+  else if (access) gate("prêt", "clique pour jouer : la ps5 de ton ami s'allume toute seule", "");
+  if (params.get("autojoin") === "1" || autoTest) { $("hud").classList.remove("off"); startJoin(true); }
+}
+</script>
+</body>
+</html>

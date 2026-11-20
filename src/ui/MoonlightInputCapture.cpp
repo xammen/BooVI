@@ -9,8 +9,16 @@
 
 namespace veyra::ui {
 
+#ifdef VEYRA_ENABLE_MOONLIGHT
 MoonlightInputCapture::MoonlightInputCapture(engine::EngineController& engine, QObject* parent)
-    : QObject(parent), engine_(engine), router_(*this) {
+    : QObject(parent), engine_(&engine), releaseInput_([&engine] { engine.moonlightReleaseInput(); }), router_(*this) {
+    init();
+}
+#endif
+
+MoonlightInputCapture::MoonlightInputCapture(QObject* parent) : QObject(parent), router_(*this, true) { init(); }
+
+void MoonlightInputCapture::init() {
     QCoreApplication::instance()->installNativeEventFilter(this);
     // Focus lost (Alt+Tab, another window on top): give the keyboard and mouse back at once.
     connect(qGuiApp, &QGuiApplication::applicationStateChanged, this, [this](Qt::ApplicationState state) {
@@ -28,7 +36,7 @@ bool MoonlightInputCapture::capture(bool on) {
     if (on) {
         if (!window_ || GetForegroundWindow() != window_) return false;
         RAWINPUTDEVICE device{0x01, 0x02, 0, window_};   // generic desktop / mouse
-        if (!RegisterRawInputDevices(&device, 1, sizeof(device))) {
+        if (engine_ && !RegisterRawInputDevices(&device, 1, sizeof(device))) {
             veyra::log::warn("moonlight-input", "RegisterRawInputDevices failed; mouse capture not started");
             return false;
         }
@@ -39,11 +47,11 @@ bool MoonlightInputCapture::capture(bool on) {
     } else {
         captured_ = false;
         RAWINPUTDEVICE device{0x01, 0x02, RIDEV_REMOVE, nullptr};
-        RegisterRawInputDevices(&device, 1, sizeof(device));
+        if (engine_) RegisterRawInputDevices(&device, 1, sizeof(device));
         ClipCursor(nullptr);
         SetCursor(LoadCursorW(nullptr, IDC_ARROW));
         router_.reset();
-        engine_.moonlightReleaseInput();   // nothing stays pressed on the host
+        if (releaseInput_) releaseInput_();   // nothing stays pressed on the host
     }
     emit capturedChanged(captured_);
     return true;
@@ -101,15 +109,33 @@ bool MoonlightInputCapture::nativeEventFilter(const QByteArray& eventType, void*
         case moonlight::Reserved::ReleaseCapture: capture(false); emit releaseRequested(); break;
         case moonlight::Reserved::Quit: capture(false); emit quitRequested(); break;
         case moonlight::Reserved::ToggleStats: emit statsRequested(); break;
+        case moonlight::Reserved::ShowKeys: emit keysRequested(); break;
         case moonlight::Reserved::None: break;
         }
     }
     return consumed;
 }
 
-void MoonlightInputCapture::key(uint32_t virtualKey, uint32_t scanCode, bool extended, bool down) { engine_.moonlightKey(virtualKey, scanCode, extended, down); }
-void MoonlightInputCapture::mouseMove(int dx, int dy) { engine_.moonlightMouseMove(dx, dy); }
-void MoonlightInputCapture::mouseButton(int button, bool down) { engine_.moonlightMouseButton(button, down); }
-void MoonlightInputCapture::scroll(int delta, bool horizontal) { engine_.moonlightScroll(delta, horizontal); }
+// Events go to the engine for Moonlight; the PS5 capture drops them (its thread reads raw input).
+void MoonlightInputCapture::key(uint32_t virtualKey, uint32_t scanCode, bool extended, bool down) {
+#ifdef VEYRA_ENABLE_MOONLIGHT
+    if (engine_) engine_->moonlightKey(virtualKey, scanCode, extended, down);
+#endif
+}
+void MoonlightInputCapture::mouseMove(int dx, int dy) {
+#ifdef VEYRA_ENABLE_MOONLIGHT
+    if (engine_) engine_->moonlightMouseMove(dx, dy);
+#endif
+}
+void MoonlightInputCapture::mouseButton(int button, bool down) {
+#ifdef VEYRA_ENABLE_MOONLIGHT
+    if (engine_) engine_->moonlightMouseButton(button, down);
+#endif
+}
+void MoonlightInputCapture::scroll(int delta, bool horizontal) {
+#ifdef VEYRA_ENABLE_MOONLIGHT
+    if (engine_) engine_->moonlightScroll(delta, horizontal);
+#endif
+}
 
 } // namespace veyra::ui

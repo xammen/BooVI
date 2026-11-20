@@ -1,10 +1,12 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(veyra VERSION 2.1.9 LANGUAGES C CXX RC)
+# BooVI's version: the one place it is set. The EXE's version resource, the app's
+# about line and the release zip's name (scripts/fork/package.ps1) all read it.
+project(veyra VERSION 1.0.0 LANGUAGES C CXX RC)
 # Moonlight/Xbox have C sources independently of the optional PS5 backend.
 # Shown in the EXE's version resource and in the package name. CMake versions
-# must be numeric, so the beta marker lives here instead.
-set(VEYRA_DISPLAY_VERSION "2.1.9" CACHE STRING "Human-readable version string")
+# must be numeric, so a beta marker goes here instead (-DVEYRA_DISPLAY_VERSION=1.1.0beta).
+set(VEYRA_DISPLAY_VERSION "${PROJECT_VERSION}" CACHE STRING "Human-readable version string")
 # The cache keeps the first value it ever saw, so a release that bumps
 # project(VERSION) used to ship an EXE still stamped with the previous display
 # string. Re-align it whenever the cached label does not start with the project
@@ -124,6 +126,7 @@ add_library(veyra_gfx STATIC
   src/gfx/XessMfgUnlock.cpp
   src/gfx/XessPacing.cpp
   src/gfx/FsrFgPresenter.cpp
+  src/gfx/FsrProviderUnlock.cpp
   src/gfx/AmfFrcBackend.cpp
   src/gfx/FsrSrBackend.cpp
 )
@@ -325,6 +328,7 @@ veyra_add_compute_shader(veyra_shader_nv12_upload Nv12Upload)
 veyra_add_graphics_shader_pair(veyra_shader_present_blit PresentBlit)
 veyra_add_compute_shader(veyra_shader_present_motion PresentMotion)
 veyra_add_compute_shader(veyra_shader_hdr_coverage HdrCurveCoverage)
+veyra_add_compute_shader(veyra_shader_anticipation_luma AnticipationLuma)
 # NvofDensify: SHORT2 S10.5 raw flow -> workingExtent float2 + confidence.
 veyra_add_compute_shader(veyra_shader_nvof_densify NvofDensify)
 veyra_add_compute_shader(veyra_shader_nr_downsample NrDownsample)
@@ -332,6 +336,8 @@ veyra_add_compute_shader(veyra_shader_nr_residual NrResidualComposite)
 veyra_add_compute_shader(veyra_shader_nr_temporal NrTemporal)
 # Stage-5 output stabiliser (anti-flicker, default off).
 veyra_add_compute_shader(veyra_shader_nr_hold NrHold)
+# Console streams: changed samples between consecutive hardware-decoded pictures.
+veyra_add_compute_shader(veyra_shader_stream_picture_diff StreamPictureDiff)
 # NR inference reuse (realtime preview only, default off).
 veyra_add_compute_shader(veyra_shader_nr_reuse_compose NrReuseCompose)
 veyra_add_compute_shader(veyra_shader_nr_reuse_warp NrReuseWarp)
@@ -339,6 +345,11 @@ veyra_add_compute_shader(veyra_shader_flow_adapt FlowAdapt)
 veyra_add_compute_shader(veyra_shader_flow_refine FlowRefine)
 veyra_add_compute_shader(veyra_shader_flow_fill FlowFill)
 veyra_add_compute_shader(veyra_shader_flow_claim FlowClaim)
+# Frame-generation anti-artefacts (FgGuard): overlays, global motion, hold.
+veyra_add_compute_shader(veyra_shader_fg_hud_detect FgHudDetect)
+veyra_add_compute_shader(veyra_shader_fg_hud_inpaint FgHudInpaint)
+veyra_add_compute_shader(veyra_shader_fg_stats FgStats)
+veyra_add_compute_shader(veyra_shader_fg_finalize FgFinalize)
 # VfgShotChange: per-pair shot-change test for VFG (replaces the SDK's automatic one).
 veyra_add_compute_shader(veyra_shader_vfg_shot_change VfgShotChange)
 veyra_add_compute_shader(veyra_shader_rgb_nv12 RgbToNv12)
@@ -555,6 +566,15 @@ endif()
 
 # NVOF probe tool (phase5 gate expects veyra_nvof_probe.exe).
 set(VEYRA_NVOF_SDK_ROOT "" CACHE PATH "NVIDIA Optical Flow SDK root")
+# Fork: without the (login-gated) SDK, veyra_nvof is a session that always reports optical
+# flow as unavailable, so the player still builds; the probe tools need the real SDK.
+if(NOT (VEYRA_NVOF_SDK_ROOT AND EXISTS "${VEYRA_NVOF_SDK_ROOT}/NvOFInterface/nvOpticalFlowCommon.h"))
+  add_library(veyra_nvof STATIC src/ngx/NvOfSessionUnavailable.cpp)
+  veyra_apply_warnings(veyra_nvof)
+  target_compile_features(veyra_nvof PUBLIC cxx_std_20)
+  target_include_directories(veyra_nvof PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(veyra_nvof PUBLIC veyra_base veyra_gfx)
+endif()
 if(VEYRA_NVOF_SDK_ROOT AND EXISTS "${VEYRA_NVOF_SDK_ROOT}/NvOFInterface/nvOpticalFlowCommon.h")
   # Reusable NVOF D3D12 session (Phase 6 motion guidance for DLSSG).
   add_library(veyra_nvof STATIC src/ngx/NvOfSession.cpp)
@@ -590,14 +610,14 @@ endif()
 
 # Resolve FFmpeg before any consumer, including the shared enhancement graph.
 if(VEYRA_FFMPEG_ROOT AND EXISTS "${VEYRA_FFMPEG_ROOT}/include/libavformat/avformat.h")
-  list(APPEND CMAKE_MODULE_PATH "${VEYRA_FFMPEG_ROOT}/share/ffmpeg")
+  list(APPEND CMAKE_MODULE_PATH "${VEYRA_FFMPEG_ROOT}/share/ffmpeg" "${CMAKE_CURRENT_SOURCE_DIR}/cmake/fork")
   find_package(FFMPEG REQUIRED)
 endif()
 
 # EnhanceGraph (the real GPU chain) needs the NGX + NVOF backends; wire it
 # into veyra_pipeline only when both exist so bare contract builds still work.
 if(TARGET veyra_ngx AND TARGET veyra_nvof AND VEYRA_FFMPEG_ROOT)
-  target_sources(veyra_pipeline PRIVATE src/pipeline/EnhanceGraph.cpp src/pipeline/NrTemporalPass.cpp src/pipeline/NrHoldPass.cpp src/pipeline/NrReusePass.cpp src/core/SceneCadenceAnalyzer.cpp)
+  target_sources(veyra_pipeline PRIVATE src/pipeline/EnhanceGraph.cpp src/pipeline/FgFrameDump.cpp src/pipeline/FgGuard.cpp src/pipeline/NrTemporalPass.cpp src/pipeline/NrHoldPass.cpp src/pipeline/NrReusePass.cpp src/pipeline/StreamPictureDiff.cpp src/core/SceneCadenceAnalyzer.cpp)
   target_include_directories(veyra_pipeline PRIVATE ${FFMPEG_INCLUDE_DIRS})
   target_link_libraries(veyra_pipeline PRIVATE veyra_ngx veyra_nvof ${FFMPEG_LIBRARIES})
   add_dependencies(veyra_pipeline
@@ -692,7 +712,7 @@ if(VEYRA_FFMPEG_ROOT AND EXISTS "${VEYRA_FFMPEG_ROOT}/include/libavformat/avform
 
   # veyra_sources: product input sources (Playbook R3/R7). MediaFileSource
   # composes veyra_media; no second decode implementation exists.
-  add_dependencies(veyra_pipeline veyra_shader_effect_exclusion veyra_shader_sr_resolve veyra_shader_nr_downsample veyra_shader_nr_residual veyra_shader_nr_temporal veyra_shader_nr_hold veyra_shader_nr_reuse_compose veyra_shader_nr_reuse_warp veyra_shader_flow_adapt veyra_shader_flow_refine veyra_shader_flow_fill veyra_shader_flow_claim veyra_shader_vfg_shot_change)
+  add_dependencies(veyra_pipeline veyra_shader_stream_picture_diff veyra_shader_effect_exclusion veyra_shader_sr_resolve veyra_shader_nr_downsample veyra_shader_nr_residual veyra_shader_nr_temporal veyra_shader_nr_hold veyra_shader_nr_reuse_compose veyra_shader_nr_reuse_warp veyra_shader_flow_adapt veyra_shader_flow_refine veyra_shader_flow_fill veyra_shader_flow_claim veyra_shader_vfg_shot_change veyra_shader_fg_hud_detect veyra_shader_fg_hud_inpaint veyra_shader_fg_stats veyra_shader_fg_finalize)
   add_library(veyra_sources STATIC
     src/source/NativeCaptureSink.cpp
     src/source/MediaFileSource.cpp
@@ -777,6 +797,12 @@ if(VEYRA_FFMPEG_ROOT AND EXISTS "${VEYRA_FFMPEG_ROOT}/include/libavformat/avform
     find_package(Opus CONFIG REQUIRED)
     target_compile_definitions(veyra_sources PUBLIC VEYRA_ENABLE_XBOX=1)
     target_sources(veyra_sources PRIVATE src/source/XboxSessionSource.cpp)
+    # Fork, "rejoindre un partage": a friend's BooVI share joined natively (GuestClientSource.h);
+    # its pad goes through the PS5 input thread, so it needs Remote Play too.
+    if(VEYRA_ENABLE_REMOTEPLAY)
+      target_sources(veyra_sources PRIVATE src/source/GuestClientSource.cpp include/veyra/source/GuestClientSource.h)
+      target_compile_definitions(veyra_sources PUBLIC VEYRA_ENABLE_GUEST_CLIENT=1)
+    endif()
     target_link_libraries(veyra_sources PUBLIC veyra_xbox_protocol PRIVATE Opus::opus)
   endif()
 
@@ -1059,7 +1085,7 @@ if(VEYRA_FFMPEG_ROOT AND EXISTS "${VEYRA_FFMPEG_ROOT}/include/libavformat/avform
   file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/amd-nr-graph-test")
   file(WRITE "${CMAKE_BINARY_DIR}/amd-nr-graph-test/EnhanceGraph.cpp" "${_amd_nr_graph}")
   set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${VEYRA_AMD_NR_TEST_GRAPH_SOURCE}")
-  add_executable(veyra_amd_nr_graph_tests tests/integration/LmxxfNrGraphTests.cpp src/engine/EffectChain.cpp "${CMAKE_BINARY_DIR}/amd-nr-graph-test/EnhanceGraph.cpp")
+  add_executable(veyra_amd_nr_graph_tests tests/integration/LmxxfNrGraphTests.cpp src/engine/EffectChain.cpp src/pipeline/FgFrameDump.cpp src/pipeline/FgGuard.cpp "${CMAKE_BINARY_DIR}/amd-nr-graph-test/EnhanceGraph.cpp")
   target_compile_features(veyra_amd_nr_graph_tests PRIVATE cxx_std_20)
   target_include_directories(veyra_amd_nr_graph_tests PRIVATE $<TARGET_PROPERTY:veyra_pipeline,INCLUDE_DIRECTORIES>)
   target_compile_definitions(veyra_amd_nr_graph_tests PRIVATE $<TARGET_PROPERTY:veyra_pipeline,COMPILE_DEFINITIONS>)
@@ -1175,6 +1201,10 @@ if(VEYRA_BUILD_QML_UI AND Qt6_FOUND)
   target_compile_options(veyra_update_checker PRIVATE /utf-8)
   target_include_directories(veyra_update_checker PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
   target_link_libraries(veyra_update_checker PUBLIC Qt6::Core Qt6::Gui Qt6::Network)
+  # BooVI's own GitHub repository (owner/name): update checks and the project links read it.
+  # Empty turns both off, so a build never points people at someone else's releases.
+  set(BOOVI_GITHUB_REPO "" CACHE STRING "BooVI's GitHub repository as owner/name; empty disables update checks")
+  target_compile_definitions(veyra_update_checker PUBLIC BOOVI_GITHUB_REPO="${BOOVI_GITHUB_REPO}")
   add_library(veyra_qml_bridge STATIC src/ui/QmlExportQueueModel.cpp include/veyra/ui/QmlExportQueueModel.h src/ui/QmlPlayerBridge.cpp src/ui/ThumbnailProvider.cpp
     src/ui/PlaylistModel.cpp include/veyra/ui/PlaylistModel.h
     include/veyra/ui/QmlPlayerBridge.h include/veyra/ui/ThumbnailProvider.h
@@ -1203,6 +1233,7 @@ if(VEYRA_BUILD_QML_UI AND Qt6_FOUND)
     src/ui/bridge/Chain.cpp
     src/ui/bridge/Recording.cpp
     src/ui/bridge/View.cpp
+    src/ui/bridge/Join.cpp
     src/ui/QmlPlayerBridge_p.h)
   set_target_properties(veyra_qml_bridge PROPERTIES AUTOMOC ON)
   # Interface language (UiLanguage.h): its own small library so the streaming models,
@@ -1216,9 +1247,12 @@ if(VEYRA_BUILD_QML_UI AND Qt6_FOUND)
   add_executable(veyra_ui_i18n_tests tests/unit/UiLanguageTests.cpp)
   target_compile_options(veyra_ui_i18n_tests PRIVATE /utf-8)
   target_link_libraries(veyra_ui_i18n_tests PRIVATE veyra_ui_i18n)
-  qt_add_resources(veyra_ui_i18n_tests "veyra_i18n_tests" PREFIX "/i18n" BASE "${CMAKE_CURRENT_SOURCE_DIR}/i18n" FILES i18n/catalog.json)
-  if(VEYRA_ENABLE_MOONLIGHT)
+  qt_add_resources(veyra_ui_i18n_tests "veyra_i18n_tests" PREFIX "/i18n" BASE "${CMAKE_CURRENT_SOURCE_DIR}/i18n" FILES i18n/catalog.json i18n/fork.json)
+  # The keyboard/mouse capture also feeds the PS5 mapper (fork), so it builds for either.
+  if(VEYRA_ENABLE_MOONLIGHT OR VEYRA_ENABLE_REMOTEPLAY)
     target_sources(veyra_qml_bridge PRIVATE src/ui/MoonlightInputCapture.cpp include/veyra/ui/MoonlightInputCapture.h)
+  endif()
+  if(VEYRA_ENABLE_MOONLIGHT)
     # The PC streaming model (hosts, pairing, apps, settings) is its own small library so it can be
     # tested against the mock host without the whole player.
     add_library(veyra_moonlight_model STATIC src/ui/MoonlightModel.cpp include/veyra/ui/MoonlightModel.h)
@@ -1307,9 +1341,9 @@ if(VEYRA_BUILD_QML_UI AND Qt6_FOUND)
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/qml ${CMAKE_CURRENT_BINARY_DIR}/qml
     COMMENT "Copying QML")
   add_dependencies(veyra_qml_ui veyra_qml_files)
-  # Interface translations (设置 → 界面语言): one catalog, compiled in so a package
-  # cannot ship without it. scripts/i18n/ builds it from the source strings.
-  qt_add_resources(veyra_qml_ui "veyra_i18n" PREFIX "/i18n" BASE "${CMAKE_CURRENT_SOURCE_DIR}/i18n" FILES i18n/catalog.json)
+  # Interface translations (设置 → 界面语言): the catalog and the fork's French-source one,
+  # compiled in so a package cannot ship without them. scripts/i18n/ builds them from the source strings.
+  qt_add_resources(veyra_qml_ui "veyra_i18n" PREFIX "/i18n" BASE "${CMAKE_CURRENT_SOURCE_DIR}/i18n" FILES i18n/catalog.json i18n/fork.json)
   set(VEYRA_VB_CABLE_PACKAGE "" CACHE FILEPATH "Original VB-Audio Pack46 ZIP to include for optional offline installation")
   if(VEYRA_VB_CABLE_PACKAGE)
     file(SHA256 "${VEYRA_VB_CABLE_PACKAGE}" veyra_vb_cable_sha256)
@@ -1329,6 +1363,18 @@ if(VEYRA_BUILD_QML_UI AND Qt6_FOUND)
   target_link_options(veyra_qml_ui PRIVATE /STACK:8388608)
   # Qt6::CorePrivate only for QUnifiedTimer's slow mode behind --slow-animations.
   target_link_libraries(veyra_qml_ui PRIVATE veyra_qml_bridge veyra_engine veyra_startup_music Qt6::CorePrivate dbghelp ole32)
+  # Fork, partage: a remote guest plays the PS5 stream (cmake/VeyraGuest.cmake). It needs
+  # libdatachannel, which the Xbox build brings.
+  if(VEYRA_ENABLE_XBOX AND VEYRA_ENABLE_REMOTEPLAY)
+    set(VEYRA_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
+    include(VeyraGuest)
+    target_sources(veyra_qml_bridge PRIVATE src/ui/GuestShareModel.cpp include/veyra/ui/GuestShareModel.h)
+    # Fork, invités: friends' long-lived accesses and the gateway (GuestAccess.h).
+    target_sources(veyra_qml_bridge PRIVATE src/ui/GuestAccessModel.cpp include/veyra/ui/GuestAccessModel.h include/veyra/guest/GuestAccess.h)
+    # Fork, "rejoindre un partage": the native guest client's UI model.
+    target_sources(veyra_qml_bridge PRIVATE src/ui/GuestJoinModel.cpp include/veyra/ui/GuestJoinModel.h)
+    target_link_libraries(veyra_qml_bridge PUBLIC veyra_guest)
+  endif()
 
   add_executable(veyra_qml_data_tests tests/unit/QmlDataDirectoryTests.cpp src/ui/QmlDataDirectory.cpp)
   add_executable(veyra_game_passthrough_tests tests/integration/GamePassthroughTests.cpp)
@@ -1531,7 +1577,7 @@ add_executable(veyra_sr_reconstruction_tests tests/integration/SrReconstructionT
   target_link_libraries(veyra_repair_fg_tests PRIVATE veyra_pipeline veyra_sinks veyra_nvof)
 
   # Headless quality-core runner (Playbook R3.3): the phase5 gate's quality
-  add_library(veyra_engine STATIC src/engine/EngineController.cpp src/engine/EngineWatchdog.cpp src/engine/PreviewGpuSession.cpp src/engine/EngineControllerImage.cpp src/engine/PosterFrame.cpp src/engine/EffectChain.cpp src/engine/PresetLibrary.cpp src/ui/PlayerUiFacade.cpp src/engine/TiledImageProcessor.cpp src/engine/PresetStore.cpp src/engine/VideoPresenter.cpp src/engine/DisplayStateService.cpp src/engine/VideoExportJob.cpp src/engine/ExportStreams.cpp src/engine/ExportQueue.cpp src/engine/ExportJobManager.cpp src/engine/Subtitles.cpp src/engine/FgCompatibilityProbe.cpp src/engine/LiveRecorder.cpp src/engine/ReplayBuffer.cpp src/engine/MicrophoneCapture.cpp)
+  add_library(veyra_engine STATIC src/engine/EngineController.cpp src/engine/EngineWatchdog.cpp src/engine/PreviewGpuSession.cpp src/engine/EngineControllerImage.cpp src/engine/PosterFrame.cpp src/engine/EffectChain.cpp src/engine/PresetLibrary.cpp src/ui/PlayerUiFacade.cpp src/engine/TiledImageProcessor.cpp src/engine/PresetStore.cpp src/engine/VideoPresenter.cpp src/engine/VideoPresenterAnticipation.cpp src/engine/AnticipationStage.cpp src/engine/DisplayStateService.cpp src/engine/VideoExportJob.cpp src/engine/ExportStreams.cpp src/engine/ExportQueue.cpp src/engine/ExportJobManager.cpp src/engine/Subtitles.cpp src/engine/FgCompatibilityProbe.cpp src/engine/LiveRecorder.cpp src/engine/ReplayBuffer.cpp src/engine/MicrophoneCapture.cpp)
   target_sources(veyra_pipeline PRIVATE src/guidance/AmdOpticalFlow.cpp
     src/guidance/GpuDisOpticalFlow.cpp third_party/gpu-dis/src/gpu/native_strict_dis_provider.cpp)
   target_include_directories(veyra_pipeline PRIVATE third_party/gpu-dis/src/gpu)
@@ -1680,7 +1726,7 @@ target_link_options(veyra_hdr_tuning_tests PRIVATE /STACK:33554432)
   target_compile_options(veyra_popup_selector_tests PRIVATE /utf-8)
   target_compile_definitions(veyra_popup_selector_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
   target_link_libraries(veyra_popup_selector_tests PRIVATE veyra_base comctl32)
-  add_dependencies(veyra_engine veyra_shader_hdr_video_sr veyra_shader_present_motion veyra_shader_present_blit veyra_shader_hdr_coverage)
+  add_dependencies(veyra_engine veyra_shader_hdr_video_sr veyra_shader_present_motion veyra_shader_present_blit veyra_shader_hdr_coverage veyra_shader_anticipation_luma)
   add_executable(veyra_hdr_color_tests tests/integration/HdrColorTests.cpp)
   add_executable(veyra_hdr_output_tuning_gpu_tests tests/integration/HdrOutputTuningGpuTests.cpp)
   target_compile_features(veyra_hdr_output_tuning_gpu_tests PRIVATE cxx_std_20)
@@ -1755,7 +1801,7 @@ target_link_options(veyra_hdr_tuning_tests PRIVATE /STACK:33554432)
     # Qt paths under E:/项目. Those system libraries come from #pragma comment in
     # the private QmlPlayerBridge_p.h instead.
     if(TARGET veyra_qml_bridge)
-      target_sources(veyra_qml_bridge PRIVATE src/remoteplay/ControllerInput.cpp)
+      target_sources(veyra_qml_bridge PRIVATE src/remoteplay/ControllerInput.cpp src/ui/RemotePlayInput.cpp include/veyra/ui/RemotePlayInput.h)
       target_link_libraries(veyra_qml_bridge PUBLIC $<TARGET_LINKER_FILE:SDL3::SDL3-static>)
       target_link_libraries(veyra_qml_bridge PRIVATE SDL3::Headers)
     endif()
@@ -1854,11 +1900,23 @@ if(VEYRA_CLIP_TOOLS_ROOT AND EXISTS "${VEYRA_CLIP_TOOLS_ROOT}/include/libavcodec
 endif()
 
 # Layered child subtitle windows require a modern-Windows compatibility manifest.
+# The legacy Win32 player keeps its upstream name and icon; it is not part of BooVI's package.
 set(VEYRA_RESOURCE_FILENAME "Veyra.exe")
+set(VEYRA_RESOURCE_DESCRIPTION "Veyra Video Player")
+set(VEYRA_RESOURCE_PRODUCT "Veyra")
+set(VEYRA_RESOURCE_COPYRIGHT "Veyra contributors. GPL-3.0.")
+set(VEYRA_RESOURCE_ICON "veyra.ico")
 configure_file(apps/veyra/version.rc.in ${CMAKE_CURRENT_BINARY_DIR}/veyra-version.rc @ONLY)
 if(TARGET veyra_qml_ui)
-  set(VEYRA_RESOURCE_FILENAME "veyra_qml_ui.exe")
+  # The QML front end is BooVI: Explorer, the taskbar and Task Manager show these.
+  set_target_properties(veyra_qml_ui PROPERTIES OUTPUT_NAME BooVI)
+  set(VEYRA_RESOURCE_FILENAME "BooVI.exe")
+  set(VEYRA_RESOURCE_DESCRIPTION "BooVI")
+  set(VEYRA_RESOURCE_PRODUCT "BooVI")
+  set(VEYRA_RESOURCE_COPYRIGHT "BooVI contributors, based on Veyra. GPL-3.0.")
+  set(VEYRA_RESOURCE_ICON "boovi.ico")
   configure_file(apps/veyra/version.rc.in ${CMAKE_CURRENT_BINARY_DIR}/veyra-qml-version.rc @ONLY)
+  configure_file(assets/boovi.ico ${CMAKE_CURRENT_BINARY_DIR}/boovi.ico COPYONLY)
   target_sources(veyra_qml_ui PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/veyra-qml-version.rc)
 endif()
 configure_file(apps/veyra/resource.h ${CMAKE_CURRENT_BINARY_DIR}/veyra-resource.h COPYONLY)
@@ -1868,7 +1926,7 @@ set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/veyra-version.rc PROPERT
   OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/veyra.ico;${CMAKE_CURRENT_SOURCE_DIR}/apps/veyra/resource.h")
 if(TARGET veyra_qml_ui)
   set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/veyra-qml-version.rc PROPERTIES
-    OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/veyra.ico;${CMAKE_CURRENT_SOURCE_DIR}/apps/veyra/resource.h")
+    OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/boovi.ico;${CMAKE_CURRENT_SOURCE_DIR}/apps/veyra/resource.h")
 endif()
 target_link_options(veyra PRIVATE "/MANIFESTINPUT:${CMAKE_CURRENT_SOURCE_DIR}/apps/veyra/veyra.manifest")
 # P4-c: the QML front end hosts the same layered child subtitle window.

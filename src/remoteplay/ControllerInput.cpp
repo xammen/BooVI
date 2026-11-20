@@ -10,6 +10,8 @@
 #include <SDL3/SDL_audio.h>
 #include <cstring>
 #include "veyra/Log.h"
+#include "veyra/remoteplay/PadPolicy.h"
+#include <vector>
 namespace veyra::remoteplay {
 bool ControllerInput::start(uint32_t preferredDevice){
     preferredDevice_=preferredDevice;
@@ -23,7 +25,7 @@ void ControllerInput::stop(){
     others_.clear();follow_=false;
     releaseEffects();if(hapticStream_){SDL_DestroyAudioStream(hapticStream_);hapticStream_=nullptr;}
     if(audioInitialized_){SDL_QuitSubSystem(SDL_INIT_AUDIO);audioInitialized_=false;}hapticAttempted_=false;
-    touchQueue_.clear();touchState_={};haveGyro_=haveAccel_=false;calibrating_=false;gyroBias_={};enumerateAt_=0;
+    touchQueue_.clear();touchState_={};haveGyro_=haveAccel_=false;calibrating_=false;gyroBias_={};enumerateAt_=0;failedOpen_.clear();
     if(gamepad_){SDL_CloseGamepad(gamepad_);gamepad_=nullptr;}
     if(initialized_){SDL_QuitSubSystem(SDL_INIT_GAMEPAD);initialized_=false;}
 }
@@ -40,9 +42,22 @@ void ControllerInput::activate(SDL_Gamepad* pad){
     gamepad_=pad;
     touchQueue_.clear();touchState_={};sensorStamp_=0;haveGyro_=haveAccel_=false;gyroBias_={};calibrating_=false;touchIds_={-1,-1};gyro_=SDL_GamepadHasSensor(gamepad_,SDL_SENSOR_GYRO)&&SDL_SetGamepadSensorEnabled(gamepad_,SDL_SENSOR_GYRO,true);
     accel_=SDL_GamepadHasSensor(gamepad_,SDL_SENSOR_ACCEL)&&SDL_SetGamepadSensorEnabled(gamepad_,SDL_SENSOR_ACCEL,true);
-    std::string line=std::string("device opened gyro=")+(gyro_?"1":"0")+" accel="+(accel_?"1":"0")+" touchpads="+std::to_string(SDL_GetNumGamepadTouchpads(gamepad_));
-    if(follow_){const char* name=SDL_GetGamepadName(gamepad_);line+=std::string(" active (follow last pressed, ")+std::to_string(others_.size()+1)+" open) name="+(name?name:"?");}
+    const char* name=SDL_GetGamepadName(gamepad_);
+    std::string line=std::string("device opened gyro=")+(gyro_?"1":"0")+" accel="+(accel_?"1":"0")+" touchpads="+std::to_string(SDL_GetNumGamepadTouchpads(gamepad_))
+        +" dualsense="+(SDL_GetGamepadType(gamepad_)==SDL_GAMEPAD_TYPE_PS5?"1":"0")+" name="+(name?name:"?");
+    if(follow_)line+=std::string(" active (follow last pressed, ")+std::to_string(others_.size()+1)+" open)";
     veyra::log::info("remoteplay-input",line);
+}
+// Another program can hold the pad exclusively (DS4Windows exclusive mode, DSX, HidHide).
+// Upstream skipped the failure silently every second; log it once per pad.
+SDL_Gamepad* ControllerInput::openLogged(uint32_t id){
+    auto* pad=SDL_OpenGamepad(id);
+    if(!pad&&std::find(failedOpen_.begin(),failedOpen_.end(),id)==failedOpen_.end()){
+        failedOpen_.push_back(id);
+        const char* name=SDL_GetGamepadNameForID(id);
+        veyra::log::warn("remoteplay-input",std::string("cannot open pad name=")+(name?name:"?")+" error="+SDL_GetError()+" (another program may hold it exclusively)");
+    }
+    return pad;
 }
 // The pad stops being read: its rumble/trigger effects and haptic stream end.
 void ControllerInput::deactivate(){
@@ -66,21 +81,44 @@ ControllerState ControllerInput::poll(bool focused){
     const auto now=monotonic100ns();
     // Follow mode keeps enumerating while a pad is open: a virtual pad created
     // by a streaming tool joins after the local one.
-    if((!gamepad_||follow_)&&now>=enumerateAt_){
+    if(follow_&&now>=enumerateAt_){
         int count=0;auto* ids=SDL_GetGamepads(&count);
-        for(int i=0;i<count&&(follow_||!gamepad_);++i){
+        for(int i=0;i<count;++i){
             if((preferredDevice_&&ids[i]!=preferredDevice_)||opened(ids[i]))continue;
-            auto* pad=SDL_OpenGamepad(ids[i]);if(!pad)continue;
+            auto* pad=openLogged(ids[i]);if(!pad)continue;
             if(!gamepad_)activate(pad);else others_.push_back(pad);
         }
         SDL_free(ids);enumerateAt_=now+10000000;
+    }
+    // Without follow mode: read a DualSense whenever one is connected (PadPolicy.h), so a
+    // DualSense switched on after a virtual pad no longer loses to it. Rescans once a second
+    // while no pad, or a pad that is not a DualSense, is being read.
+    if(!follow_&&now>=enumerateAt_&&(!gamepad_||SDL_GetGamepadType(gamepad_)!=SDL_GAMEPAD_TYPE_PS5)){
+        int count=0;auto* ids=SDL_GetGamepads(&count);
+        std::vector<PadCandidate> candidates;
+        for(int i=0;i<count;++i){
+            if(preferredDevice_&&ids[i]!=preferredDevice_)continue;
+            candidates.push_back({ids[i],SDL_GetGamepadTypeForID(ids[i])==SDL_GAMEPAD_TYPE_PS5});
+        }
+        SDL_free(ids);enumerateAt_=now+10000000;
+        const uint32_t current=gamepad_?SDL_GetGamepadID(gamepad_):0;
+        const uint32_t target=choosePad(current,candidates);
+        if(target&&target!=current){
+            if(auto* pad=openLogged(target)){
+                if(gamepad_){veyra::log::info("remoteplay-input","switching to a DualSense");deactivate();SDL_CloseGamepad(gamepad_);gamepad_=nullptr;}
+                activate(pad);
+            }
+        }
     }
     if(calibrating_&&focused&&gamepad_){
         if(!calibrationStart_)calibrationStart_=now;
         else if(now-calibrationStart_>100000000){calibrating_=false;veyra::log::warn("remoteplay-input","Calibration timed out; prior bias retained");}
     }
-    SDL_Event event;
+    SDL_Event event;changedNs_=0;
     while(SDL_PollEvent(&event)){
+        if(event.type==SDL_EVENT_GAMEPAD_ADDED)enumerateAt_=0; // a pad plugged in mid-stream: scan on the next pass, not up to 1 s later
+        const bool edge=event.type==SDL_EVENT_GAMEPAD_BUTTON_DOWN||event.type==SDL_EVENT_GAMEPAD_BUTTON_UP||event.type==SDL_EVENT_GAMEPAD_AXIS_MOTION;
+        if(edge&&gamepad_&&event.gbutton.which==SDL_GetGamepadID(gamepad_)&&(!changedNs_||event.common.timestamp<changedNs_))changedNs_=event.common.timestamp;
         if(follow_&&focused&&gamepad_&&event.type==SDL_EVENT_GAMEPAD_BUTTON_DOWN&&event.gbutton.which!=SDL_GetGamepadID(gamepad_)){
             const auto it=std::find_if(others_.begin(),others_.end(),[&](SDL_Gamepad* pad){return SDL_GetGamepadID(pad)==event.gbutton.which;});
             if(it!=others_.end()){auto* next=*it;others_.erase(it);deactivate();others_.push_back(gamepad_);activate(next);}
@@ -194,6 +232,7 @@ void ControllerInput::feedback(ControllerFeedback f,bool focused){
     if(!SDL_PutAudioStreamData(hapticStream_,quad.data(),int(quad.size()*sizeof(int16_t))))veyra::log::warn("remoteplay-haptics",SDL_GetError());
 }
 
+double ControllerInput::changeAgeMs()const{return changedNs_?double(SDL_GetTicksNS()-changedNs_)/1e6:-1;}
 bool ControllerInput::calibrate(){
     if(!gamepad_||!gyro_||!accel_)return false;
     biasSum_={};calibrationSamples_=0;calibrationStart_=0;calibrating_=true;return true;

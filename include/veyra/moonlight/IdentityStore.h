@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Where the client identity lives on disk: one DPAPI-protected file in
-// %LOCALAPPDATA%\Veyra\moonlight, written atomically (temp file + replace),
+// %LOCALAPPDATA%\BooVI\moonlight, written atomically (temp file + replace),
 // the same approach as the PS5 pairing profiles. The private key never leaves
 // this file and is never logged.
 #pragma once

@@ -6,7 +6,8 @@
 struct SDL_Gamepad;
 struct SDL_AudioStream;
 namespace veyra::remoteplay {
-// SDL calls stay on the Win32 UI owner, independently of GPU processing.
+// All SDL calls of one ControllerInput stay on one thread: the UI thread for PC/Xbox streaming
+// and PS5 手柄控制, the PS5 input thread for the PS5 stream (RemotePlayInput.h).
 class ControllerInput {
 public:
     ~ControllerInput(){stop();}
@@ -20,13 +21,18 @@ public:
     void feedback(ControllerFeedback,bool focused);
     void releaseEffects();
     bool calibrate();
+    // Age of the oldest button or stick event of the last poll, -1 when it had none.
+    double changeAgeMs()const;
     bool connected()const{return gamepad_!=nullptr;}
-    struct Capabilities {bool connected=false,gyro=false,accel=false,touch=false,triggers=false,haptics=false,calibrating=false;std::string name;};
+    struct Capabilities {bool connected=false,gyro=false,accel=false,touch=false,triggers=false,haptics=false,calibrating=false;std::string name;
+        bool operator==(const Capabilities&)const=default;};
     Capabilities capabilities()const;
 private:
     void activate(SDL_Gamepad*);
     void deactivate();
     bool opened(uint32_t id)const;
+    SDL_Gamepad* openLogged(uint32_t id);
+    std::vector<uint32_t> failedOpen_; // pads whose open failure is already logged
     SDL_Gamepad* gamepad_=nullptr;
     std::vector<SDL_Gamepad*> others_; // follow mode: open, not read
     bool follow_=false;
@@ -39,7 +45,7 @@ private:
     std::deque<std::array<ControllerState::Touch,2>> touchQueue_;
     std::array<float,3> gyroBias_{},biasSum_{},sensorGyro_{},sensorAccel_{0,1,0};
     unsigned calibrationSamples_=0;bool calibrating_=false,haveGyro_=false,haveAccel_=false;
-    HostTime calibrationStart_=0;uint64_t sensorStamp_=0;
+    HostTime calibrationStart_=0;uint64_t sensorStamp_=0,changedNs_=0;
 
 
 };

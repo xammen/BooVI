@@ -71,9 +71,9 @@ struct StageRequest {
 // others on NVIDIA - and not on a still image with an FSR pass (FSR skips still
 // images). Otherwise the base keeps its single pass, saved second fields intact.
 inline bool dualSrRuns(const EnhancementSettings& s,bool nvidiaAdapter,bool stillImage=false){
-    const auto runs=[nvidiaAdapter](uint32_t quality){return nvidiaAdapter||quality==kVideoSrFsr;};
+    const auto runs=[nvidiaAdapter](uint32_t quality){return nvidiaAdapter||fsrVideoSr(quality);};
     return s.dualSrEnabled&&runs(s.videoSrQuality)&&runs(s.dualSrQuality)&&
-        !(stillImage&&(s.videoSrQuality==kVideoSrFsr||s.dualSrQuality==kVideoSrFsr));
+        !(stillImage&&(fsrVideoSr(s.videoSrQuality)||fsrVideoSr(s.dualSrQuality)));
 }
 inline pipeline::SrPrescale runningSrPrescale(const EnhancementSettings& s,bool nvidiaAdapter,bool stillImage=false){
     return dualSrRuns(s,nvidiaAdapter,stillImage)?s.srPrescale:pipeline::SrPrescale::Off;
@@ -152,7 +152,7 @@ inline pipeline::ResolutionPlan describeStages(const StageRequest& request,const
     // (5090 field log 57: 4K->4K VSR cost ~8.7 ms a frame and pushed 60 fps over budget).
     const bool nativeVideoRestore=request.sr&&!request.stillImage&&!request.uncompressedSource&&request.nvidiaAdapter&&
         ngxVideoSr(settings.videoSrQuality);
-    desc.enableSr=(plan.srApplied||nativeVideoRestore)&&(request.nvidiaAdapter||settings.videoSrQuality==kVideoSrFsr);
+    desc.enableSr=(plan.srApplied||nativeVideoRestore)&&(request.nvidiaAdapter||fsrVideoSr(settings.videoSrQuality));
     desc.enableNr=request.nr&&(request.nvidiaAdapter||request.amdNr)&&(!settings.nrLayerCount||settings.activeNrLayerCount()>0);
     desc.nrBeforeSr=!request.stillImage&&!request.exportJob&&lowLatency&&desc.enableNr&&desc.enableSr;
     desc.enableNvofStandalone=desc.enableNr;
@@ -186,7 +186,7 @@ inline pipeline::ResolutionPlan describeStages(const StageRequest& request,const
     desc.flowQuality=settings.flow;
     desc.contentRate=settings.content;
     desc.opticalFlowBackend=settings.opticalFlowBackend;
-    desc.amdFlowHalfResolution=settings.amdFlowHalfResolution;desc.fgMotionRefine=settings.fgMotionRefine;desc.dlssgLite=settings.dlssgLite;desc.vfgAutoRegulate=settings.vfgAutoRegulate;
+    desc.amdFlowHalfResolution=settings.amdFlowHalfResolution;desc.fgMotionRefine=settings.fgMotionRefine;desc.dlssgLite=settings.dlssgLite;desc.fgHudGuard=settings.fgHudGuard;desc.fgFastGuard=settings.fgFastGuard;desc.vfgAutoRegulate=settings.vfgAutoRegulate;
     desc.nrLayersExtent.clear();
     for(uint32_t i=0;i<chain.nodeCount;++i){
         auto& node=chain.nodes[i];

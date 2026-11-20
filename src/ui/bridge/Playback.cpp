@@ -77,6 +77,9 @@ bool QmlPlayerBridge::submitLowFpsKnown() const { return !xessPresenting(impl_->
 QString QmlPlayerBridge::submitFpsLabel() const { return xessPresenting(impl_->snapshot) ? tr("SDK 提交") : tr("提交"); }
 double QmlPlayerBridge::lateMs() const { return impl_->snapshot.lateMs; }
 double QmlPlayerBridge::lateP95Ms() const { return impl_->snapshot.lateP95Ms; }
+double QmlPlayerBridge::liveDelayMs() const { return impl_->snapshot.running ? impl_->snapshot.liveDelayMs : 0.0; }
+double QmlPlayerBridge::scanoutDelayMs() const { return impl_->snapshot.running ? impl_->snapshot.scanoutMs : -1.0; }
+int QmlPlayerBridge::contentFps() const { return impl_->snapshot.running ? impl_->snapshot.contentFps : 0; }
 QString QmlPlayerBridge::metricsSummary() const {
     const auto& s = impl_->snapshot;
     // Submit FPS, named as such: it is what we handed to the presenter, not what
@@ -348,7 +351,7 @@ void QmlPlayerBridge::takeScreenshot() {
     if(!impl_->pendingScreenshot.isEmpty()||!impl_->pendingFrameExport.isEmpty()||imageBatchActive()){emit notice(tr("请等待当前图片导出完成"),true);return;}
     const QString folder = screenshotDirectory();
     if (!QDir().mkpath(folder)) { emit notice(tr("截图目录不可用：%1").arg(folder), true); return; }
-    const QString name = QStringLiteral("veyra-%1.png")
+    const QString name = QStringLiteral("boovi-%1.png")
                              .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss-zzz")));
     const QString path = QDir(folder).filePath(name);
     impl_->engine.saveFrame(wideOf(QDir::toNativeSeparators(path)));

@@ -2,7 +2,7 @@
 
 usage: python ui-demo.py <staged-app-dir> <mockhost.exe> <out-dir> [<snippet.qml>]
 
-<staged-app-dir> is a copy of the app with its Qt runtime (veyra_qml_ui.exe + qml). The script injects
+<staged-app-dir> is a copy of the app with its Qt runtime (BooVI.exe + qml). The script injects
 ui-demo.qml into the staged Main.qml (restoring it afterwards), starts the mock host, runs the app with a
 disposable data directory, feeds the PIN the dialog shows to the mock host, takes a screenshot at each
 MLTEST_SHOT line and exits 0 when the app reports MLTEST_PASS.
@@ -110,7 +110,7 @@ try:
     env = os.environ.copy()
     env.update(VEYRA_LOG_FILE=str(log), VEYRA_MOONLIGHT_DATA=str(work / 'data'), VEYRA_MOONLIGHT_NO_DISCOVERY='1',
                QML_DISABLE_DISK_CACHE='1', QML2_IMPORT_PATH=str(app / 'qml'), TEMP=str(work), TMP=str(work))
-    command = [str(app / 'veyra_qml_ui.exe'), '--data-dir', str(work / 'profile'), '--exit-after', '290000',
+    command = [str(app / 'BooVI.exe'), '--data-dir', str(work / 'profile'), '--exit-after', '290000',
                '--ml-address=' + address]
     app_proc = subprocess.Popen(command, cwd=app, env=env, stdout=(out / 'stdio.log').open('w'), stderr=subprocess.STDOUT)
     seen = 0

@@ -654,6 +654,26 @@ std::wstring endpointId(IMMDevice* device){
     if(device&&SUCCEEDED(device->GetId(&raw))&&raw){id=raw;CoTaskMemFree(raw);}
     return id;
 }
+// Every stream joins this program's default audio session, whose mute and level
+// Windows keeps per program path and per output. A mute set there once (the
+// volume mixer, or a media engine sharing the session) silenced every later
+// stream while Veyra's own volume read 100 % (field 2026-11-20, headset
+// dongle). Veyra's volume and mute control the stream, so each output opens
+// its session unmuted at full level.
+void claimSessionLevel(IAudioClient* client){
+    ISimpleAudioVolume* session=nullptr;
+    if(FAILED(client->GetService(__uuidof(ISimpleAudioVolume),reinterpret_cast<void**>(&session)))){
+        log::warn("audio-session","session volume unavailable; windows mixer level unknown");
+        return;
+    }
+    BOOL muted=FALSE;float level=1;
+    session->GetMute(&muted);session->GetMasterVolume(&level);
+    const bool reset=muted||level<1.0f;
+    if(reset){session->SetMute(FALSE,nullptr);session->SetMasterVolume(1.0f,nullptr);}
+    const auto text=std::format("windowsMute={} windowsLevel={:.3f}{}",bool(muted),level,reset?" reset to unmuted 1.000":"");
+    if(reset)log::warn("audio-session",text);else log::info("audio-session",text);
+    session->Release();
+}
 std::string narrowName(const std::wstring& w){
     if(w.empty())return {};
     const int n=WideCharToMultiByte(CP_UTF8,0,w.data(),int(w.size()),nullptr,0,nullptr,nullptr);
@@ -830,6 +850,7 @@ bool AudioRenderer::start(AudioFormat input,double requestedBufferMs,std::wstrin
         requestedBufferHns, 0, &mix.Format, nullptr);
     const bool initOk = checked(hr,"Initialize AudioClient");
     if (!initOk) return false;
+    claimSessionLevel(client_);
     if (!checked(client_->GetBufferSize(&bufferFrames_),"GetBufferSize")) return false;
     REFERENCE_TIME devicePeriod=0;
     if(!checked(client_->GetDevicePeriod(&devicePeriod,nullptr),"GetDevicePeriod"))return false;

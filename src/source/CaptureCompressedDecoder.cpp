@@ -62,8 +62,11 @@ struct CaptureCompressedDecoder::Impl {
     AVCodecParameters* parameters = nullptr;
     SwsContext* sws = nullptr;
     bool stream = false;               // setStreamProfile(): PC / Xbox streaming
+    bool d3d11Fallback = false;        // setD3D11Fallback(): the guest client
+    ID3D12Device* device = nullptr;    // open()'s, the caller keeps it alive
     bool hardwareRequested = false;
     bool hardware = false;
+    bool d3d11 = false;                // the hardware decoder is D3D11VA
     bool hardwareChecked = false;
     bool waiting = false;
     bool depthWarningLogged = false;
@@ -132,7 +135,8 @@ struct CaptureCompressedDecoder::Impl {
         decoder.close();
         codec = CaptureCodec::None;
         width = height = 0;
-        hardwareRequested = hardware = hardwareChecked = waiting = false;
+        hardwareRequested = hardware = d3d11 = hardwareChecked = waiting = false;
+        device = nullptr;
         decoder.setPreferNativeAv1Hardware(false);
         depthWarningLogged = false;
         frames = failures = fallbacks = 0;
@@ -146,16 +150,37 @@ struct CaptureCompressedDecoder::Impl {
     void fallBackBeforeFirstPicture()
     {
         if (!stream || !hardware || frames != 0) return;
-        log::warn("capture-decode", std::format("codec={} hardware decode failed before the first picture; switching to the software decoder",
-            captureCodecKey(codec)));
-        decoder.close();
-        hardware = false;
-        if (!openSoftwareDecoder()) {
+        if (!replaceHardware("hardware decode failed before the first picture"))
             error = "software fallback after a failed hardware decoder failed";
-            return;
+    }
+
+    bool openD3D11()
+    {
+        if (device == nullptr || parameters == nullptr) return false;
+        const LUID luid = device->GetAdapterLuid();
+        if (!decoder.openD3D11VA(parameters, 1, 10000000, (uint64_t(uint32_t(luid.HighPart)) << 32) | uint64_t(luid.LowPart), device, true)) return false;
+        hardware = d3d11 = true;
+        hardwareChecked = false;
+        return true;
+    }
+
+    // The D3D12VA decoder cannot be used: D3D11VA when the caller reads its surfaces (an AMD
+    // driver's D3D12 video decode may fail where its D3D11 one, the browsers' path, works),
+    // else software. A key frame rebuilds the references either way.
+    bool replaceHardware(const char* why)
+    {
+        decoder.close();
+        const bool tryD3D11 = d3d11Fallback && !d3d11;
+        hardware = d3d11 = false;
+        if (tryD3D11 && openD3D11()) {
+            log::warn("capture-decode", std::format("codec={} {}; switching to D3D11VA", captureCodecKey(codec), why));
+        } else {
+            log::warn("capture-decode", std::format("codec={} {}; switching to the software decoder", captureCodecKey(codec), why));
+            if (!openSoftwareDecoder()) return false;
         }
         decoder.recoverAtKeyframe();
         ++fallbacks;
+        return true;
     }
 
     bool openSoftwareDecoder()
@@ -250,21 +275,20 @@ bool CaptureCompressedDecoder::open(CaptureCodec codec, unsigned width, unsigned
     // decoder as the recorded fallback.
     if (codec != CaptureCodec::Mjpeg && device != nullptr && queue != nullptr) {
         p.hardwareRequested = true;
-        bool opened = false;
+        p.device = device;
         if (p.stream && codec == CaptureCodec::Hevc) {
-            const LUID luid = device->GetAdapterLuid();
-            opened = p.decoder.openD3D11VA(p.parameters, 1, 10000000,
-                (uint64_t(uint32_t(luid.HighPart)) << 32) | uint64_t(luid.LowPart), device, true);
+            p.openD3D11();
         } else {
             p.decoder.setPreferNativeAv1Hardware(p.stream);
-            opened = p.decoder.openD3D12VA(p.parameters, 1, 10000000, device, queue, true);
+            // VEYRA_TEST_D3D12VA_REFUSE=1 (a stream with the D3D11 fallback only): D3D12VA counts
+            // as failed, so the fallback runs on a GPU whose D3D12VA works.
+            const bool refuse = p.stream && p.d3d11Fallback && GetEnvironmentVariableW(L"VEYRA_TEST_D3D12VA_REFUSE", nullptr, 0) > 0;
+            p.hardware = !refuse && p.decoder.openD3D12VA(p.parameters, 1, 10000000, device, queue, true);
+            if (!p.hardware && p.stream && p.d3d11Fallback && p.openD3D11())
+                log::warn("capture-decode", std::format("D3D12VA open failed codec={}; D3D11VA instead", captureCodecKey(codec)));
         }
-        if (opened) {
-            p.hardware = true;
-        } else {
-            log::warn("capture-decode", std::format(
-                "D3D12VA open failed codec={}; falling back to the software decoder", captureCodecKey(codec)));
-        }
+        if (!p.hardware)
+            log::warn("capture-decode", std::format("hardware decoder open failed codec={}; falling back to the software decoder", captureCodecKey(codec)));
     }
     if (!p.hardware && !p.openSoftwareDecoder()) {
         p.error = std::format("no usable decoder for codec={}", captureCodecKey(codec));
@@ -340,18 +364,11 @@ bool CaptureCompressedDecoder::decode(const uint8_t* data, size_t bytes, int64_t
         if (p.hardware && !p.hardwareChecked) {
             p.hardwareChecked = true;
             if (!p.decoder.hardwareFrameImportable()) {
-                log::warn("capture-decode", std::format(
-                    "codec={} hardware frame is not an importable NV12/P010 surface; switching to the software decoder",
-                    captureCodecKey(p.codec)));
-                p.decoder.close();
-                if (!p.openSoftwareDecoder()) {
+                if (!p.replaceHardware("hardware frame is not an importable NV12/P010 surface")) {
                     p.error = "software fallback after an unimportable hardware frame failed";
                     ++p.failures;
                     return false;
                 }
-                p.hardware = false;
-                p.decoder.recoverAtKeyframe();
-                ++p.fallbacks;
                 if (receiveOnly) { p.waiting=true; return false; }
                 continue; // only a new key frame can rebuild the lost reference chain
             }
@@ -384,7 +401,7 @@ bool CaptureCompressedDecoder::waitingForInput() const { return p_->waiting; }
 void CaptureCompressedDecoder::recoverAtKeyframe() { p_->decoder.recoverAtKeyframe(); }
 const char* CaptureCompressedDecoder::backendName() const
 {
-    if (p_->hardware) return p_->stream && p_->codec == CaptureCodec::Hevc ? "d3d11va" : "d3d12va";
+    if (p_->hardware) return p_->d3d11 ? "d3d11va" : "d3d12va";
     if (p_->hardwareRequested) return "software(after d3d12va)";
     return p_->decoder.opened() ? "software" : "none";
 }
@@ -396,6 +413,7 @@ double CaptureCompressedDecoder::decodeMsAverage() const { return p_->decodeMs; 
 double CaptureCompressedDecoder::convertMsAverage() const { return p_->convertMs; }
 void CaptureCompressedDecoder::close() { p_->close(); }
 void CaptureCompressedDecoder::setStreamProfile(bool enabled) { p_->stream = enabled; }
+void CaptureCompressedDecoder::setD3D11Fallback(bool enabled) { p_->d3d11Fallback = enabled; }
 bool CaptureCompressedDecoder::hardwareSurface(pipeline::HardwareSurfaceInput& out) const
 {
     const auto& view = p_->decoder.hardwareSurface();

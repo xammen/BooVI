@@ -45,6 +45,10 @@ public:
     // the software decoder runs several low-delay threads. Capture cards keep
     // the original behaviour.
     void setStreamProfile(bool enabled);
+    // A stream whose caller reads D3D11VA surfaces (hardwareSurface()): when D3D12VA does not
+    // open, fails before its first picture or gives an unimportable surface, D3D11VA comes
+    // before the software decoder. The guest client sets it.
+    void setD3D11Fallback(bool enabled);
 
     bool open(CaptureCodec codec, unsigned width, unsigned height,
         const uint8_t* extradata, size_t extradataBytes,

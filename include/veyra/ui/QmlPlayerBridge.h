@@ -36,6 +36,8 @@
 #include "veyra/ui/PlayerUiFacade.h"
 
 class QQmlEngine;
+namespace veyra::guest { class GuestStreamer; }
+
 namespace veyra::ui {
 
 class MoonlightModel;
@@ -195,7 +197,7 @@ class QmlPlayerBridge : public QObject {
     Q_PROPERTY(QString remotePlayHost READ remotePlayHost WRITE setRemotePlayHost NOTIFY settingsChanged)
     Q_PROPERTY(QString remotePlayPin READ remotePlayPin WRITE setRemotePlayPin NOTIFY settingsChanged)
     // P4-e PS5 Remote Play, ported from the 1.4.4 panel: saved pairings (shared
-    // %LOCALAPPDATA%\Veyra\remoteplay, encrypted), discovery, pairing, Account ID lookup,
+    // %LOCALAPPDATA%\BooVI\remoteplay, encrypted), discovery, pairing, Account ID lookup,
     // wake, stream profile, decode/sampling, view-only, login PIN, controller
     // forwarding and gyro calibration. `ps5` carries the form state.
     Q_PROPERTY(QVariantMap ps5 READ ps5 NOTIFY ps5Changed)
@@ -210,6 +212,8 @@ class QmlPlayerBridge : public QObject {
     Q_PROPERTY(QObject* moonlight READ moonlightModel CONSTANT)
     // Xbox home streaming (unofficial): sign-in, consoles and stream state; null without Xbox support.
     Q_PROPERTY(QObject* xbox READ xboxModel CONSTANT)
+    // Fork, "rejoindre un partage" (GuestJoinModel.h); null without the guest client build.
+    Q_PROPERTY(QObject* join READ joinModel CONSTANT)
     Q_PROPERTY(bool moonlightCaptured READ moonlightCaptured NOTIFY moonlightUiChanged)
     Q_PROPERTY(bool moonlightStatsVisible READ moonlightStatsVisible WRITE setMoonlightStatsVisible NOTIFY moonlightUiChanged)
 
@@ -315,6 +319,14 @@ class QmlPlayerBridge : public QObject {
     Q_PROPERTY(bool submitLowFpsKnown READ submitLowFpsKnown NOTIFY snapshotChanged)
     Q_PROPERTY(double lateMs READ lateMs NOTIFY snapshotChanged)
     Q_PROPERTY(double lateP95Ms READ lateP95Ms NOTIFY snapshotChanged)
+    // Fork, stream stats card. liveDelayMs: a real picture from its decode (or capture) callback
+    // to the return of its Present, median of the last 2 s; 0 when not live. scanoutDelayMs: that
+    // Present to the vblank that showed it, -1 when the display reports none. Neither includes
+    // the network or the console. contentFps: pictures a second that differ from the one before
+    // (PS5 stream with frame generation), else the engine's content rate; 0 unknown.
+    Q_PROPERTY(double liveDelayMs READ liveDelayMs NOTIFY snapshotChanged)
+    Q_PROPERTY(double scanoutDelayMs READ scanoutDelayMs NOTIFY snapshotChanged)
+    Q_PROPERTY(int contentFps READ contentFps NOTIFY snapshotChanged)
     Q_PROPERTY(QString metricsSummary READ metricsSummary NOTIFY snapshotChanged)
     Q_PROPERTY(bool nrActive READ nrActive NOTIFY snapshotChanged)
     Q_PROPERTY(bool nrAutoActive READ nrAutoActive NOTIFY snapshotChanged)
@@ -454,6 +466,9 @@ class QmlPlayerBridge : public QObject {
     // DLSS 性能模式: NVIDIA's DLSS-G performance mode (EnhancementSettings::dlssgLite);
     // available when the package carries its runtime (runtime/experimental/dlssg-lite).
     Q_PROPERTY(bool dlssgLite READ dlssgLite WRITE setDlssgLite NOTIFY settingsChanged)
+    // Fork, anti-artefacts (EnhancementSettings::fgHudGuard / fgFastGuard).
+    Q_PROPERTY(bool fgHudGuard READ fgHudGuard WRITE setFgHudGuard NOTIFY settingsChanged)
+    Q_PROPERTY(bool fgFastGuard READ fgFastGuard WRITE setFgFastGuard NOTIFY settingsChanged)
     // VFG 自动调控: EnhancementSettings::vfgAutoRegulate.
     Q_PROPERTY(bool vfgAutoRegulate READ vfgAutoRegulate WRITE setVfgAutoRegulate NOTIFY settingsChanged)
     Q_PROPERTY(bool dlssgLiteAvailable READ dlssgLiteAvailable CONSTANT)
@@ -471,6 +486,10 @@ class QmlPlayerBridge : public QObject {
     // (switch greyed), 2 it can but the driver setting is off, 3 possible,
     // 4 active; vrrHint explains it beside the switch.
     Q_PROPERTY(bool variableRefresh READ variableRefresh WRITE setVariableRefresh NOTIFY presentationChanged)
+    // Fork: PresentationSettings::halfRateKeepsMultiplier (a 30 fps game on the PS5 stream).
+    Q_PROPERTY(bool halfRateKeepsMultiplier READ halfRateKeepsMultiplier WRITE setHalfRateKeepsMultiplier NOTIFY presentationChanged)
+    // Fork: PresentationSettings::cameraAnticipation (a joined share). 0 auto, 1 off, 2 alone, 3 with interpolation.
+    Q_PROPERTY(int cameraAnticipation READ cameraAnticipation WRITE setCameraAnticipation NOTIFY presentationChanged)
     // Explicit per-application driver setup, independent of the presentation switch.
     Q_PROPERTY(QObject* nvidiaVrrProfile READ nvidiaVrrProfile CONSTANT)
     Q_PROPERTY(int vrrState READ vrrState NOTIFY perfChanged)
@@ -661,6 +680,8 @@ public:
     QmlPlayerBridge(engine::EngineController& engine, std::filesystem::path dataDirectory = {},
                     QObject* parent = nullptr);
     ~QmlPlayerBridge() override;
+    // Fork, partage: the remote guest whose pad joins the PS5 input thread (GuestStreamer.h).
+    void setGuest(guest::GuestStreamer* guest);
 
     QString outputSummary() const;
     QString srStageSummary() const;
@@ -827,6 +848,8 @@ public:
     Q_INVOKABLE void moonlightCapture(bool on);
     Q_INVOKABLE void moonlightDisconnect();
     QObject* xboxModel() const;
+    QObject* joinModel() const;
+    bool joinLive() const;   // a share joined as a BooVI client is opening or playing
     Q_INVOKABLE void openXboxDialog();
     Q_INVOKABLE void xboxDisconnect();
     Q_INVOKABLE void ps5Load();
@@ -841,6 +864,16 @@ public:
     Q_INVOKABLE void ps5SendLoginPin(const QString& pin);
     Q_INVOKABLE void ps5Cancel();
     Q_INVOKABLE void ps5Calibrate();
+    // Fork: hand the keyboard and mouse to the PS5 stream (true) or give them back (false).
+    Q_INVOKABLE void ps5Kbm(bool on);
+    // Fork: close the "no pad on this PC" hint until a pad is read (PadPresence.h).
+    Q_INVOKABLE void ps5PadHintClose();
+    // Fork: what each key and mouse input does on the DualSense, read from KbmMapper's own
+    // bindings: [{group, control, key | mouse}]. group: move camera actions dpad triggers system.
+    Q_INVOKABLE QVariantList ps5KbmBindings() const;
+    // Fork: connect to the saved PS5, waking it first when it is in rest mode.
+    Q_INVOKABLE void ps5Play();
+    bool ps5GotoBed();   // fork, invités: rest mode through the live session; false without one
     // key: enabled | background (saved preferences ps5CaptureControl / ps5ControlBackground).
     Q_INVOKABLE void ps5ControlSet(const QString& key, const QVariant& value);
     Q_INVOKABLE void ps5ControlRestart();
@@ -883,7 +916,6 @@ public:
     Q_INVOKABLE void openReleasesPage();
     // 设置 → 赞助作者: opens the author's page for `id` (bilibili, douyin, x, github,
     // youtube, kofi) in the browser. The addresses live here; any other id does nothing.
-    Q_INVOKABLE bool openSponsorLink(const QString& id);
     QObject* updates() const;
     QVariantList audioDevices() const;
     QVariantList gpuMonitorChoices() const;
@@ -934,6 +966,9 @@ public:
     bool submitLowFpsKnown() const;
     double lateMs() const;
     double lateP95Ms() const;
+    double liveDelayMs() const;
+    double scanoutDelayMs() const;
+    int contentFps() const;
     QString metricsSummary() const;
     bool nrActive() const;
     bool nrAutoActive() const;
@@ -1144,6 +1179,10 @@ public:
     bool edgeAegis() const;
     void setEdgeAegis(bool value);
     bool dlssgLite() const;
+    bool fgHudGuard() const;
+    void setFgHudGuard(bool value);
+    bool fgFastGuard() const;
+    void setFgFastGuard(bool value);
     void setDlssgLite(bool value);
     bool vfgAutoRegulate() const;
     void setVfgAutoRegulate(bool value);
@@ -1154,6 +1193,10 @@ public:
     int displaySync() const;
     void setDisplaySync(int value);
     bool variableRefresh() const;
+    bool halfRateKeepsMultiplier() const;
+    void setHalfRateKeepsMultiplier(bool value);
+    int cameraAnticipation() const;
+    void setCameraAnticipation(int value);
     QObject* nvidiaVrrProfile() const { return nvidiaVrrProfile_; }
     void setVariableRefresh(bool value);
     int vrrState() const;
@@ -1459,6 +1502,7 @@ signals:
     void playlistRequested();
     void nodeAnchorsChanged();
     void ps5Changed();
+    void ps5KeysRequested();   // fork: Ctrl+M while the PS5 keyboard/mouse capture is on
     void ps5ControlChanged();
     void moonlightUiChanged();
     void imageBatchChanged();
@@ -1570,6 +1614,7 @@ private:
     void tickImageBatch();
     void tickCapture();
     void tickPs5();
+    void testStallUi();
     void tickPs5Control(bool force = false);
     // restart: replace a running session (another pairing, or the user asked).
     void startPs5Control(bool restart);
@@ -1577,9 +1622,11 @@ private:
     bool captureCardLive() const;
     void tickMoonlight();
     void tickXbox();
+    void tickJoin();
     void tickPlaylist();
 #ifdef VEYRA_ENABLE_XBOX
     void setupXbox();
+    void setupJoin();
 #endif
 #ifdef VEYRA_ENABLE_MOONLIGHT
     void setupMoonlight();

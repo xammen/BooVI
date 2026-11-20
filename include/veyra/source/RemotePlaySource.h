@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <span>
@@ -36,6 +37,8 @@ struct RemotePlayConnectDesc {
     // Set by the engine; shared ownership keeps the exact presentation adapter
     // alive until the decoder owner has stopped, including failed connects.
     std::shared_ptr<ID3D12Device> decodeDevice;
+    // Called on the network thread when a video access unit has been queued (SessionInbox::setVideoWake).
+    std::function<void()> videoArrived;
 };
 
 class RemotePlaySource final : public IFrameSource {
@@ -52,6 +55,7 @@ public:
     bool connect(const RemotePlayConnectDesc& desc);
     remoteplay::BackendResult submitController(const remoteplay::ControllerState& state) { return backend_.submitController(state); }
     remoteplay::BackendResult submitLoginPin(std::string_view pin) { return backend_.submitLoginPin(pin); }
+    remoteplay::BackendResult gotoBed() { return backend_.gotoBed(); }
     remoteplay::ControllerFeedback takeFeedback(){return backend_.takeFeedback();}
     remoteplay::NativeSnapshot nativeSnapshot()const{return backend_.snapshot();} // session owner only
     remoteplay::BackendResult disconnectTransportForTest(){return backend_.stop();}

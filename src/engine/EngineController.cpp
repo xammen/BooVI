@@ -25,6 +25,8 @@
 #include "veyra/engine/RealtimePreviewScheduling.h"
 #include "veyra/engine/CaptureHalfRate.h"
 #include "veyra/engine/ContentDedup.h"
+#include "veyra/engine/StreamCadence.h"
+#include "veyra/pipeline/StreamPictureDiff.h"
 #include "veyra/engine/CapturePreviewClock.h"
 #include "veyra/engine/DisplayFgBudget.h"
 #include "veyra/source/MediaFileSource.h"
@@ -179,7 +181,8 @@ void EngineController::setFullscreenMemoryProtection(bool enabled){
     if(!enabled){std::lock_guard lock(mutex_);snapshot_.vramFullscreenUnsafe=false;}
 }
 void EngineController::open(HWND video,const std::wstring& path,PlayerOptions opts){
-    const bool captureReplay=opts.captureReplayForTest;
+    // VEYRA_TEST_CAPTURE_REPLAY=1: a file opened by the app runs the live scheduler (tests).
+    const bool captureReplay=opts.captureReplayForTest||(GetEnvironmentVariableW(L"VEYRA_TEST_CAPTURE_REPLAY",nullptr,0)>0&&!path.starts_with(L"capture"));
     // Diagnostics-only PlayerOptions fields never enter EnhancementSettings;
     // keep them across the snapshot round-trip below.
     const bool captureCpuUnpack=opts.captureCpuUnpack;
@@ -204,8 +207,18 @@ void EngineController::openRemotePlay(HWND window,source::RemotePlayConnectDesc 
     post([this,window,request,opts]{paused_=false;seekSeconds_=-1;waitRemoteControlIdle();run(window,L"remoteplay:",opts,request);});
 }
 // A PS5 stream (activeRemote_) takes precedence; otherwise PS5 手柄控制.
-remoteplay::ControllerFeedback EngineController::remotePlayFeedback(){std::lock_guard lock(mutex_);if(activeRemote_)return activeRemote_->takeFeedback();return controlRemote_?controlRemote_->takeFeedback():remoteplay::ControllerFeedback{};}
-void EngineController::remotePlayController(const remoteplay::ControllerState& state){std::lock_guard lock(mutex_);if(activeRemote_)activeRemote_->controller(state);else if(controlRemote_)controlRemote_->controller(state);}
+remoteplay::ControllerFeedback EngineController::remotePlayFeedback(){std::lock_guard lock(mutex_);if(activeRemote_)return activeRemote_->takeFeedback();
+#ifdef VEYRA_ENABLE_GUEST_CLIENT
+    if(activeGuestClient_)return activeGuestClient_->takeFeedback();   // fork: the host's rumble and haptics
+#endif
+    return controlRemote_?controlRemote_->takeFeedback():remoteplay::ControllerFeedback{};}
+void EngineController::remotePlayController(const remoteplay::ControllerState& state){std::lock_guard lock(mutex_);if(activeRemote_)activeRemote_->controller(state);
+#ifdef VEYRA_ENABLE_GUEST_CLIENT
+    else if(activeGuestClient_){activeGuestClient_->controller(state);   // fork: to the host of the share
+        anticipation_.input(DeadlineWait::now100ns(),float(state.rightX)/32767.0f,float(state.rightY)/32767.0f);}
+#endif
+    else if(controlRemote_)controlRemote_->controller(state);}
+bool EngineController::remotePlayGotoBed(){std::shared_ptr<source::RemotePlaySessionSource> s;{std::lock_guard lock(mutex_);s=activeRemote_?activeRemote_:controlRemote_;}return s&&s->gotoBed();}
 void EngineController::remotePlayLoginPin(std::string pin){std::lock_guard lock(mutex_);if(activeRemote_)activeRemote_->loginPin(std::move(pin));else if(controlRemote_)controlRemote_->loginPin(std::move(pin));}
 void EngineController::startRemoteControl(source::RemotePlayConnectDesc desc){
     desc.controlOnly=true;desc.request.viewOnly=false;
@@ -309,6 +322,15 @@ void EngineController::openXbox(HWND window,source::XboxConnectDesc desc,PlayerO
     auto request=std::make_shared<source::XboxConnectDesc>(std::move(desc));
     {std::lock_guard lock(mutex_);snapshot_={};requestedPlaybackRate_=1;activeFlow_.reset();previewView_={};fgMultiFrameMaxCap_=0;xessMaxInterpolatedFramesCap_=0;fsrMaxGeneratedFramesCap_=0;snapshot_.sessionId=++sessionId_;snapshot_.transport=TransportState::Opening;snapshot_.xboxActive=true;snapshot_.capture=true;savePath_.clear();desired_=opts.snapshot();desiredNodeOrder_=opts.nodeOrder;desired_.revision=++nextRevision_;snapshot_.desired=desired_;opts=PlayerOptions::from(desired_,desiredNodeOrder_);}
     post([this,window,request,opts]{paused_=false;seekSeconds_=-1;run(window,L"xbox:",opts,{},{},request);});
+}
+#endif
+#ifdef VEYRA_ENABLE_GUEST_CLIENT
+void EngineController::openGuestClient(HWND window,source::GuestClientDesc desc,PlayerOptions opts){
+#ifdef VEYRA_ENABLE_REMOTEPLAY
+    stopRemoteControl();
+#endif
+    {std::lock_guard lock(mutex_);pendingGuestClient_=std::make_shared<source::GuestClientDesc>(std::move(desc));snapshot_={};requestedPlaybackRate_=1;activeFlow_.reset();previewView_={};fgMultiFrameMaxCap_=0;xessMaxInterpolatedFramesCap_=0;fsrMaxGeneratedFramesCap_=0;snapshot_.sessionId=++sessionId_;snapshot_.transport=TransportState::Opening;snapshot_.guestClientActive=true;snapshot_.capture=true;savePath_.clear();desired_=opts.snapshot();desiredNodeOrder_=opts.nodeOrder;desired_.revision=++nextRevision_;snapshot_.desired=desired_;opts=PlayerOptions::from(desired_,desiredNodeOrder_);}
+    post([this,window,opts]{paused_=false;seekSeconds_=-1;run(window,L"guest:",opts);});
 }
 #endif
 void EngineController::stop(){
@@ -416,6 +438,9 @@ PlayerSnapshot EngineController::snapshot()const{
 #ifdef VEYRA_ENABLE_XBOX
     std::shared_ptr<source::XboxSessionSource> activeXbox;
 #endif
+#ifdef VEYRA_ENABLE_GUEST_CLIENT
+    std::shared_ptr<source::GuestClientSource> activeGuestClient;
+#endif
     {std::lock_guard lock(mutex_);copy=snapshot_;copy.presentation=presentation_;flowWindow=activeFlow_;
 #ifdef VEYRA_ENABLE_REMOTEPLAY
         activeRemote=activeRemote_;
@@ -426,7 +451,13 @@ PlayerSnapshot EngineController::snapshot()const{
 #ifdef VEYRA_ENABLE_XBOX
         activeXbox=activeXbox_;
 #endif
+#ifdef VEYRA_ENABLE_GUEST_CLIENT
+        activeGuestClient=activeGuestClient_;
+#endif
     }
+#ifdef VEYRA_ENABLE_GUEST_CLIENT
+    const auto anticipationShown=[&]{std::lock_guard lock(mutex_);return anticipationShown_;}();
+#endif
     copy.volume=volume_;copy.muted=muted_;
     const bool playing=copy.running&&!copy.image&&copy.transport==TransportState::Playing;
     if(flowWindow){
@@ -456,6 +487,12 @@ PlayerSnapshot EngineController::snapshot()const{
     if(copy.xboxActive&&activeXbox){
         copy.xbox=activeXbox->stats();
         copy.captureAudio=activeXbox->audioState();copy.audioAvailable=copy.captureAudio.available;
+    }
+#endif
+#ifdef VEYRA_ENABLE_GUEST_CLIENT
+    if(copy.guestClientActive&&activeGuestClient){
+        copy.guestClient=activeGuestClient->stats();copy.guestClient.anticipation=anticipationShown;
+        copy.captureAudio=activeGuestClient->audioState();copy.audioAvailable=copy.captureAudio.available;
     }
 #endif
     auto& flow=copy.metrics.flow;
@@ -496,7 +533,7 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
     // only name the stopped command list after the removal, so teardown checks once more.
     bool gpuFailureAwaitingRemoval=false;
     sink::AudioPipeline audioPipe;sink::AudioRenderer audio;VideoPresenter presenter;
-    presenter.setCapture(&captures_);presenter.setDisplayStates(&displayStates_);
+    presenter.setCapture(&captures_);presenter.setDisplayStates(&displayStates_);presenter.setAnticipation(&anticipation_);
     auto& coreCache=gpu->core;auto& recentGraphCache=gpu->recent;auto& graph=gpu->graph;
     auto& graphBytes=gpu->graphBytes;auto cacheBudgetPolledAt=Clock::now();
     const bool recentCacheAllowed=!GetEnvironmentVariableW(L"VEYRA_TEST_DISABLE_RECENT_GRAPH_CACHE",nullptr,0);
@@ -514,6 +551,8 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
 #else
     (void)remoteRequest;const bool isRemote=false;
 #endif
+    // Set once the PS5 source is connected: a decoded picture wakes the wait between pictures.
+    HANDLE remoteFrameEvent=nullptr;
 #ifdef VEYRA_ENABLE_MOONLIGHT
     auto moon=moonlightRequest?std::make_shared<source::MoonlightSessionSource>():nullptr;
     const bool isMoonlight=bool(moon);
@@ -529,8 +568,32 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
 #else
     (void)xboxRequest;const bool isXbox=false;
 #endif
+#ifdef VEYRA_ENABLE_GUEST_CLIENT
+    // Fork: a friend's share joined natively ("guest:"), its request left by openGuestClient().
+    std::shared_ptr<source::GuestClientDesc> guestRequest;
+    if(path==L"guest:"){std::lock_guard lock(mutex_);guestRequest=std::move(pendingGuestClient_);}
+    auto gc=guestRequest?std::make_shared<source::GuestClientSource>():nullptr;
+    const bool isGuestClient=bool(gc);
+    {std::lock_guard lock(mutex_);activeGuestClient_=gc;}
+#else
+    const bool isGuestClient=false;
+#endif
     // PS5, Moonlight and Xbox are all decoded network streams with the same live scheduling.
-    const bool isStream=isRemote||isMoonlight||isXbox;
+    const bool isStream=isRemote||isMoonlight||isXbox||isGuestClient;
+    // Fork, camera anticipation on a joined share (PresentationSettings.h). Alone, it runs without
+    // frame generation: the multiplier is 1 for this session whatever the preset says.
+    double anticipationRefreshHz=0;
+    if(isGuestClient){
+        displayStates_.request(window,"anticipation");
+        const auto monitor=MonitorFromWindow(window,MONITOR_DEFAULTTONEAREST);
+        auto state=displayStates_.state(monitor);if(!state)state=displayStates_.wait(monitor,std::chrono::milliseconds(100));
+        if(state)anticipationRefreshHz=state->refreshHz;
+    }
+    auto anticipationFor=[&](double refreshHz){CameraAnticipationMode requested;{std::lock_guard lock(mutex_);requested=presentation_.cameraAnticipation;}
+        return resolveCameraAnticipation(requested,isGuestClient,refreshHz>0?refreshHz:anticipationRefreshHz);};
+    CameraAnticipationMode anticipationMode=anticipationFor(0);
+    if(anticipationMode==CameraAnticipationMode::Only){options.settings.multiplier=1;options.fg=false;}
+    if(isGuestClient)veyra::log::info("anticipation",std::format("mode={} refreshHz={:.1f} (0 auto 1 off 2 alone, no frame generation 3 with interpolation; resolved for this session)",unsigned(anticipationMode),anticipationRefreshHz));
     const bool isCapture=physicalCapture||options.captureReplayForTest||isStream||isScreen;
     // File replay has no hardware arrival clock; retain its continuous PTS anchor.
     // VEYRA_TEST_REPLAY_AS_CARD=1 delivers it like a capture card instead (see below).
@@ -548,7 +611,14 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
 #ifdef VEYRA_ENABLE_XBOX
     if(xb)activeSource=xb.get();
 #endif
+#ifdef VEYRA_ENABLE_GUEST_CLIENT
+    if(gc)activeSource=gc.get();
+#endif
     if(options.captureReplayForTest)veyra::log::info("capture-test","file replay exercises live scheduler; no physical capture device or latency measurement");
+    // The guest's tap (PresentCapture.h, EarlyCapture): before presentation on a live source.
+    // VEYRA_TEST_GUEST_TAP=present keeps it at the present for A/B runs.
+    earlyGate_.live=isCapture&&[]{wchar_t v[16]{};return !GetEnvironmentVariableW(L"VEYRA_TEST_GUEST_TAP",v,16)||std::wstring_view(v)!=L"present";}();
+    if(earlyGate_.target)veyra::log::info("guest-tap",std::format("real pictures reach the guest {}; fluide feeds take the presented frames",earlyGate_.live?"before frame generation and pacing (graph queue)":"at their present"));
     bool audioStarted=false;bool failed=false;
     try {
         do {
@@ -651,11 +721,31 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
                     if(stop_||!cachedFrame)break;
                 }
 #endif
+#ifdef VEYRA_ENABLE_GUEST_CLIENT
+                if(gc){
+                    status(L"connexion au partage…");
+                    ctx.device()->AddRef();guestRequest->decodeDevice=std::shared_ptr<ID3D12Device>(ctx.device(),[](ID3D12Device* device){device->Release();});
+                    ctx.directQueue()->AddRef();guestRequest->decodeQueue=std::shared_ptr<ID3D12CommandQueue>(ctx.directQueue(),[](ID3D12CommandQueue* queue){queue->Release();});
+                    guestRequest->stopRequested=&stop_;
+                    if(!gc->connect(std::move(*guestRequest))){const auto message=gc->stats().message;status(message.empty()?L"impossible de rejoindre le partage":message,true);break;}
+                    remoteFrameEvent=static_cast<HANDLE>(gc->frameEvent());
+                    const auto firstFrameDeadline=Clock::now()+std::chrono::seconds(20);
+                    while(!stop_){
+                        const AVFrame* first=nullptr;const auto result=gc->read(cachedPacket,&first);
+                        if(result==source::SourceReadStatus::Frame){cachedFrame=av_frame_clone(first);break;}
+                        if(result==source::SourceReadStatus::Error){const auto message=gc->stats().message;status(message.empty()?L"le partage n'envoie pas d'image":message,true);break;}
+                        if(Clock::now()>firstFrameDeadline){status(L"connecté, mais aucune image en 20 s",true);break;}
+                        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                    }
+                    if(stop_||!cachedFrame)break;
+                }
+#endif
 #ifdef VEYRA_ENABLE_REMOTEPLAY
                 if(remote){
                     status(L"正在连接 PS5…");
                     ctx.device()->AddRef();remoteRequest->decodeDevice=std::shared_ptr<ID3D12Device>(ctx.device(),[](ID3D12Device* device){device->Release();});
                     if(!remote->connect(std::move(*remoteRequest))){status(L"PS5 连接失败，请查看诊断",true);break;}
+                    remoteFrameEvent=static_cast<HANDLE>(remote->frameEvent());
                     remoteRequest.reset();
                     while(!stop_){
                         const AVFrame* first=nullptr;const auto result=remote->read(cachedPacket,&first);
@@ -669,7 +759,7 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
                     if(stop_||!cachedFrame)break;
                 }else{
 #endif
-                if(!isMoonlight&&!isXbox&&!(physicalCapture?captureSource.configure(od):activeSource->open(od))){status(isScreen?screenSource.status():physicalCapture&&!captureSource.errorMessage().empty()?captureSource.errorMessage():!isCapture&&!source.errorMessage().empty()?source.errorMessage():L"无法打开视频，请查看诊断",true);break;}
+                if(!isMoonlight&&!isXbox&&!isGuestClient&&!(physicalCapture?captureSource.configure(od):activeSource->open(od))){status(isScreen?screenSource.status():physicalCapture&&!captureSource.errorMessage().empty()?captureSource.errorMessage():!isCapture&&!source.errorMessage().empty()?source.errorMessage():L"无法打开视频，请查看诊断",true);break;}
 #ifdef VEYRA_ENABLE_REMOTEPLAY
                 }
 #endif
@@ -1153,6 +1243,19 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
             // VEYRA_TEST_CONTENT_DEDUP_LEGACY=1 restores the report-only content modes
             // for A/B runs.
             ContentDedup contentDedup;uint64_t dedupRevision=0;
+            // PS5 stream cadence (StreamCadence.h): the console sends 60 pictures a second whatever
+            // the game renders. With frame generation on, a game at half that rate has its second
+            // copies dropped before any GPU work and the multiplier doubled, so the output rate
+            // stays what the user chose and every generated picture lies between two real ones.
+            // VEYRA_TEST_STREAM_CADENCE=off keeps every picture (the behaviour before 2026-11-20);
+            // =half drops every second picture whatever it shows, for pacing runs on any content.
+            pipeline::StreamPictureDiff streamDiff;StreamCadence streamCadence;
+            static const int streamCadenceTest=[]{wchar_t v[8]{};const auto n=GetEnvironmentVariableW(L"VEYRA_TEST_STREAM_CADENCE",v,8);
+                return n==3&&!_wcsicmp(v,L"off")?1:n==4&&!_wcsicmp(v,L"half")?2:0;}();
+            bool streamDiffOpened=false,streamHalfActive=false,streamCadenceRunning=false;
+            StreamCadence::Stats streamLogged{};TimingWindow streamCompareTimes;
+            std::deque<int64_t> streamNewPictures;
+            double streamLastKeptPtsMs=std::numeric_limits<double>::quiet_NaN();
             ContentDedup::Stats dedupLogged{};
             static const bool legacyCadence=GetEnvironmentVariableW(L"VEYRA_TEST_CONTENT_DEDUP_LEGACY",nullptr,0)>0;
             const auto dedupContent=[](ContentRate content){return content!=ContentRate::Transport&&content!=ContentRate::Capture60To30;};
@@ -1169,6 +1272,7 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
             struct LiveStats {uint64_t submitted=0,expired=0;double waitMs=0,presentMs=0,readyMs=0,ageMs=0,fps=0,ageP95=0,waitP95=0,presentP95=0,readyP95=0;diagnostics::GpuSample blit;};
             LiveStats liveStats;std::deque<int64_t> liveSubmissions;
             TimingWindow liveAges,liveWaits,liveReady;
+            TimingWindow liveDelays{std::chrono::seconds(2)};
             TimingWindow livePresent{std::chrono::seconds(1)};
             TimingWindow livePresentGpu{std::chrono::seconds(1)};
             FgRecoveryBudget fgBudget;uint64_t fgBudgetRevision=options.settings.revision;
@@ -1199,7 +1303,12 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
             LiveFgRejectionHold fgRejectionHold;uint64_t fgHeldPairs=0,fgHeldProbes=0;
             // VEYRA_TEST_ADAPTIVE_SCREEN_PHASE=1 and VEYRA_TEST_ARRIVAL_JITTER_MS=<sd> give
             // window capture what a USB card has: this phase and a late callback.
-            const bool adaptiveCapturePhase=(physicalCapture||testReplayAsCard||(isScreen&&GetEnvironmentVariableW(L"VEYRA_TEST_ADAPTIVE_SCREEN_PHASE",nullptr,0)>0))&&GetEnvironmentVariableW(L"VEYRA_TEST_LEGACY_CAPTURE_PHASE",nullptr,0)==0;
+            // The PS5 stream learns its pair phase too (2026-11-20). Its fixed phase, one interval
+            // plus the base cost, showed each real picture 20.1 ms after its decode with the
+            // generated one ready 6.5 ms (P95 15.7) before it was due: DLSS 2X, RTX 5080.
+            // VEYRA_TEST_LEGACY_STREAM_PHASE=1 restores the fixed phase for A/B runs.
+            const bool adaptiveStreamPhase=(isRemote||isGuestClient)&&GetEnvironmentVariableW(L"VEYRA_TEST_LEGACY_STREAM_PHASE",nullptr,0)==0;
+            const bool adaptiveCapturePhase=(physicalCapture||testReplayAsCard||adaptiveStreamPhase||(isScreen&&GetEnvironmentVariableW(L"VEYRA_TEST_ADAPTIVE_SCREEN_PHASE",nullptr,0)>0))&&GetEnvironmentVariableW(L"VEYRA_TEST_LEGACY_CAPTURE_PHASE",nullptr,0)==0;
             static const double testArrivalJitterMs=[]{wchar_t v[16]{};return GetEnvironmentVariableW(L"VEYRA_TEST_ARRIVAL_JITTER_MS",v,16)?std::clamp(_wtof(v),0.0,10.0):0.0;}();
             uint32_t testArrivalSeed=7;int64_t testCardStart=0;double testCardFirstPtsMs=0;
             const unsigned testReplayDropEvery=[]{wchar_t value[16]{};return GetEnvironmentVariableW(L"VEYRA_TEST_REPLAY_DROP_EVERY",value,16)?unsigned(std::clamp(_wtoi(value),0,120)):0u;}();
@@ -1410,6 +1519,14 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
                 // Poll completed display/VRR queries before comparing policy.
                 // It must not make synchronous driver calls on the GPU owner.
                 const double refreshHz=presenter.displayRefreshHz();
+                if(isGuestClient){
+                    // A change that adds or removes the interpolation rebuilds the graph: a settings transaction.
+                    const auto mode=resolveCameraAnticipation(requested.cameraAnticipation,true,refreshHz>0?refreshHz:anticipationRefreshHz);
+                    if((mode==CameraAnticipationMode::Only)!=(anticipationMode==CameraAnticipationMode::Only)){
+                        std::lock_guard lock(mutex_);if(desired_.revision==options.settings.revision){desired_.revision=++nextRevision_;snapshot_.desired=desired_;snapshot_.applying=true;}
+                    }else anticipationMode=mode;
+                    presenter.enableAnticipation(anticipationMode!=CameraAnticipationMode::Off);
+                }
                 const bool capRefreshChanged=requested.outputRate==OutputRateMode::FollowDisplay&&std::abs(refreshHz-pacingRefreshHz)>0.001;
                 // 可变刷新: the monitor's VRR availability is read again on events
                 // (another monitor, a display change, 重新检测, the VRR
@@ -1447,7 +1564,9 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
             auto advanceLive=[&]{applyPresentation();if(liveScheduler){
                 const auto halted=[&]{return stop_||(paused_&&!seekPreviewPending)||seekSeconds_>=0;};
                 if(!halted()&&preciseDeadlines&&liveScheduler->preciseWake()){const auto now=host100ns(),due=liveScheduler->wakeAt();if(due>0&&due<=now)liveScheduler->advance(now);}
-                pollCompletions();if(halted()){liveScheduler->cancel();cadence.reset();}else liveScheduler->advance(host100ns());}};
+                pollCompletions();if(halted()){liveScheduler->cancel();cadence.reset();}else liveScheduler->advance(host100ns());}
+                // Fork, camera anticipation: the picture on screen again when a refresh is due.
+                presenter.anticipationTick(ctx);};
             FrameFlowWindow* waitingFlow=nullptr;uint64_t waitingPresented=0;size_t waitingPending=0;
             auto publishWaitingProgress=[&](bool force=false){
                 if(!frameFlow)return;
@@ -1465,8 +1584,21 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
             bool processingGraph=false;
             auto waitLive=[&]{
                 const auto due=liveScheduler?liveScheduler->wakeAt():0;
-                const auto arrivalEvent=physicalCapture?captureSource.frameEvent():nullptr;
+                const auto arrivalEvent=physicalCapture?captureSource.frameEvent():remoteFrameEvent;
                 const auto readyEvent=physicalCapture?gpuReadyEvent.handle:nullptr;
+                // Fork, camera anticipation: the next screen refresh is a deadline of its own. Sleep to
+                // 0.6 ms before it, then spin: a timer alone lands up to a refresh late at 240 Hz.
+                if(const auto tick=presenter.anticipationDue100ns()){
+                    const bool framePrecise=preciseDeadlines&&liveScheduler&&liveScheduler->preciseWake()&&due>0;
+                    const auto target=framePrecise?std::min(due,tick):tick;
+                    const auto remaining=target-host100ns();
+                    if(remaining>6000){deadlineWait.slice(std::min(1.0,double(remaining-6000)/10000),arrivalEvent,readyEvent);return;}
+                    for(unsigned polls=0;host100ns()<target;++polls){
+                        if((polls&31)==0&&(stop_||(arrivalEvent&&WaitForSingleObject(arrivalEvent,0)==WAIT_OBJECT_0)))return;
+                        YieldProcessor();
+                    }
+                    return;
+                }
                 if(preciseDeadlines&&liveScheduler&&liveScheduler->preciseWake()){
                     deadlineWait.until(due,arrivalEvent,readyEvent,[&]{return stop_||(paused_&&!seekPreviewPending)||seekSeconds_>=0;});
                 }else deadlineWait.slice(due>host100ns()?std::min(1.0,double(due-host100ns())/10000):1.0,arrivalEvent,readyEvent);
@@ -1481,6 +1613,7 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
             // result swung between runs (DLSS 2X 1% low 113-118). The single owner thread
             // cannot do both; a frame due here goes out at the next checkpoint.
             auto presentDuringProcess=[&]{
+                presenter.anticipationTick(ctx);   // fork: a refresh due while the graph records its lists
                 if(!checkpointPresentation||!isCapture||!options.fg||graph->hdrOutput()||!presenter.independentQueue()||
                    !liveScheduler||stop_||(paused_&&!seekPreviewPending)||seekSeconds_>=0)return;
                 const auto due=liveScheduler->wakeAt(),now=host100ns();
@@ -1691,6 +1824,11 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
                     const auto state=xb->audioState();
                     std::lock_guard lock(mutex_);snapshot_.audioAvailable=state.available;snapshot_.captureAudio=state;}
 #endif
+#ifdef VEYRA_ENABLE_GUEST_CLIENT
+                if(gc){gc->setAudioGain(gain);gc->setAudioSync(unsigned(options.settings.audioSync),options.settings.audioOffsetMs);
+                    const auto state=gc->audioState();
+                    std::lock_guard lock(mutex_);snapshot_.audioAvailable=state.available;snapshot_.captureAudio=state;}
+#endif
                 // Save the latest processed real frame before a settings transaction
                 // invalidates it (live rendering can be one batch behind processing).
                 std::wstring save;EnhancementSettings requested;std::optional<ChainRuntimeOrder> requestedOrder;
@@ -1757,10 +1895,15 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
 #ifdef VEYRA_ENABLE_XBOX
                     if(xb)xb->videoReset(false);
 #endif
+#ifdef VEYRA_ENABLE_GUEST_CLIENT
+                    if(gc)gc->videoReset(false);
+#endif
 
                     // A drain may outlive several slider notifications. Build
                     // only the latest pending configuration at this boundary.
                     {std::lock_guard lock(mutex_);requested=desired_;requestedOrder=desiredNodeOrder_;}
+                    anticipationMode=anticipationFor(presenter.displayRefreshHz());
+                    if(anticipationMode==CameraAnticipationMode::Only)requested.multiplier=1;   // fork: anticipation alone, no interpolation
                     if(requested.revision==previous.revision){finishReset(diagnostics::ResetOutcome::Cancelled);continue;}
                     resetRecord->settingsRevision=requested.revision;
                     auto next=PlayerOptions::from(requested,requestedOrder);auto nextDesc=gd;
@@ -1936,6 +2079,9 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
 #endif
 #ifdef VEYRA_ENABLE_XBOX
                     if(xb)xb->videoReset();
+#endif
+#ifdef VEYRA_ENABLE_GUEST_CLIENT
+                    if(gc)gc->videoReset();
 #endif
 }
                     presenter.cancelReflexInput();
@@ -2186,6 +2332,65 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
                     if(testReplayDropPending){pkt.flags|=static_cast<pipeline::FrameFlags>(pipeline::FrameFlagBits::Drop);testReplayDropPending=false;}
                 }
                 if(!isImage&&!isCapture&&seekSeconds_>=0)continue;
+                // PS5 stream cadence (see streamCadence above). The compare of this picture with
+                // the one before it runs behind the decoder on the GPU. While every picture is kept
+                // nothing waits for it: the count is read with the next picture (waiting cost each
+                // picture 0.6 ms, the GPU decode). At half rate the count decides keep or drop, so
+                // the loop waits for it; frames that come due meanwhile still go out.
+                bool streamHalf=rereadCached&&streamHalfActive;
+                if((isRemote||isGuestClient)&&options.fg&&streamCadenceTest!=1&&!rereadCached&&!presentSinkFrameGeneration(options.settings.frameGenerationBackend)){
+                    streamCadenceRunning=true;
+                    if(!streamDiffOpened){streamDiffOpened=true;streamDiff.initialize(ctx.device(),ring.queue());}
+                    const auto compareStart=Clock::now();
+                    const auto awaitCompare=[&]{
+                        std::optional<pipeline::StreamPictureDiff::Result> result;
+                        while(!(result=streamDiff.take())&&!stop_&&elapsedMs(compareStart)<100){advanceLive();deadlineWait.slice(.2,streamDiff.event());}
+                        if(!result)streamDiff.abandon();
+                        return result;
+                    };
+                    const auto countNew=[&](const StreamCadence::Decision& d){
+                        const auto now=host100ns();
+                        if(d.newPicture)streamNewPictures.push_back(now);
+                        while(!streamNewPictures.empty()&&now-streamNewPictures.front()>10000000)streamNewPictures.pop_front();
+                    };
+                    // The count of the previous picture, which was shown without waiting for it.
+                    int64_t lateChanged=-1;
+                    if(streamDiff.pending()){
+                        const auto late=awaitCompare();
+                        if(late)lateChanged=int64_t(late->changed);
+                        countNew(late?streamCadence.observe(late->changed,late->total,true):streamCadence.blind());
+                    }
+                    if(presentationGenerationResetRequired(reset,pkt.flags)){streamDiff.reset();streamCadence.reset();}
+                    // A picture the mailbox replaced before it was read: this compare spans two pictures.
+                    if(pipeline::hasFrameFlag(pkt.flags,pipeline::FrameFlagBits::Drop))streamCadence.gap();
+                    const bool submitted=streamDiff.submit(frame);
+                    StreamCadence::Decision decision{true,false,false,StreamCadence::Mode::Full};
+                    std::optional<pipeline::StreamPictureDiff::Result> compared;
+                    if(!submitted)countNew(decision=streamCadence.blind());
+                    else if(streamCadence.mode()==StreamCadence::Mode::Half||streamCadenceTest==2){
+                        compared=awaitCompare();
+                        if(compared)streamCompareTimes.add(elapsedMs(compareStart));
+                        countNew(decision=compared?streamCadence.observe(compared->changed,compared->total):streamCadence.blind());
+                        if(streamCadenceTest==2){const bool first=(pkt.sequence&1)==0;decision={first,first,false,StreamCadence::Mode::Half};}
+                    }
+                    if(veyra::log::verboseFrameLogs())veyra::log::info("stream-cadence-frame",std::format("source={} changed={} total={} keep={} hold={} mode={} auBytes={} compareMs={:.3f} arrivalToDecodedMs={:.3f} decodedToReadMs={:.3f} previousChanged={} (changed=-1: the count is read with the next picture, as its previousChanged)",
+                        pkt.sequence,compared?int64_t(compared->changed):-1,compared?compared->total:0,decision.keep,decision.hold,decision.mode==StreamCadence::Mode::Half?"half":"full",pkt.compressedBytes,elapsedMs(compareStart),
+                        double(pkt.decodedHost100ns-pkt.arrivalHost100ns)/10000,double(std::chrono::duration_cast<std::chrono::nanoseconds>(compareStart.time_since_epoch()).count()/100-pkt.decodedHost100ns)/10000,lateChanged));
+                    if(!decision.keep){std::lock_guard lock(mutex_);++snapshot_.captureRateSkipped;continue;}
+                    streamHalf=decision.mode==StreamCadence::Mode::Half;
+                    // A kept picture of half-rate content spans two stream pictures.
+                    if(streamHalf&&!pkt.duration.isUnknown())pkt.duration={pkt.duration.num*2,pkt.duration.den};
+                }else if(!rereadCached){
+                    streamCadenceRunning=false;
+                    if(streamDiff.pending())streamDiff.abandon();
+                    if(streamCadence.mode()!=StreamCadence::Mode::Full){streamCadence.reset();streamDiff.reset();}
+                }
+                if(streamHalf!=streamHalfActive){
+                    streamHalfActive=streamHalf;
+                    // The pair phase learned at the other cadence is half an interval off.
+                    pairLatency.reset();
+                    veyra::log::info("stream-cadence",std::format("revision={} source={} mode={} (half: the game renders half the stream rate, second copies are dropped and the frame generation multiplier doubles)",options.settings.revision,pkt.sequence,streamHalf?"half":"full"));
+                }
                 const bool halfRate=isCapture&&options.settings.content==ContentRate::Capture60To30&&
                     CaptureHalfRate::supported(activeSource->info().averageFps);
                 const bool dedupActive=isCapture&&!isImage&&!legacyCadence&&dedupContent(options.settings.content);
@@ -2231,8 +2436,8 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
                     const auto pictureSequence=capturedPicture&&capturedPicture->pictureValid?pkt.sequence:0;
                     const auto decision=contentDedup.observe(pictured?&picture.id:nullptr,pkt.pts.to100ns(),interval,boundary,hint,pictureSequence);
                     const double dedupUs=elapsedMs(compareStart)*1000;
-                    if(veyra::log::verboseFrameLogs())veyra::log::info("content-dedup-frame",std::format("source={} pts100ns={} keep={} reason={} picture={:x} withinBand={} over={} maxDiff={} contentPts100ns={} intervalMs={:.3f} cpuUs={:.1f}",
-                        pkt.sequence,pkt.pts.to100ns(),decision.keep,decision.reason,pictured?picture.id:0,picture.repeat,picture.over,picture.max8,decision.contentPts,decision.interval/1e4,dedupUs));
+                    if(veyra::log::verboseFrameLogs())veyra::log::info("content-dedup-frame",std::format("source={} pts100ns={} keep={} reason={} picture={:x} withinBand={} over={} maxDiff={} contentPts100ns={} intervalMs={:.3f} cpuUs={:.1f} auBytes={}",
+                        pkt.sequence,pkt.pts.to100ns(),decision.keep,decision.reason,pictured?picture.id:0,picture.repeat,picture.over,picture.max8,decision.contentPts,decision.interval/1e4,dedupUs,pkt.compressedBytes));
                     if(!decision.keep){std::lock_guard lock(mutex_);++snapshot_.captureRateSkipped;continue;}
                     dedupHoldInterval100ns=decision.holdInterval;
                     pkt.pts={decision.contentPts,10000000};
@@ -2411,6 +2616,8 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
                         previewFgMultiplier=std::clamp(needed,2u,options.fgMultiplier);
                     }
                 }
+                // Half-rate stream content: twice the multiplier keeps the output rate the user chose.
+                if(streamHalf&&options.fg&&!presentationEffective.halfRateKeepsMultiplier)previewFgMultiplier=std::min(previewFgMultiplier*2,unsigned(graph->fgPreviewCeiling()));
                 // Live output hint: the panel cannot show more than one new picture
                 // per refresh, so suggest a multiplier that fits (DisplayFgBudget.h).
                 // The multiplier stays the user's choice (2026-10-14: hint, never
@@ -2638,6 +2845,19 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
                     processSlotWaitMs=ring.cpuWaitMilliseconds()-processWaitMsBase;
                 }
                 loopTrace.mark("graphSubmit");
+                // The guest's early tap (real pictures): its conversion follows the graph's lists
+                // on the same queue; the frame's presentation waits for it (realFrameRead). The
+                // fluide feeds take the presented frames instead (earlyGate_).
+                if(processed&&earlyGate_.live&&!rereadCached&&!out.passthrough&&!earlyGate_.target->presentedFeed()&&earlyGate_.target->wanted()){
+                    auto* early=earlyGate_.target;auto* texture=graph->videoFrameResource(out.videoSlot);
+                    Status tapStatus=Status::Ok;uint32_t tapSlot=0;
+                    if(auto* list=texture?ring.acquireNext(tapSlot,tapStatus):nullptr){
+                        const uint32_t hdrMode=graph->hdrOutput()?(graph->hdr10Output()?2u:1u):0u;
+                        if(!early->record(list,{texture,graph->outputFormat(),graph->workWidth(),graph->workHeight(),hdrMode,graph->outputDitherStep(),false,liveInputReady}))ring.discardRecording();
+                        else if(ring.submitAndSignal(tapSlot)){early->submitted(ctx.fence(),ring.lastSignaledValue());graph->realFrameRead(out.videoSlot);}
+                        else early->discarded();
+                    }
+                }
                 previewSkipSinceProcess=false;
                 if(processed)lastProcessedPtsMs=pts;
                 if(!processed){
@@ -2791,7 +3011,8 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
                     watch->predictedGpuStart100ns=std::chrono::duration_cast<std::chrono::nanoseconds>(processStart.time_since_epoch()).count()/100+int64_t(queuedGpuMs*10000);
                     watch->captureArrival=captureArrival;watch->presentationGeneration=jobGeneration;
                     // Learn enough phase for early content-clock deadlines on late capture slots.
-                    watch->phaseAnchor=smoothContentAnchor?presentAnchorFor(out.batch.b100ns):captureArrival;
+                    // A stream pair is anchored on its decode, not on the arrival of its packet.
+                    watch->phaseAnchor=smoothContentAnchor?presentAnchorFor(out.batch.b100ns):isStream?liveInputReady:captureArrival;
                     watch->reflexFrame=currentReflexFrame;
                     pendingCompletions.push_back(watch);
                     if(physicalCapture&&gpuReadyEvent.handle)for(unsigned i=0;i<out.batch.count;++i){
@@ -2831,6 +3052,9 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
 #endif
 #ifdef VEYRA_ENABLE_XBOX
                         &xb,
+#endif
+#ifdef VEYRA_ENABLE_GUEST_CLIENT
+                        &gc,
 #endif
                         &seekDecoded,&seekStarted,&audio,&audioPipe,&audioStarted,&cadence,&ctx,&fileAudioAlignPending,&fileAwaitingVideo,&fileInputEnded,&generatedDropCap,&generatedDropCapacity,&generatedDropDeadline,&playbackRate,&frameFlow,&graph,&host100ns,&isCapture,&isImage,&liveArrival,&livePresent,&liveScheduler,&nextFgDeadlineLog,&nowMs,&options,&pendingCompletions,&physicalCapture,&processingGraph,&presentEntryDeviation,&presentReturnDeviation,&presentationEffective,&presentationGeneration,&presentationSkippedGenerated,&presenter,&ring,&runSessionId,&seekPreviewPending,&traceFrame,&traceSubframes,watch,step,timeline,captureArrival,baselineReady,delayEnhanced,activeSeekId,lineage,jobGeneration,rereadCached,sourceIntervalMs,submitThenPresent,generatedGrace=liveGeneratedGrace,smoothTransportAnchor,captureClockCorrected,driverPts100ns,flow=frameFlow,&deadlineMargin,marginPair,pairExtra](int64_t now)->LiveGpuScheduler::Step{
                         using State=LiveGpuScheduler::State;auto& batch=watch->output;auto& s=*step;
@@ -2934,6 +3158,10 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
                             const auto begin=Clock::now();const auto before=presenter.submittedCount();
                             presenter.reflexFrame(watch->reflexFrame);
                             presenter.observeHdrCoverage(hdrCoverageObserved_.load());
+                            earlyGate_.presentSource100ns=isCapture&&!generated?baselineReady:0;
+#ifdef VEYRA_ENABLE_GUEST_CLIENT
+                            if(gc&&presenter.anticipationEnabled())presenter.anticipationPicture(gc->pictureHostTime100ns(item.pts100ns));
+#endif
                             if(!presenter.present(ctx,ring,*graph,item.lease->slot,generated,item.lease->referencesValid,comparisonMode_,comparisonBase_,comparisonSplit_,item.identity,previewView(),item.pts100ns))return {State::Failed};
                             const auto presentEndHost=host100ns();
                             const double returnDeviation=deviationValid?nowMs()-itemPtsMs:0;
@@ -2998,6 +3226,9 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
 #ifdef VEYRA_ENABLE_XBOX
                             if(didPresent&&xb)xb->videoPresented(double(item.pts100ns)/10000,host100ns(),!generated&&!rereadCached);
 #endif
+#ifdef VEYRA_ENABLE_GUEST_CLIENT
+                            if(didPresent&&gc)gc->videoPresented(double(item.pts100ns)/10000,host100ns(),!generated&&!rereadCached);
+#endif
                             if(didPresent&&!generated&&!rereadCached){
                                 const auto returned=host100ns();
                                 flow->latency(captureArrival,returned);
@@ -3038,7 +3269,7 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
                         if(flow!=frameFlow)return;
                         liveStats.submitted+=s.count;liveStats.expired+=s.dropped;
                         if(s.count){liveStats.waitMs=s.waitMs;liveStats.presentMs=s.presentMs;liveStats.ageMs=s.ageMs;liveStats.blit=s.blit;
-                            liveAges.add(s.ageMs);liveWaits.add(s.waitMs);liveStats.ageP95=liveAges.p95();liveStats.waitP95=liveWaits.p95();liveStats.presentP95=livePresent.p95();
+                            liveAges.add(s.ageMs);liveDelays.add(s.ageMs);liveWaits.add(s.waitMs);liveStats.ageP95=liveAges.p95();liveStats.waitP95=liveWaits.p95();liveStats.presentP95=livePresent.p95();
                             // An early (B1) present learns its GPU-ready time in the completion poll.
                             if(!watch->presentedBeforeReady){liveStats.readyMs=s.readyMs;liveReady.add(s.readyMs);liveStats.readyP95=liveReady.p95();}}
                         liveStats.fps=liveSubmissions.size()>1?double(liveSubmissions.size()-1)*1e7/(liveSubmissions.back()-liveSubmissions.front()):0;
@@ -3084,6 +3315,11 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
 #endif
 #ifdef VEYRA_ENABLE_XBOX
                 if(xb){captureStats.received=xb->unitsReceived();captureStats.dropped=xb->skipped();captureStats.delivered=sourceFrames;
+                    captureStats.readAgeMs=double(std::max<int64_t>(0,host100ns()-pkt.arrivalHost100ns))/10000;
+                }
+#endif
+#ifdef VEYRA_ENABLE_GUEST_CLIENT
+                if(gc){captureStats.received=gc->unitsReceived();captureStats.dropped=gc->skipped();captureStats.delivered=sourceFrames;
                     captureStats.readAgeMs=double(std::max<int64_t>(0,host100ns()-pkt.arrivalHost100ns))/10000;
                 }
 #endif
@@ -3152,6 +3388,11 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
                     snapshot_.previewSkipped=measured.flow.counters.previewSkippedBeforeGraph;
                     snapshot_.fgBudgetLimited=measured.flow.lastFgRejected100ns>0&&host100ns()-measured.flow.lastFgRejected100ns<10000000;
                     snapshot_.xessGenerationSuppressed=graph->xessEnabled()&&presenter.xessGenerationSuppressed();
+                    if(isGuestClient){
+                        const auto report=presenter.anticipationReport();const auto model=anticipation_.stats();
+                        anticipationShown_={anticipationMode==CameraAnticipationMode::Only?1:anticipationMode==CameraAnticipationMode::WithInterpolation?2:0,
+                            report.running,model.learnt,model.active,model.confidence,model.lagMs,report.presentsPerSecond};
+                    }
                     // Reuse the existing snapshot lock, rather than locking once
                     // more for every generated Present.
                     const auto& coverage=presenter.liveCurveCoverage();
@@ -3173,10 +3414,11 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
                     snapshot_.srActive=gd.enableSr&&graphStats.srEvaluateCount>0;
                     snapshot_.fgActive=options.fg&&(graph->xessEnabled()?presenter.xessActive()&&graphStats.fgGeneratedFrames>0:graph->fgEnabled()&&measured.flow.counters.fgReadyValid>0);
                     if(transaction&&backendRecoveryWarning.empty()&&nvidiaAdapter&&(!graph->xessEnabled()||presenter.xessActive()))snapshot_.backendWarning.clear();
-                    snapshot_.flowPerf=graph->actualFlowPerf();snapshot_.contentFps=isCapture&&!legacyCadence&&dedupContent(options.settings.content)&&contentDedup.contentFps()>0?int(std::lround(contentDedup.contentFps())):out.measuredContentRate;
+                    snapshot_.flowPerf=graph->actualFlowPerf();snapshot_.contentFps=streamCadenceRunning?int(streamNewPictures.size()):isCapture&&!legacyCadence&&dedupContent(options.settings.content)&&contentDedup.contentFps()>0?int(std::lround(contentDedup.contentFps())):out.measuredContentRate;
                     snapshot_.nrEvaluated=graphStats.nrEvaluateCount;snapshot_.nvofExecuted=graphStats.nvofExecuteCount;
                     snapshot_.captureReceived=captureStats.received;snapshot_.captureDropped=captureStats.dropped;snapshot_.captureFps=captureStats.callbackFps;snapshot_.captureReadAgeMs=captureStats.readAgeMs;snapshot_.captureAgeMs=liveScheduler?completed.ageMs:captureStats.frameAgeMs;snapshot_.captureAgeP95Ms=ageP95;
                     snapshot_.captureSampledBlack=captureStats.sampledBlack;
+                    snapshot_.liveDelayMs=isCapture?liveDelays.median():0;snapshot_.scanoutMs=presenter.scanoutP50Ms();
                     snapshot_.schedulingWaitP95Ms=waitP95;snapshot_.processCpuP95Ms=processTimes.p95();snapshot_.presentCpuP95Ms=presentP95;
                 }
                 loopTrace.mark("publishSnapshot");
@@ -3202,6 +3444,12 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
                     // memory gets slower in every pass at once (field log 2026-10-01).
                     uint64_t vramBudget=0,vramUsage=0;ctx.videoMemoryInfo(vramBudget,vramUsage);watchVram(vramUsage,vramBudget);
                     veyra::log::info("frame-rate",std::format("revision={} gpuCompletedFps={:.2f} completedReal={} capture60To30={} rateSkipped={} presentSubmitFps={:.2f} windowMs=1000 vramMiB={} budgetMiB={} (not scanout FPS)",options.settings.revision,rates.fps,rates.processedCompleted,rates.captureHalfRate,rates.captureRateSkipped,rates.submissionFps.value_or(0),vramUsage>>20,vramBudget>>20));
+                    if(streamCadenceRunning){
+                        const auto& st=streamCadence.stats();
+                        veyra::log::info("stream-cadence",std::format("revision={} mode={} observed={} kept={} dropped={} newPictures={} held={} entered={} left={} multiplier={} compareP95Ms={:.3f} (per second but entered/left, which are session totals; newPictures is the content rate; compare is the wait for the GPU picture comparison, decode included)",
+                            options.settings.revision,streamHalfActive?"half":"full",st.observed-streamLogged.observed,st.kept-streamLogged.kept,st.dropped-streamLogged.dropped,st.newPictures-streamLogged.newPictures,st.held-streamLogged.held,st.entered,st.left,previewFgMultiplier,streamCompareTimes.p95()));
+                        streamLogged=st;
+                    }
                     if(isCapture&&dedupContent(options.settings.content)&&!legacyCadence){
                         const auto& st=contentDedup.stats();
                         veyra::log::info("content-dedup",std::format("revision={} mode={} observed={} kept={} repeats={} held={} blind={} regular={} irregular={} contentFps={:.2f} maxShiftMs={:.2f} repeatMaxDiff={} repeatMaxOver={} newMinOver={} band={} (per second; a repeat has at most about 5 per million components of the whole picture beyond the band of the last new one, dropped before GPU work; kept frames carry content timestamps)",
@@ -3228,6 +3476,11 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
 #ifdef VEYRA_ENABLE_XBOX
     {std::lock_guard lock(mutex_);activeXbox_.reset();}
     if(xb)xb->close();
+#endif
+#ifdef VEYRA_ENABLE_GUEST_CLIENT
+    {std::lock_guard lock(mutex_);activeGuestClient_.reset();}
+    // The last state stays readable: why it ended, or failed.
+    if(gc){gc->close();const auto last=gc->stats();std::lock_guard lock(mutex_);snapshot_.guestClient=last;}
 #endif
     // Each step is logged: a session that stopped responding after a remote
     // play failure left "graph shutdown complete" as its last line.

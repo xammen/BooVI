@@ -22,7 +22,8 @@ Rectangle {
         + (iconName.length ? 25 : 0) + (trailingIcon.length ? 19 : 0) + 24)
     implicitHeight: Theme.ctlHeight
     radius: Theme.rCtl
-    color: primary ? Theme.accent
+    // Fork (sage): the primary is the near-white solid of UiButton, so dialogs and pages agree.
+    color: primary ? (Theme.sage ? (hover.hovered ? Theme.solidHover : Theme.solid) : Theme.accent)
          : ghost ? (hover.hovered ? Qt.rgba(1, 1, 1, 0.07) : "transparent")
          : (hover.hovered ? Theme.card3 : Theme.card2)
     border.width: (primary || ghost) ? 0 : 1
@@ -31,8 +32,8 @@ Rectangle {
     // .btn:active { transform: scale(.95) }
     // A disabled button reads as such (undo with nothing to undo).
     opacity: enabled ? 1.0 : 0.4
-    scale: tap.pressed ? 0.95 : 1.0
-    Behavior on scale { NumberAnimation { duration: Theme.d(400); easing.bezierCurve: Theme.spring } }
+    scale: tap.pressed ? Theme.pressScale : 1.0
+    Behavior on scale { NumberAnimation { duration: Theme.d(tap.pressed ? 100 : 200); easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.ease } }
 
     // The dusk palette's sunset accent: a primary button is the gradient.
     VAccentFill {
@@ -59,7 +60,7 @@ Rectangle {
             elide: Text.ElideMiddle
             anchors.verticalCenter: parent.verticalCenter
             text: btn.glyph.length > 0 ? btn.glyph + (btn.text.length > 0 ? "  " + btn.text : "") : btn.text
-            color: btn.primary ? Theme.accentInk : (btn.ghost ? Theme.t2 : Theme.t1)
+            color: btn.primary ? (Theme.sage ? Theme.solidInk : Theme.accentInk) : (btn.ghost ? Theme.t2 : Theme.t1)
             font.family: Theme.fontUi
             font.pixelSize: Theme.fsBody
             font.weight: btn.primary ? Font.DemiBold : Font.Medium
