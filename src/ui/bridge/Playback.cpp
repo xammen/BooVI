@@ -8,6 +8,7 @@ QString QmlPlayerBridge::statusText() const { return uiText(impl_->snapshot.stat
 bool QmlPlayerBridge::running() const { return impl_->snapshot.running; }
 bool QmlPlayerBridge::paused() const { return impl_->snapshot.transport == engine::TransportState::Paused; }
 bool QmlPlayerBridge::failed() const { return impl_->snapshot.failed; }
+uint64_t QmlPlayerBridge::sessionId() const { return impl_->snapshot.sessionId; }
 bool QmlPlayerBridge::isImage() const { return impl_->snapshot.image; }
 bool QmlPlayerBridge::isCapture() const { return impl_->snapshot.capture; }
 bool QmlPlayerBridge::hasSource() const { return impl_->snapshot.running || impl_->snapshot.image; }

@@ -1275,7 +1275,7 @@ VPage {
                         }
                         UiRow {
                             title: qsTr("si tu joues déjà")
-                            desc: qsTr("seul à la console, il joue. si tu es en jeu, tu reçois toujours une demande.")
+                            desc: qsTr("seul à la console, il joue. si tu es en jeu, il te rejoint ainsi, sans demande si tu l'autorises automatiquement.")
                             UiSeg {
                                 options: [{ id: "1", label: qsTr("occupé") }, { id: "3", label: qsTr("à deux") }, { id: "5", label: qsTr("regarder") }]
                                 current: String(invitesSection.draftModes)

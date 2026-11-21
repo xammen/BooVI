@@ -115,7 +115,8 @@ int main() {
     expect(revoked.size() == 1 && revoked[0].accessId == "a1", "desk: and says lucas left, for his connection to be cut");
     expect(desk.knock(t1, 100, 0, 0).invalid, "desk: a revoked token is invalid");
 
-    // Busy console: only an access that allows à deux or watching gets in, and the host is asked.
+    // Busy console: only an access that allows à deux or watching gets in; one that does not ask
+    // joins the host's game at once.
     AccessDesk busy;
     std::vector<Access> two{make("b1", "lucas", t1), make("b2", "zoé", t2)};
     two[0].ask = false;
@@ -127,7 +128,18 @@ int main() {
     busy.setConsoleBusy(true);
     expect(busy.knock(t1, 3, 0, 0).state == "busy", "busy desk: guest-only access sees busy");
     k = busy.knock(t2, 4, 0, 0);
-    expect(k.state == "asking" && busy.visit()->mode == ControlMode::WatchOnly && busy.visit()->consoleBusy, "busy desk: zoé may watch, after the host says yes");
+    expect(k.state == "ready" && k.admitted && busy.visit()->mode == ControlMode::WatchOnly && busy.visit()->consoleBusy, "busy desk: zoé's access lets her watch at once");
+    busy.end(5);
+    std::vector<Access> asks{make("b3", "max", t1)};
+    asks[0].modes = AllowGuest | AllowTogether;
+    busy.setAccesses(asks);
+    k = busy.knock(t1, 6, 0, 0);
+    expect(k.state == "asking" && !k.admitted && busy.visit()->mode == ControlMode::Together, "busy desk: an access that asks still waits for the host's yes");
+    busy.end(7);
+    asks[0].ask = false;
+    busy.setAccesses(asks);
+    k = busy.knock(t1, 8, 0, 0);
+    expect(k.state == "ready" && k.admitted && busy.visit()->mode == ControlMode::Together, "busy desk: an access that does not ask plays à deux at once");
 
     // Friends whose access does not ask join a running visit at once.
     AccessDesk shared;

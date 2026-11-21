@@ -3852,11 +3852,11 @@
    "en": "sign out"
   },
   {
-   "fr": "seul à la console, il joue. si tu es en jeu, tu reçois toujours une demande.",
+   "fr": "seul à la console, il joue. si tu es en jeu, il te rejoint ainsi, sans demande si tu l'autorises automatiquement.",
    "src": [
     "qml/SettingsPage.qml"
    ],
-   "en": "alone at the console, they play. if you're in a game, you always get asked."
+   "en": "alone at the console, they play. if you're in a game, they join you this way, without asking if you allow them automatically."
   },
   {
    "fr": "si le direct échoue, le relais cloudflare prend la suite, dans sa limite du mois.",

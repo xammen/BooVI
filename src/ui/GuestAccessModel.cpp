@@ -438,6 +438,7 @@ void GuestAccessModel::endVisit() {
 void GuestAccessModel::startConsole() {
     consoleStarted_ = true;
     consoleAtMs_ = nowMs();
+    staleFailedSession_ = bridge_.failed() ? std::optional<uint64_t>(bridge_.sessionId()) : std::nullopt;
     if (sessionLive()) { veyra::log::info("guest-access", "console session already live"); return; }
     ownsSession_ = true;
     wokeByAccess_ = false;
@@ -549,7 +550,8 @@ void GuestAccessModel::tick() {
             return;
         }
         const bool idle = !ps5.value(QStringLiteral("busy")).toBool() && !ps5.value(QStringLiteral("active")).toBool() && !bridge_.openingSource() && !bridge_.running();
-        if ((idle && now - consoleAtMs_ > 8000) || bridge_.failed() || now - consoleAtMs_ > kConsoleMs) {
+        const bool failedNow = bridge_.failed() && bridge_.sessionId() != staleFailedSession_;
+        if ((idle && now - consoleAtMs_ > 8000) || failedNow || now - consoleAtMs_ > kConsoleMs) {
             finish(QStringLiteral("console injoignable"), "failed", tr("la ps5 ne répond pas"));
             return;
         }

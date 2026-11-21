@@ -304,8 +304,9 @@ public:
                 if (!mode) { out.status = 409; out.state = "busy"; return out; }
                 Visit v;
                 v.accessId = a.id; v.name = a.name; v.hash = a.hash; v.consoleBusy = consoleBusy_; v.mode = *mode; v.feed = a.feed;
-                // Joining the host's own game always asks them first.
-                v.phase = a.ask || consoleBusy_ ? VisitPhase::Asking : VisitPhase::Waking;
+                // An access that does not ask joins the host's running game at once, in the best
+                // mode it allows there (à deux, else watching); one that asks waits for the host.
+                v.phase = a.ask ? VisitPhase::Asking : consoleBusy_ ? VisitPhase::Ready : VisitPhase::Waking;
                 v.startedUs = v.knockUs = nowUs;
                 visit_ = v;
                 guests_.assign(1, VisitGuest{a.id, a.name, a.hash, v.phase != VisitPhase::Asking, *mode == ControlMode::WatchOnly, nowUs, nowUs});

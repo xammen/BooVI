@@ -938,6 +938,7 @@ public:
     bool running() const;
     bool paused() const;
     bool failed() const;
+    uint64_t sessionId() const;   // the engine's current source session; a new open gets a new one
     bool isImage() const;
     bool isCapture() const;
     bool hasSource() const;

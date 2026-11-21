@@ -136,6 +136,9 @@ private:
     bool consoleStarted_ = false, applied_ = false;
     bool friendLeft_ = false;   // a friend of this visit already has their line in the history
     bool ownsSession_ = false;   // this gateway started the console's session (kept for the rest delay)
+    // The session that had already failed when this visit asked for the console: its failure is
+    // not this visit's. Only a failure of another (newer) session ends the visit.
+    std::optional<uint64_t> staleFailedSession_;
     bool wokeByAccess_ = false;  // that session woke the console from rest mode
 };
 
