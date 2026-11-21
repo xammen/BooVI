@@ -2,84 +2,81 @@
 
 # BooVI
 
-[English](README_EN.md)
+BooVI is a Windows game streaming app: PS5 Remote Play, Xbox, PC (Moonlight) and capture cards.
+Your graphics card improves the picture it receives (super resolution, frame generation) at low
+latency. The interface is in English and French (**settings → language**).
 
-BooVI est une app Windows de streaming de jeu : PS5 en Lecture à distance, Xbox, PC (Moonlight)
-et cartes d'acquisition. Ta carte graphique améliore l'image reçue (super résolution, génération
-d'images) avec une latence basse.
+## Features
 
-## Ce que ça fait
+- **PS5**: Remote Play on the local network, DualSense with gyro, touchpad and rumble.
+- **Xbox**: streaming from your console (unofficial).
+- **PC**: Moonlight client for a Sunshine host.
+- **Capture cards**: shows and enhances the HDMI input.
+- **Super resolution**: DLSS, FSR, RTX Video.
+- **Frame generation**: DLSS Frame Generation, FSR 3.1, NVIDIA Video Frame Generation.
+- **Low latency**: presentation paced to the display, G-SYNC and Reflex on NVIDIA.
+- **Keyboard and mouse to controller**: play the PS5 without a pad.
+- **Recording** of the session.
+- **Remote play with a friend**: share your session, your friend joins with a link.
 
-- **PS5** : Lecture à distance sur le réseau local, manette DualSense avec gyroscope, pavé tactile et vibrations.
-- **Xbox** : streaming depuis ta console (non officiel).
-- **PC** : client Moonlight pour un hôte Sunshine.
-- **Carte d'acquisition** : affiche et améliore l'entrée HDMI.
-- **Super résolution** : DLSS, FSR, RTX Video.
-- **Génération d'images** : DLSS Frame Generation, FSR 3.1, NVIDIA Video Frame Generation.
-- **Latence basse** : présentation au rythme de l'écran, G-SYNC et Reflex sur NVIDIA.
-- **Clavier et souris vers manette** : jouer à la PS5 sans manette.
-- **Enregistrement** de la session.
-- **Jouer à distance avec un ami** : tu partages ta session, ton ami la rejoint avec un lien.
+## Requirements
 
-## Configuration
+- Windows 10 or 11, 64-bit.
+- A DirectX 12 graphics card and a recent driver.
+- NVIDIA RTX: DLSS (RTX 20 and later), DLSS Frame Generation (RTX 40 and 50).
+- AMD, Intel and others: FSR 3.1 for super resolution and frame generation.
 
-- Windows 10 ou 11, 64 bits.
-- Une carte graphique DirectX 12 et un pilote récent.
-- NVIDIA RTX : DLSS (RTX 20 et plus), DLSS Frame Generation (RTX 40 et 50).
-- AMD, Intel et autres : FSR 3.1 pour la super résolution et la génération d'images.
+## Download
 
-## Télécharger
+Get `BooVI-<version>-win64-portable.zip` from [Releases](../../releases). There is no installer.
 
-Va dans [Releases](../../releases) et prends `BooVI-<version>-win64-portable.zip`. Pas d'installateur.
+1. Extract the folder anywhere except `Program Files` (the Desktop works).
+2. Run `BooVI.exe`. Windows SmartScreen may ask you to "Run anyway".
 
-1. Décompresse le dossier où tu veux, sauf dans `Program Files` (par exemple sur le Bureau).
-2. Lance `BooVI.exe`. Windows SmartScreen peut demander « Exécuter quand même ».
+Settings stay in the app's folder. Console pairings and sharing secrets are encrypted for your
+Windows account in `%LOCALAPPDATA%\BooVI`.
 
-Les réglages restent dans le dossier de l'app. Les associations de consoles et les secrets de
-partage sont chiffrés pour ton compte Windows dans `%LOCALAPPDATA%\BooVI`.
+## Quick start: PS5
 
-## Démarrage rapide : PS5
+1. On the PS5: **Settings → System → Remote Play**, turn Remote Play on.
+2. In BooVI: **consoles → PS5**. Turn the PS5 on or leave it in rest mode; BooVI finds it on
+   your local network. Otherwise, enter its IP address.
+3. **Pair, once**: you need your PSN Account ID (**find my id** opens a site that shows it),
+   then the 8-digit code the PS5 shows under **Remote Play → Pair Device**.
+4. If the PS5 asks for your account's sign-in PIN, BooVI can remember it, encrypted on this PC.
+5. **Play**.
 
-1. Sur la PS5 : **Paramètres → Système → Lecture à distance**, active la Lecture à distance.
-2. Dans BooVI : **consoles → PS5**. Allume la PS5 ou laisse-la en mode repos ; BooVI la trouve
-   sur ton réseau local. Sinon, entre son adresse IP.
-3. **Associer, une seule fois** : il faut l'Account ID de ton compte PSN (**trouver mon id**
-   ouvre un site qui le donne), puis le code à 8 chiffres affiché par la PS5 dans
-   **Lecture à distance → Associer un appareil**.
-4. Si la PS5 demande le code de connexion de ton compte (PIN), BooVI peut le retenir, chiffré sur ce PC.
-5. **Jouer**.
+Controller:
 
-Manette :
+- **Disconnect your DualSense from the PS5 first** (turn it off by holding the PS button for
+  about ten seconds), or it drives the console directly and BooVI never sees it.
+- Plug it in over USB or pair it with the PC over Bluetooth.
+- Without a controller, the keyboard and mouse drive a virtual one.
 
-- **Déconnecte d'abord ta DualSense de la PS5** (éteins-la en maintenant le bouton PS une
-  dizaine de secondes), sinon elle pilote la console directement et BooVI ne la voit pas.
-- Branche-la en USB ou associe-la en Bluetooth au PC.
-- Sans manette, le clavier et la souris pilotent une manette virtuelle.
+## Remote play with a friend
 
-## Jouer à distance avec un ami
+During a session, **share** makes a link. Your friend pastes it in BooVI (**home →
+join a share**) or opens it in Chrome or Edge. On their side, their graphics card does
+the super resolution and frame generation.
 
-Pendant une session, **partager** crée un lien. Ton ami le colle dans BooVI (**accueil →
-rejoindre un partage**) ou l'ouvre dans Chrome ou Edge. Chez lui, sa carte graphique fait la
-super résolution et la génération d'images.
+The link goes through one of these paths, chosen in **settings → sharing**:
 
-Le lien passe par l'un de ces chemins, au choix dans **réglages → partage** :
+- **Broker** (default): an `https://…/<room>#t=…` link, nothing to install; the picture goes direct between you.
+- **Tailscale**: you are both in the same tailnet.
 
-- **Broker** (par défaut) : un lien `https://…/<salon>#t=…`, rien à installer ; l'image passe en direct entre vous deux.
-- **Tailscale** : vous êtes tous les deux dans le même tailnet.
+See [docs/SHARING.md](docs/SHARING.md).
 
-Voir [docs/SHARING.md](docs/SHARING.md).
+## Build from source
 
-## Compiler
+See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
-Voir [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) (en anglais).
+## License
 
-## Licence
+GPLv3, see [LICENSE](LICENSE). The PS5 part uses [chiaki-ng](https://github.com/streetpea/chiaki-ng)
+(AGPL-3.0). Third-party components and their licenses are listed in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and `licenses/`.
 
-GPLv3, voir [LICENSE](LICENSE). La partie PS5 utilise [chiaki-ng](https://github.com/streetpea/chiaki-ng)
-(AGPL-3.0). Les composants tiers et leurs licences sont listés dans
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) et `licenses/`.
+Based on [Veyra](https://github.com/Likely7/Veyra-NRVideo), GPLv3.
 
-Basé sur [Veyra](https://github.com/Likely7/Veyra-NRVideo), GPLv3.
-
-PlayStation, PS5 et DualSense sont des marques de Sony Interactive Entertainment. Xbox est une
-marque de Microsoft. BooVI n'est affilié à aucune des deux.
+PlayStation, PS5 and DualSense are trademarks of Sony Interactive Entertainment. Xbox is a
+trademark of Microsoft. BooVI is not affiliated with either.

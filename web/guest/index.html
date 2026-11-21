@@ -90,6 +90,21 @@ svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width:
 #pad .hint { color: var(--t2); line-height: 1.6; margin: 10px 0 0; font-size: 12px; }
 #pad .hint:empty { display: none; }
 #padActions { margin-top: 12px; }
+/* the live tester: what the browser reads from the pad, as it reads it */
+#padLive { margin-top: 12px; }
+#padLive[hidden] { display: none; }
+#padLive svg { display: block; width: 100%; height: auto; stroke: none; }
+#padLive .k { fill: var(--card3); stroke: var(--line2); stroke-width: 1; transition: fill .08s linear, stroke .08s linear; }
+#padLive .k.on { fill: var(--accent); stroke: var(--accent-hi); }
+#padLive .bar { fill: var(--accent); }
+#padLive .ring { fill: none; stroke: var(--line2); stroke-width: 1; }
+#padLive .ring.on { fill: var(--accent-soft); stroke: var(--accent-hi); }
+#padLive .stick { fill: var(--t1); }
+#padLive text { fill: var(--t2); font-family: var(--mono); font-size: 8px; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+#padLive .k.on + text { fill: var(--bg); }
+#padLive.idle svg { opacity: .45; }
+#padMeta { color: var(--t3); font-size: 11px; margin-top: 6px; min-height: 1.6em; line-height: 1.6; }
+#padMeta.ok { color: var(--ok); }
 #padActions:empty { display: none; }
 #pad details { margin-top: 12px; color: var(--t2); font-size: 12px; line-height: 1.6; }
 #pad summary { cursor: pointer; color: var(--t3); }
@@ -159,6 +174,29 @@ svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width:
     <div class="head"><i class="dot" id="padDot2"></i><span class="name" id="padName">aucune manette détectée</span><span class="tag" id="padTag"></span>
       <button class="btn" id="padClose" title="fermer">fermer</button></div>
     <p class="hint" id="padHint"></p>
+    <div id="padLive" class="idle">
+      <svg viewBox="0 0 300 124" aria-label="test de la manette" role="img">
+        <rect class="k" data-b="6" x="16" y="4" width="64" height="9" rx="3"/><rect class="bar" id="liveL2" x="16" y="4" width="0" height="9" rx="3"/><text x="48" y="8.5">L2</text>
+        <rect class="k" data-b="7" x="220" y="4" width="64" height="9" rx="3"/><rect class="bar" id="liveR2" x="220" y="4" width="0" height="9" rx="3"/><text x="252" y="8.5">R2</text>
+        <rect class="k" data-b="4" x="16" y="18" width="64" height="12" rx="4"/><text x="48" y="24">L1</text>
+        <rect class="k" data-b="5" x="220" y="18" width="64" height="12" rx="4"/><text x="252" y="24">R1</text>
+        <rect class="k" data-b="12" x="40" y="40" width="16" height="16" rx="3"/><text x="48" y="48">↑</text>
+        <rect class="k" data-b="13" x="40" y="72" width="16" height="16" rx="3"/><text x="48" y="80">↓</text>
+        <rect class="k" data-b="14" x="24" y="56" width="16" height="16" rx="3"/><text x="32" y="64">←</text>
+        <rect class="k" data-b="15" x="56" y="56" width="16" height="16" rx="3"/><text x="64" y="64">→</text>
+        <circle class="k" data-b="3" cx="252" cy="47" r="9"/><text x="252" y="47">△</text>
+        <circle class="k" data-b="0" cx="252" cy="81" r="9"/><text x="252" y="81">✕</text>
+        <circle class="k" data-b="2" cx="235" cy="64" r="9"/><text x="235" y="64">□</text>
+        <circle class="k" data-b="1" cx="269" cy="64" r="9"/><text x="269" y="64">○</text>
+        <rect class="k" data-b="8" x="96" y="36" width="18" height="10" rx="3"/><text x="105" y="41">cr</text>
+        <rect class="k" data-b="9" x="186" y="36" width="18" height="10" rx="3"/><text x="195" y="41">op</text>
+        <rect class="k" data-b="17" x="120" y="30" width="60" height="28" rx="5"/><text x="150" y="44">pavé</text>
+        <circle class="k" data-b="16" cx="150" cy="70" r="7"/><text x="150" y="70">ps</text>
+        <circle class="ring" id="liveL3" cx="110" cy="98" r="20"/><circle class="stick" id="liveLS" cx="110" cy="98" r="5"/>
+        <circle class="ring" id="liveR3" cx="190" cy="98" r="20"/><circle class="stick" id="liveRS" cx="190" cy="98" r="5"/>
+      </svg>
+      <div id="padMeta"></div>
+    </div>
     <div id="remap" hidden>
       <div class="progress"><i id="remapBar"></i></div>
       <div class="prompt"><span id="remapGlyph"></span><div><div id="remapWhat"></div><div id="remapSeen"></div></div></div>
@@ -1398,6 +1436,43 @@ function poll() {
     $("padDot").className = "dot " + (s.connected ? "ok" : "err");
   }
   if (situation() !== renderPad.at) renderPad();
+  drawLive(s, key);
+}
+
+// The live tester. Browsers hide a pad from a page until a button is pressed while that page is
+// in front (a privacy rule), so with none it says exactly that; with one it lights what it reads.
+const live = { key: "", keys: null, seen: 0 };
+function drawLive(s, key) {
+  const box = $("padLive"), pad = $("pad");
+  const shown = !(pad.classList.contains("floating") && pad.classList.contains("off")) && !remap;
+  box.hidden = !shown;
+  if (!shown) return;
+  const focus = document.hasFocus();
+  const full = key + "|" + focus + "|" + s.kind;
+  if (full === live.key) return;
+  live.key = full;
+  if (!live.keys) live.keys = [...box.querySelectorAll("[data-b]")].map(el => [el, 1 << Number(el.dataset.b)]);
+  for (const [el, bit] of live.keys) el.classList.toggle("on", !!(s.buttons & bit));
+  $("liveL2").setAttribute("width", (64 * s.l2 / 255).toFixed(1));
+  $("liveR2").setAttribute("width", (64 * s.r2 / 255).toFixed(1));
+  const at = (id, x, y, cx, cy) => { $(id).setAttribute("cx", (cx + 14 * x / 32767).toFixed(1)); $(id).setAttribute("cy", (cy + 14 * y / 32767).toFixed(1)); };
+  at("liveLS", s.axes[0], s.axes[1], 110, 98);
+  at("liveRS", s.axes[2], s.axes[3], 190, 98);
+  $("liveL3").classList.toggle("on", !!(s.buttons & 1 << 10));
+  $("liveR3").classList.toggle("on", !!(s.buttons & 1 << 11));
+  box.classList.toggle("idle", !s.connected);
+  const meta = $("padMeta");
+  const pressed = s.buttons || s.l2 > 8 || s.r2 > 8 || s.axes.some(a => Math.abs(a) > 8000);
+  if (s.connected && pressed) live.seen++;
+  let text, ok = false;
+  if (!s.connected) {
+    text = !focus ? "clique dans cette page, puis appuie sur croix : le navigateur ne montre une manette qu'à la page au premier plan."
+                  : "appuie sur croix (pas sur ps) : le navigateur ne montre la manette qu'après un appui dans cette page.";
+  } else if (s.synthetic) text = "test manette : le stick droit tourne tout seul.";
+  else if (live.seen) { text = "manette vue · les touches s'allument quand tu appuies"; ok = true; }
+  else text = "manette vue · appuie sur une touche pour vérifier";
+  meta.textContent = text;
+  meta.classList.toggle("ok", ok);
 }
 
 function setTest(on) { testOn = on; testT0 = performance.now(); $("btnTest").classList.toggle("on", on); toast(on ? "test manette : le stick droit tourne" : "test manette arrêté"); }
@@ -1433,7 +1508,7 @@ function renderRemap() {
 function renderPad() {
   const sit = renderPad.at = situation(), gp = currentPad();
   const views = {
-    none: ["err", "aucune manette détectée", "", "", "appuie sur un bouton de ta manette. toujours rien ? c'est souvent une steam controller : voir ci-dessous."],
+    none: ["err", "aucune manette détectée", "", "", "toujours rien après un appui ? une dualsense encore reliée à la ps5 ne parle qu'à la ps5 : éteins-la (ps 10 s) et rebranche-la au pc. une steam controller : voir ci-dessous."],
     "steam-wait": ["busy", "steam controller ouverte", "webhid", "", "allume-la ou appuie sur un bouton : elle apparaît dès son premier signal."],
     steam: ["ok", steam.name, "webhid", "ok", "pavé droit = stick droit · clic du pavé gauche = croix · poignée gauche = pavé tactile, droite = R3 · steam = PS"],
     test: ["ok", "test manette", "", "", "le stick droit tourne tout seul."],
