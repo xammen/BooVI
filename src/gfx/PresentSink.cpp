@@ -461,6 +461,11 @@ PresentSink::FrameStatisticsDelta PresentSink::sampleFrameStatistics(){
     }
     UINT lastPresent=0;
     if(SUCCEEDED(swapChain_->GetLastPresentCount(&lastPresent)))delta.ahead=int64_t(lastPresent)-int64_t(stats.PresentCount);
+    if(stats.SyncQPCTime.QuadPart){
+        static const double frequency=[]{LARGE_INTEGER f{};QueryPerformanceFrequency(&f);return double(f.QuadPart);}();
+        LARGE_INTEGER now{};QueryPerformanceCounter(&now);
+        delta.statsAgeMs=double(now.QuadPart-stats.SyncQPCTime.QuadPart)*1000.0/frequency;
+    }
     frameStatisticsBaseValid_=true;
     frameStatisticsBasePresents_=presentCount_;
     frameStatisticsBaseDisplayed_=stats.PresentCount;
@@ -532,7 +537,8 @@ PresentSink::DisplayLatencySummary PresentSink::takeDisplayLatency(){
     }
     ComPtr<IDXGISwapChainMedia> media;
     DXGI_FRAME_STATISTICS_MEDIA statistics{};
-    if(displayLatencyEnabled_&&!xess_&&swapChain_&&SUCCEEDED(swapChain_.As(&media))&&SUCCEEDED(media->GetFrameStatisticsMedia(&statistics)))
+    summary.compositionQuery=!displayLatencyEnabled_||xess_||!swapChain_?E_NOT_VALID_STATE:swapChain_.As(&media);
+    if(SUCCEEDED(summary.compositionQuery)&&SUCCEEDED(summary.compositionQuery=media->GetFrameStatisticsMedia(&statistics)))
         summary.compositionMode=int(statistics.CompositionMode);
     return summary;
 }

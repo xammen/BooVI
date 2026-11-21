@@ -36,6 +36,25 @@ partage**). Nothing to install on either side.
 - **Media never goes through the Worker.** The picture, sound and controller travel by WebRTC,
   direct when the two networks allow it.
 
+## Several friends on one link
+
+Up to six friends (four by default, **réglages → partage → invités à la fois**) open the same link
+or their own access. They all watch, with sound; one holds the PS5's controller. In **partager**
+you see who is there, pass the controller, make someone watch-only, take it back, roll the dice or
+disconnect one friend. On their page (or in their BooVI) friends ask for the controller, wait in
+the queue, give it back or roll the dice, which this PC draws. Optional: a turn length, and the
+controller coming back to you when you press your own pad. Each friend gets the picture their link
+takes; **envoi max** is your whole upload, shared among them, the player first. Who played and how
+long is kept in **réglages → partage → historique des parties**.
+
+A Discord channel can hear about it (ps5 libre, who connects, who has the controller, the queue,
+the dice, the share's start, stop or a stuck share): paste a webhook in **réglages → partage →
+discord**. The link is checked, encrypted with DPAPI in `%LOCALAPPDATA%\BooVI\guest\discord.dpapi`,
+never shown again and never logged. Messages are grouped, at most one every 3 s.
+
+Nothing changes on the broker: everything after the connection travels on each friend's own
+WebRTC connection. Design and measurements: [notes/MULTI_GUEST_2026-11-21.md](notes/MULTI_GUEST_2026-11-21.md).
+
 ## The relay (TURN)
 
 When the direct path fails (two strict NATs), a TURN relay carries the stream. Two ways to have

@@ -45,7 +45,14 @@ std::string percentiles(std::vector<float>& values) {
 } // namespace
 
 void RemotePlayInput::start() {
-    if (running()) return;
+    {
+        // Under the lock the thread decides to end with: either it already chose to end, and is
+        // joined here, or it reads the session opened before this call and keeps running.
+        std::lock_guard lock(mutex_);
+        if (running() && !ended_) return;
+    }
+    if (running()) thread_.join();
+    ended_ = false;
     focused_ = true;
     thread_ = std::jthread([this](std::stop_token stop) { run(stop); });
 }
@@ -192,6 +199,8 @@ void RemotePlayInput::run(std::stop_token stop) {
         if (rawOn || sweeping) state = remoteplay::mergeInputs(state, kbm.sample(now));
 #ifdef VEYRA_ENABLE_GUEST
         guest::GuestStreamer* const guest = guest_.load();
+        // The owner's own pad first: a new button takes the controller back from a guest.
+        if (guest && focused) guest->hostPad(state, now);
         const auto guestPad = guest ? guest->guestState(now) : std::nullopt;
         if (guest) state = guest::combine(guest->mode(), state, guestPad);
 #endif
@@ -222,6 +231,12 @@ void RemotePlayInput::run(std::stop_token stop) {
         if (iteration++ % 100 == 0) {
             std::lock_guard lock(mutex_);
             capabilities_ = pad.capabilities();
+            if (const auto session = engine_.inputSession(); !remoteplay::inputWanted(session)) {
+                ended_ = true;
+                veyra::log::info("remoteplay-input", std::format("the session ended (remotePlay={} share={} running={}); the input thread stops by itself",
+                    session.remotePlay, session.guestClient, session.running));
+                break;
+            }
         }
         if (gaps.size() >= 10000) {   // about 10 s at 1 ms
             std::string line = std::format("loop interval ms {} samples={} sends={} focused={} kbm={}", percentiles(gaps), gaps.size(), sends, focused, rawOn);

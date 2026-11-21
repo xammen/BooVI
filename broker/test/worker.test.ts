@@ -111,6 +111,20 @@ describe("a room", () => {
     expect(fromB.g).not.toBe(got.g);
   });
 
+  it("carries four guests' signaling at once, each reply to its own guest (BooVI 1.1's room)", async () => {
+    const h = await host();
+    const guests = await Promise.all([0, 1, 2, 3].map(() => guest(h.room.id)));
+    guests.forEach((g, i) => g.send({ id: 1, path: "/session", body: { token: "t", name: `friend${i}`, gid: `tab${i}` } }));
+    const seen = new Map<string, number>();
+    for (let k = 0; k < 4; ++k) {
+      const m = await h.next() as { g: string; d: string };
+      seen.set(m.g, Number((JSON.parse(m.d) as { body: { gid: string } }).body.gid.slice(3)));
+    }
+    expect(seen.size).toBe(4);
+    for (const [g, i] of seen) h.send({ t: "msg", g, d: JSON.stringify({ id: 1, status: 200, body: `{"for":${i}}` }) });
+    for (const [i, g] of guests.entries()) expect(await g.next()).toEqual({ id: 1, status: 200, body: `{"for":${i}}` });
+  });
+
   it("tells a guest the host is not there", async () => {
     const room = await newRoom();
     const g = await guest(room.id);

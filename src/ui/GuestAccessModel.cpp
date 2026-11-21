@@ -35,6 +35,7 @@ constexpr qint64 kAskMs = 60'000;          // the host's answer, then refused
 constexpr qint64 kAbandonUs = 20'000'000;  // a page that stopped knocking before it got in
 constexpr qint64 kConsoleMs = 150'000;     // wake, connect and the first picture
 constexpr qint64 kGoneMs = 15'000;         // the friend's peer gone this long: they left
+constexpr int kRetryHoldMs = 90'000;       // a visit that ended before the picture keeps the console this long
 constexpr int kHistory = 40;
 const QString kRunKey = QStringLiteral("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run");
 const QString kRunName = QStringLiteral("BooVI");
@@ -82,6 +83,7 @@ GuestAccessModel::GuestAccessModel(guest::GuestStreamer& streamer, GuestShareMod
     restTimer_->setSingleShot(true);
     connect(restTimer_, &QTimer::timeout, this, &GuestAccessModel::restConsole);
     connect(&bridge_, &QmlPlayerBridge::preferencesChanged, this, [this] { desk_.setHostName(hostName().toStdString()); });
+    connect(&share_, &GuestShareModel::friendCut, this, &GuestAccessModel::cutFriend);
     testSetup();
     if (bridge_.preferences().value(QStringLiteral("gatewayEnabled")).toBool())
         QTimer::singleShot(1000, this, [this] { setGateway(true); });
@@ -140,7 +142,11 @@ void GuestAccessModel::save() {
         veyra::log::warn("guest-access", "the accesses could not be saved");
 }
 
-void GuestAccessModel::publish() { desk_.setAccesses(accesses_); emit changed(); }
+// A revoked or regenerated access: the desk lets that friend go at once, and their connection is cut here.
+void GuestAccessModel::publish() {
+    for (const auto& g : desk_.setAccesses(accesses_)) leaveFriend(g, QStringLiteral("révoqué"));
+    emit changed();
+}
 
 QString GuestAccessModel::makeToken(guest::Access& access) {
     std::string token = guest::newAccessToken();
@@ -178,6 +184,10 @@ QVariantList GuestAccessModel::history() const {
 void GuestAccessModel::create(const QString& rawName, bool ask, int modes, const QString& feed, int days, const QString& from, const QString& to) {
     const QString name = cleanName(rawName);
     if (name.isEmpty()) { emit notice(tr("donne un nom à ton invité"), true); return; }
+    if (std::ranges::any_of(accesses_, [&](const guest::Access& a) { return QString::fromStdString(a.name).compare(name, Qt::CaseInsensitive) == 0; })) {
+        emit notice(tr("tu as déjà un invité nommé %1 : choisis un autre nom").arg(name), true);
+        return;
+    }
     guest::Access a;
     a.id = guest::randomBase64Url(9).substr(0, 12);
     a.name = name.toStdString();
@@ -222,7 +232,7 @@ void GuestAccessModel::revoke(const QString& id) {
     const std::string name = it->name;
     accesses_.erase(it);
     save();
-    publish();   // the desk drops their visit at once; tick() ends it here
+    publish();   // the desk lets them go at once, their connection is cut; tick() ends the visit when it was theirs
     veyra::log::info("guest-access", "access revoked: " + name);
     tick();
 }
@@ -325,9 +335,8 @@ void GuestAccessModel::updateTray() {
     trayMenu_->clear();
     trayMenu_->addAction(tr("BooVI · accueil des invités actif"))->setEnabled(false);
     trayMenu_->addSeparator();
-    const bool asking = current_ && current_->phase == guest::VisitPhase::Asking;
-    if (asking) {
-        const QString name = QString::fromStdString(current_->name);
+    if (const auto g = pendingGuest()) {
+        const QString name = QString::fromStdString(g->name);
         trayMenu_->addAction(tr("accepter %1").arg(name), this, &GuestAccessModel::approve);
         trayMenu_->addAction(tr("refuser %1").arg(name), this, &GuestAccessModel::refuse);
     } else if (current_) {
@@ -343,14 +352,29 @@ void GuestAccessModel::updateTray() {
 
 QVariantMap GuestAccessModel::visit() const {
     if (!current_) return {};
+    QStringList friends;
+    for (const auto& g : desk_.guests()) friends << QString::fromStdString(g.name);
     return {{"name", QString::fromStdString(current_->name)}, {"phase", QString::fromLatin1(guest::visitPhaseName(current_->phase).data())},
-            {"busy", current_->consoleBusy}, {"mode", modeName(current_->mode)}, {"since", double(playingSinceMs_)}};
+            {"busy", current_->consoleBusy}, {"mode", modeName(current_->mode)}, {"since", double(playingSinceMs_)}, {"friends", friends}};
+}
+
+// The friend waiting for the host's yes: the visit's starter while it asks, else a later friend.
+std::optional<guest::VisitGuest> GuestAccessModel::pendingGuest() const {
+    if (!current_) return std::nullopt;
+    const bool asking = current_->phase == guest::VisitPhase::Asking;
+    for (const auto& g : desk_.guests())
+        if (asking ? g.accessId == current_->accessId : !g.approved) return g;
+    return std::nullopt;
 }
 
 QVariantMap GuestAccessModel::pending() const {
-    if (!current_ || current_->phase != guest::VisitPhase::Asking) return {};
-    return {{"name", QString::fromStdString(current_->name)}, {"busy", current_->consoleBusy}, {"mode", modeName(current_->mode)},
-            {"left", int(std::max<qint64>(0, (askedAtMs_ + kAskMs - nowMs()) / 1000))}};
+    const auto g = pendingGuest();
+    if (!g) return {};
+    const qint64 asked = seen_.value(QString::fromStdString(g->accessId)).askedMs;
+    const bool starter = current_->phase == guest::VisitPhase::Asking;
+    return {{"name", QString::fromStdString(g->name)}, {"busy", starter && current_->consoleBusy}, {"joining", !starter},
+            {"mode", g->watchOnly ? QStringLiteral("watch") : modeName(current_->mode)},
+            {"left", int(std::max<qint64>(0, ((asked ? asked : askedAtMs_) + kAskMs - nowMs()) / 1000))}};
 }
 
 bool GuestAccessModel::sessionLive() const {
@@ -366,37 +390,44 @@ bool GuestAccessModel::consoleBusy() const {
 void GuestAccessModel::startVisit(const guest::Visit& v) {
     current_ = v;
     askedAtMs_ = nowMs();
-    consoleAtMs_ = playingSinceMs_ = seenAtMs_ = 0;
-    consoleStarted_ = applied_ = false;
+    consoleAtMs_ = playingSinceMs_ = 0;
+    consoleStarted_ = applied_ = friendLeft_ = false;
+    seen_.clear();
     restTimer_->stop();
     veyra::log::info("guest-access", std::format("{}: visit begins, {} console, mode {}, {}", v.name, v.consoleBusy ? "busy" : "free",
                                                  modeName(v.mode).toStdString(), v.phase == guest::VisitPhase::Asking ? "asking the host" : "approved by the access"));
-    if (v.phase == guest::VisitPhase::Asking) {
-        const QString name = QString::fromStdString(v.name);
-        const QString text = v.consoleBusy ? tr("%1 voudrait te rejoindre (%2)").arg(name, v.mode == guest::ControlMode::Together ? tr("à deux") : tr("regarder"))
-                                           : tr("%1 veut jouer sur ta ps5").arg(name);
-        if (tray_) tray_->showMessage(QStringLiteral("BooVI"), text, QSystemTrayIcon::Information, int(kAskMs));
-        emit notice(text, false);
-        if (qEnvironmentVariableIntValue("VEYRA_TEST_ACCESS_APPROVE") == 1) QTimer::singleShot(1000, this, &GuestAccessModel::approve);
-    }
+    if (v.phase == guest::VisitPhase::Asking) ask(QString::fromStdString(v.name), v.consoleBusy, v.mode);
     updateTray();
 }
 
+void GuestAccessModel::ask(const QString& name, bool busy, guest::ControlMode mode) {
+    const QString text = busy ? tr("%1 voudrait te rejoindre (%2)").arg(name, mode == guest::ControlMode::Together ? tr("à deux") : tr("regarder"))
+                              : tr("%1 veut jouer sur ta ps5").arg(name);
+    if (tray_) tray_->showMessage(QStringLiteral("BooVI"), text, QSystemTrayIcon::Information, int(kAskMs));
+    emit notice(text, false);
+    if (qEnvironmentVariableIntValue("VEYRA_TEST_ACCESS_APPROVE") == 1) QTimer::singleShot(1000, this, &GuestAccessModel::approve);
+}
+
 void GuestAccessModel::approve() {
-    if (!current_ || current_->phase != guest::VisitPhase::Asking) return;
+    const auto g = pendingGuest();
+    if (!g) return;
     // A click or key press already under way when the card appears must not let a guest in.
-    if (nowMs() - askedAtMs_ < 1200 && qEnvironmentVariableIntValue("VEYRA_TEST_ACCESS_APPROVE") != 1) {
-        veyra::log::info("guest-access", current_->name + ": approval ignored, the request is under 1.2 s old");
+    const qint64 asked = seen_.value(QString::fromStdString(g->accessId)).askedMs;
+    if (nowMs() - (asked ? asked : askedAtMs_) < 1200 && qEnvironmentVariableIntValue("VEYRA_TEST_ACCESS_APPROVE") != 1) {
+        veyra::log::info("guest-access", g->name + ": approval ignored, the request is under 1.2 s old");
         return;
     }
-    veyra::log::info("guest-access", current_->name + ": approved by the host");
-    desk_.setPhase(current_->consoleBusy ? guest::VisitPhase::Ready : guest::VisitPhase::Waking);
+    veyra::log::info("guest-access", g->name + ": approved by the host");
+    if (current_->phase == guest::VisitPhase::Asking) desk_.setPhase(current_->consoleBusy ? guest::VisitPhase::Ready : guest::VisitPhase::Waking);
+    else desk_.approveGuest(g->accessId);
     tick();
 }
 
 void GuestAccessModel::refuse() {
-    if (!current_ || current_->phase != guest::VisitPhase::Asking) return;
-    finish(QStringLiteral("refusé"), "refused");
+    const auto g = pendingGuest();
+    if (!g) return;
+    if (current_->phase == guest::VisitPhase::Asking) { finish(QStringLiteral("refusé"), "refused"); return; }
+    leaveFriend(*g, QStringLiteral("refusé"), "refused");
 }
 
 void GuestAccessModel::endVisit() {
@@ -420,8 +451,35 @@ void GuestAccessModel::startConsole() {
     bridge_.ps5Play();
 }
 
+// One friend of the visit leaves it; the visit goes on with the others.
+void GuestAccessModel::leaveFriend(const guest::VisitGuest& g, const QString& outcome, const char* state, const QString& detail) {
+    const QString id = QString::fromStdString(g.accessId);
+    const Seen s = seen_.take(id);
+    desk_.leave(g.accessId, nowUs(), state ? state : "", detail.toStdString());
+    share_.dropAccess(QString::fromStdString(g.accessId));
+    const qint64 seconds = s.firstMs ? (s.lastMs - s.firstMs) / 1000 : 0;
+    history_.push_back({QString::fromStdString(g.name), s.joinedMs ? s.joinedMs : nowMs(), seconds, outcome});
+    friendLeft_ = true;
+    if (history_.size() > size_t(kHistory)) history_.erase(history_.begin(), history_.end() - kHistory);
+    save();
+    veyra::log::info("guest-access", std::format("{}: leaves the visit ({}) after {} s", g.name, outcome.toStdString(), seconds));
+    updateTray();
+    emit changed();
+}
+
+// The host disconnected this friend from the share panel: their visit ends, and their page reads
+// why instead of knocking straight back in.
+void GuestAccessModel::cutFriend(const QString& accessId) {
+    const auto guests = desk_.guests();
+    const auto it = std::ranges::find_if(guests, [&](const guest::VisitGuest& g) { return QString::fromStdString(g.accessId) == accessId; });
+    if (it == guests.end()) return;
+    leaveFriend(*it, QStringLiteral("déconnecté"), "ended", tr("%1 t'a déconnecté").arg(hostName().isEmpty() ? tr("ton ami") : hostName()));
+    if (desk_.guests().empty()) finish(QStringLiteral("déconnecté"));
+}
+
 void GuestAccessModel::tick() {
     desk_.setConsoleBusy(consoleBusy());
+    desk_.setCapacity(std::clamp(bridge_.preferences().value(QStringLiteral("guestMaxViewers"), 4).toInt(), 1, 6));
     const auto v = desk_.visit();
     // The desk dropped the visit (a revoked or regenerated access).
     if (current_ && (!v || v->startedUs != current_->startedUs)) finish(QStringLiteral("révoqué"));
@@ -434,8 +492,36 @@ void GuestAccessModel::tick() {
     const guest::VisitPhase phaseBefore = current_->phase;
     current_->phase = v->phase;
     const qint64 now = nowMs();
-    const int64_t silentUs = nowUs() - v->knockUs;
     const auto ps5 = bridge_.ps5();
+    const QStringList here = share_.accessIds();
+    // Every friend in the visit: asked, here, or gone.
+    for (const auto& g : desk_.guests()) {
+        const QString id = QString::fromStdString(g.accessId), name = QString::fromStdString(g.name);
+        Seen& s = seen_[id];
+        if (!s.joinedMs) {
+            s.joinedMs = now;
+            if (!g.approved && id != QString::fromStdString(v->accessId)) { s.askedMs = now; ask(name, false, g.watchOnly ? guest::ControlMode::WatchOnly : v->mode); }
+        }
+        if (here.contains(id)) {
+            if (!s.firstMs) {
+                s.firstMs = now;
+                veyra::log::info("guest-access", g.name + ": connected");
+                emit notice(tr("%1 a rejoint ta ps5").arg(name), false);
+            }
+            s.lastMs = now;
+            continue;
+        }
+        const bool starter = id == QString::fromStdString(v->accessId);
+        const bool knocking = nowUs() - g.knockUs < kAbandonUs;
+        if (s.firstMs && now - s.lastMs > kGoneMs) { if (!starter || desk_.guests().size() > 1) leaveFriend(g, QStringLiteral("joué")); continue; }
+        if (!starter && !g.approved && s.askedMs && now - s.askedMs > kAskMs) { leaveFriend(g, QStringLiteral("sans réponse"), "refused", tr("pas de réponse de %1").arg(hostName().isEmpty() ? tr("ton ami") : hostName())); continue; }
+        if (!starter && !s.firstMs && !knocking && now - s.joinedMs > kAbandonUs / 1000) { leaveFriend(g, QStringLiteral("parti avant l'image")); continue; }
+    }
+    // The starter left while others stay: the visit is theirs now; it ends with the last one.
+    const auto guests = desk_.guests();
+    auto present = [&](const guest::VisitGuest& g) { return here.contains(QString::fromStdString(g.accessId)); };
+    const bool starterHere = std::any_of(guests.begin(), guests.end(), [&](const guest::VisitGuest& g) { return g.accessId == v->accessId && present(g); });
+    const int64_t silentUs = nowUs() - v->knockUs;
     switch (v->phase) {
     case guest::VisitPhase::Asking:
         if (silentUs > kAbandonUs) { finish(QStringLiteral("parti avant l'accord")); return; }
@@ -446,13 +532,15 @@ void GuestAccessModel::tick() {
         break;
     case guest::VisitPhase::Waking:
     case guest::VisitPhase::Connecting: {
-        if (silentUs > kAbandonUs) { finish(QStringLiteral("parti pendant le réveil")); return; }
+        // The friends connect while the console wakes (their pages stop knocking once they are in).
+        if (!applied_) { share_.applyVisit(current_->mode, current_->feed); applied_ = true; }
+        if (silentUs > kAbandonUs && !starterHere) { finish(QStringLiteral("parti pendant le réveil")); return; }
         if (!consoleStarted_) startConsole();
         if (sessionLive()) {
             wokeByAccess_ = wokeByAccess_ || (ownsSession_ && ps5.value(QStringLiteral("woke")).toBool());
             desk_.setPhase(guest::VisitPhase::Ready);
-            veyra::log::info("guest-access", std::format("{}: console streaming after {:.1f} s{}", current_->name, double(now - consoleAtMs_) / 1000.0,
-                                                         wokeByAccess_ ? ", woken by this visit" : ""));
+            veyra::log::info("guest-access", std::format("{}: console streaming after {:.1f} s{}{}", current_->name, double(now - consoleAtMs_) / 1000.0,
+                                                         wokeByAccess_ ? ", woken by this visit" : "", starterHere ? ", the friend already connected" : ""));
             break;
         }
         if (v->phase == guest::VisitPhase::Waking && (ps5.value(QStringLiteral("active")).toBool() || bridge_.openingSource())) desk_.setPhase(guest::VisitPhase::Connecting);
@@ -470,26 +558,23 @@ void GuestAccessModel::tick() {
     case guest::VisitPhase::Ready:
     case guest::VisitPhase::Playing: {
         if (!applied_) { share_.applyVisit(current_->mode, current_->feed); applied_ = true; }
-        const auto s = streamer_.status();
-        const bool here = s.phase == guest::Phase::Connected && s.accessName == current_->name;
-        if (here) {
-            seenAtMs_ = now;
-            if (v->phase == guest::VisitPhase::Ready) {
-                desk_.setPhase(guest::VisitPhase::Playing);
-                playingSinceMs_ = now;
-                veyra::log::info("guest-access", current_->name + ": playing");
-                emit notice(tr("%1 a rejoint ta ps5").arg(QString::fromStdString(current_->name)), false);
-            }
-            const int idleMinutes = bridge_.preferences().value(QStringLiteral("gatewayIdleMinutes"), 20).toInt();
-            if (idleMinutes > 0 && s.idleSeconds > idleMinutes * 60.0) { finish(QStringLiteral("inactif"), "ended", tr("plus de manette depuis %1 min").arg(idleMinutes)); return; }
-        } else if (v->phase == guest::VisitPhase::Ready && silentUs > kAbandonUs) {
-            finish(QStringLiteral("parti avant l'image"));
-            return;
-        } else if (v->phase == guest::VisitPhase::Playing && now - seenAtMs_ > kGoneMs) {
-            finish(QStringLiteral("joué"));
-            return;
+        const bool anyone = std::any_of(guests.begin(), guests.end(), present);
+        if (anyone && v->phase == guest::VisitPhase::Ready) {
+            desk_.setPhase(guest::VisitPhase::Playing);
+            playingSinceMs_ = now;
+            veyra::log::info("guest-access", std::format("{}: playing, {:.1f} s after the visit began", current_->name, double(now - askedAtMs_) / 1000.0));
         }
-        // The kept or joined stream ended under the friend.
+        if (guests.empty()) { finish(QStringLiteral("joué")); return; }
+        if (!anyone && v->phase == guest::VisitPhase::Ready && silentUs > kAbandonUs) { finish(QStringLiteral("parti avant l'image")); return; }
+        if (!anyone && v->phase == guest::VisitPhase::Playing) {
+            bool gone = true;
+            for (const auto& g : guests) { const Seen s = seen_.value(QString::fromStdString(g.accessId)); gone &= !s.lastMs || now - s.lastMs > kGoneMs; }
+            if (gone) { finish(QStringLiteral("joué")); return; }
+        }
+        // Nobody's pad moved for the idle delay: the visit ends and the console rests.
+        const int idleMinutes = bridge_.preferences().value(QStringLiteral("gatewayIdleMinutes"), 20).toInt();
+        if (anyone && idleMinutes > 0 && share_.playIdleSeconds() > idleMinutes * 60.0) { finish(QStringLiteral("inactif"), "ended", tr("plus de manette depuis %1 min").arg(idleMinutes)); return; }
+        // The kept or joined stream ended under the friends.
         if (!current_->consoleBusy && !sessionLive() && !bridge_.openingSource() && now - consoleAtMs_ > 10000) {
             finish(QStringLiteral("console perdue"), "failed", tr("la ps5 a coupé le stream"));
             return;
@@ -505,22 +590,35 @@ void GuestAccessModel::finish(const QString& outcome, const char* state, const Q
     if (!current_) return;
     const guest::Visit v = *current_;
     current_.reset();
+    const auto guests = desk_.guests();
     desk_.end(nowUs(), state ? state : "", detail.toStdString());
     const qint64 now = nowMs();
-    // Play time ends when the friend was last seen, not after the grace that tells they left.
-    const qint64 seconds = playingSinceMs_ ? ((seenAtMs_ ? seenAtMs_ : now) - playingSinceMs_) / 1000 : 0;
-    const auto s = streamer_.status();
-    if (s.accessName == v.name && s.phase != guest::Phase::Off && s.phase != guest::Phase::Waiting) streamer_.kick();
+    for (const auto& g : guests) {
+        share_.dropAccess(QString::fromStdString(g.accessId));
+        const Seen s = seen_.value(QString::fromStdString(g.accessId));
+        // Play time ends when the friend was last seen, not after the grace that tells they left.
+        const qint64 seconds = s.firstMs ? ((s.lastMs ? s.lastMs : now) - s.firstMs) / 1000 : 0;
+        history_.push_back({QString::fromStdString(g.name), s.joinedMs ? s.joinedMs : askedAtMs_, seconds, outcome});
+        veyra::log::info("guest-access", std::format("{}: visit ended ({}) after {} s connected", g.name, outcome.toStdString(), seconds));
+    }
+    if (guests.empty() && !friendLeft_) history_.push_back({QString::fromStdString(v.name), askedAtMs_, 0, outcome});
+    seen_.clear();
     if (applied_) share_.endVisit();
-    history_.push_back({QString::fromStdString(v.name), askedAtMs_, seconds, outcome});
     if (history_.size() > size_t(kHistory)) history_.erase(history_.begin(), history_.end() - kHistory);
     save();
-    veyra::log::info("guest-access", std::format("{}: visit ended ({}) after {} s of play", v.name, outcome.toStdString(), seconds));
-    if (outcome != QLatin1String("refusé") && playingSinceMs_) emit notice(tr("%1 est parti").arg(QString::fromStdString(v.name)), false);
-    // The console: only a session this gateway started is stopped or put to rest.
+    if (outcome != QStringLiteral("refusé") && playingSinceMs_) emit notice(tr("la visite de %1 est finie").arg(QString::fromStdString(v.name)), false);
+    // The console: only a session this gateway started is stopped or put to rest. A visit that
+    // ended before the picture keeps it up a while: the friend's retry finds it streaming.
     if (ownsSession_ && !v.consoleBusy) {
+        // Friends now connect while the console wakes: one who leaves within 30 s of the picture
+        // (or before it) is as likely to come right back.
+        const bool shortPlay = outcome == QStringLiteral("joué") && (!playingSinceMs_ || now - playingSinceMs_ < 30'000);
+        const bool early = shortPlay || outcome == QLatin1String("parti avant l'image") || outcome == QStringLiteral("parti pendant le réveil");
         const int rest = bridge_.preferences().value(QStringLiteral("gatewayRestMinutes"), 10).toInt();
-        if (wokeByAccess_ && rest > 0) {
+        if (early) {
+            restTimer_->start(kRetryHoldMs);
+            veyra::log::info("guest-access", std::format("console kept {} s for a retry", kRetryHoldMs / 1000));
+        } else if (wokeByAccess_ && rest > 0) {
             restTimer_->start(rest * 60'000);
             veyra::log::info("guest-access", std::format("console kept {} min, then rest mode", rest));
         } else {
@@ -551,6 +649,8 @@ void GuestAccessModel::testSetup() {
     if (file.isEmpty()) return;
     // After the share session knows its port: the links name it.
     QTimer::singleShot(2500, this, [this, file] {
+        // A name is one access: the last run's "test" goes first.
+        for (const auto& a : std::vector(accesses_)) if (a.name == "test") revoke(QString::fromStdString(a.id));
         create(QStringLiteral("test"), qEnvironmentVariableIsSet("VEYRA_TEST_ACCESS_APPROVE"), guest::AllowGuest, QStringLiteral("real"), 0, {}, {});
         const QString link = newLink_;
         create(QStringLiteral("révoqué"), false, guest::AllowGuest, QStringLiteral("real"), 0, {}, {});
@@ -560,6 +660,13 @@ void GuestAccessModel::testSetup() {
         QFile out(file);
         if (out.open(QIODevice::WriteOnly | QIODevice::Truncate)) out.write((link + QLatin1Char('\n') + revoked + QLatin1Char('\n')).toUtf8());
     });
+    // VEYRA_TEST_ACCESS_REVOKE_AT=<s>: the "test" access is revoked that long after start, its
+    // friend possibly connected.
+    if (const int at = qEnvironmentVariableIntValue("VEYRA_TEST_ACCESS_REVOKE_AT"); at > 0)
+        QTimer::singleShot(at * 1000, this, [this] {
+            for (const auto& a : accesses_)
+                if (a.name == "test") { veyra::log::info("guest-access", "test: the access is revoked"); revoke(QString::fromStdString(a.id)); return; }
+        });
 }
 
 } // namespace veyra::ui

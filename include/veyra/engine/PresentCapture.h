@@ -22,6 +22,8 @@ public:
         float ditherStep=0;              // graph output dither step (RgbToNv12 reserved.y)
         bool generated=false;
         int64_t sourceHost100ns=0;       // steady clock when a live source's picture reached this PC decoded; 0 unknown
+        bool early=false;                // the guest's early tap (EarlyCapture), before frame generation and pacing
+        bool live=false;                 // a live session: its real pictures come through the early tap, not here
     };
     virtual ~PresentCapture()=default;
     // true: commands were recorded into `list`; submitted() or discarded() follows.
@@ -32,17 +34,17 @@ public:
     virtual void discarded()=0;
 };
 
-// The fork's remote guest. Real pictures only: a live source (console stream, capture card)
-// hands each one over right after the graph submitted it, on the graph's queue, so frame
+// The fork's remote guests. Real pictures: a live source (console stream, capture card) hands
+// each one over right after the graph submitted it, on the graph's queue (Frame::early), so frame
 // generation and pacing hold that picture for the host's screen only (up to 30 ms at 4X).
 // The fluide feeds take the presented stream instead, generated frames included, at its
-// present. A file always hands its pictures over at their present.
+// present. A file always hands its pictures over at their present. Several guests may want
+// both in the same frame: each consumer reads Frame::early and Frame::live and takes its own.
 class EarlyCapture : public PresentCapture {
 public:
-    // Engine thread, cheap: record() would take a frame now. No command list is opened otherwise.
+    // Engine thread, cheap: a consumer on real pictures would take an early frame now. No command
+    // list is opened otherwise.
     virtual bool wanted() const=0;
-    // Any thread: the consumer wants the presented stream (generated frames too), not the early tap.
-    virtual bool presentedFeed() const=0;
 };
 
 // The presenter has one capture; a recording, the instant replay buffer and the fork's

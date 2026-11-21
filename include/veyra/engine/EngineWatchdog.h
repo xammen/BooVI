@@ -15,11 +15,14 @@ inline constexpr wchar_t kEngineHangStatus[] = L"画面引擎无响应，已记�
 // (call stack as module + offset and nearest export) and writes one small
 // minidump beside the log, so the next report names the blocking call. Shutdown
 // asks hung() so it can stop waiting for a thread that will not return.
+// The interface thread has its own (QmlPlayerBridge, tag "ui-hang"): field log 2026-11-20 had
+// no interface line for 3 h after a PS5 session ended, and nothing said where it was blocked.
 class EngineWatchdog {
 public:
     // Interface notice: stalledMs > 0 while blocked, 0 once the loop moves again.
     using Notify = std::function<void(uint64_t stalledMs)>;
-    explicit EngineWatchdog(Notify notify);
+    // `tag` and `owner` name the log lines (string literals); `reportMs` is the stall that is reported.
+    explicit EngineWatchdog(Notify notify, const char* tag = "engine-hang", const char* owner = "playback loop", uint64_t reportMs = 8000);
     ~EngineWatchdog();
     EngineWatchdog(const EngineWatchdog&) = delete;
     EngineWatchdog& operator=(const EngineWatchdog&) = delete;

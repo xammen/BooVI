@@ -114,6 +114,10 @@ public:
         // either query failed. Under Vsync this is the display queue depth;
         // with Present(0,0) it also counts frames a newer one will replace.
         int64_t ahead=-1;
+        // How old DXGI's statistics are at the sample (now - SyncQPCTime), -1 if never dated.
+        // A zero `displayed` with an old sample means DXGI stopped updating them (audit
+        // 2026-11-21: dxgiPresentCount=0 in most seconds), not that nothing was shown.
+        double statsAgeMs=-1;
         HRESULT result=S_OK;
     };
     FrameStatisticsDelta sampleFrameStatistics();
@@ -128,6 +132,7 @@ public:
         uint64_t samples=0,replacedAtLeast=0;
         double p50Ms=-1,p95Ms=-1,maxMs=-1;
         int compositionMode=-1;
+        HRESULT compositionQuery=S_OK;   // why compositionMode is -1 (E_NOINTERFACE: no media swap chain)
     };
     DisplayLatencySummary takeDisplayLatency();
     // Host 100 ns (steady_clock). The last vblank in the frame statistics and the

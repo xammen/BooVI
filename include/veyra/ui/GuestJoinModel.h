@@ -19,7 +19,8 @@ class GuestJoinModel final : public QObject {
     // {phase: "idle"|"connecting"|"streaming"|"ended"|"failed", streaming, linkValid, host,
     //  lastLabel, message, access, saved ("ps5 de <host>", "" without one), browser (offer the browser),
     //  stream{receivedFps, videoMbps, dropped, rttMs, decodeMs, codec, decoder, gpu,
-    //  hostToScreenMs, lossPercent, relayed, mode, extendedInput}}
+    //  hostToScreenMs, lossPercent, relayed, mode, extendedInput},
+    //  room{you, members[{id,name,seat,native}], holder, owner, held, queue, turn, left, dice, allowDice, max, role}}
     Q_PROPERTY(QVariantMap state READ state NOTIFY changed)
 public:
     // Starts the engine on the link; false when it cannot (no video window).
@@ -27,6 +28,7 @@ public:
 
     explicit GuestJoinModel(QObject* parent = nullptr);
     void setLaunchHandler(LaunchFn handler) { launch_ = std::move(handler); }
+    void setRoomHandler(std::function<void(const std::string&)> handler) { roomHandler_ = std::move(handler); }
     void setStoreFile(const QString& path);   // the saved access; loads it
     void updateStream(bool active, const source::GuestClientStats& stats);
     QVariantMap state() const;
@@ -38,6 +40,8 @@ public:
     Q_INVOKABLE void forgetSaved();
     // The same link in the default browser, when the join found no network path.
     Q_INVOKABLE bool openInBrowser();
+    // The room of the joined share (state.room): "ask", "cancel", "release", "roll".
+    Q_INVOKABLE void room(const QString& command);
 
 signals:
     void changed();
@@ -45,6 +49,8 @@ signals:
 
 private:
     LaunchFn launch_;
+    std::function<void(const std::string&)> roomHandler_;
+    QVariantMap room_;
     QString link_, host_, lastHost_, phase_ = QStringLiteral("idle"), message_;
     bool linkValid_ = false, streaming_ = false, access_ = false, browser_ = false;
     QString storeFile_, saved_, savedLink_;

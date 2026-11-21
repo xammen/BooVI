@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <sstream>
 #include <optional>
+#include <string_view>
+#include <vector>
 #include <regex>
 
 #include <windows.h>
@@ -61,16 +63,52 @@ Logger::~Logger()
     closeFile();
 }
 
-void Logger::setRotation(uint64_t startBytes, uint64_t runningBytes)
+void Logger::setRotation(uint64_t startBytes, uint64_t runningBytes, unsigned kept)
 {
     std::lock_guard<std::mutex> lock(sinkMutex_);
-    rotateAtOpen_=startBytes;rotateWhileRunning_=runningBytes;nextRotation_=runningBytes;
+    rotateAtOpen_=startBytes;rotateWhileRunning_=runningBytes;nextRotation_=runningBytes;keptLogs_=std::max(1u,kept);
 }
 
 namespace {
-std::filesystem::path oldLogPath(const std::filesystem::path& path)
+// Moved logs are "<stem>.<yyyyMMdd-HHmmss>[-n]<ext>", in UTC. A restart used to move the log
+// over the single "<stem>.old<ext>" and lose the evening before it (field log 2026-11-20).
+std::filesystem::path archivePath(const std::filesystem::path& path)
 {
-    return path.parent_path()/(path.stem().wstring()+L".old"+path.extension().wstring());
+    const std::time_t seconds=std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::tm utc{};gmtime_s(&utc,&seconds);
+    const auto stamp=std::format(L"{:04d}{:02d}{:02d}-{:02d}{:02d}{:02d}",utc.tm_year+1900,utc.tm_mon+1,utc.tm_mday,utc.tm_hour,utc.tm_min,utc.tm_sec);
+    const auto base=(path.parent_path()/path.stem()).wstring()+L"."+stamp;
+    std::filesystem::path candidate=base+path.extension().wstring();
+    std::error_code ec;
+    for(int n=2;std::filesystem::exists(candidate,ec);++n)candidate=base+std::format(L"-{}",n)+path.extension().wstring();
+    return candidate;
+}
+
+// The stamp and its same-second counter when `name` is one of archivePath()'s names for `path`.
+std::optional<std::pair<std::wstring,int>> archiveStamp(const std::wstring& name,const std::filesystem::path& path)
+{
+    const auto head=path.stem().wstring()+L".",tail=path.extension().wstring();
+    if(name.size()<head.size()+15+tail.size()||!name.starts_with(head)||!name.ends_with(tail))return std::nullopt;
+    const auto middle=name.substr(head.size(),name.size()-head.size()-tail.size());
+    const auto digits=[](std::wstring_view text){return !text.empty()&&std::all_of(text.begin(),text.end(),[](wchar_t c){return c>=L'0'&&c<=L'9';});};
+    if(!digits(std::wstring_view(middle).substr(0,8))||middle[8]!=L'-'||!digits(std::wstring_view(middle).substr(9,6)))return std::nullopt;
+    if(middle.size()==15)return std::pair{middle,1};
+    if(middle[15]!=L'-'||!digits(std::wstring_view(middle).substr(16))||middle.size()>20)return std::nullopt;
+    return std::pair{middle.substr(0,15),std::stoi(middle.substr(16))};
+}
+
+// Deletes all but the newest `kept` moved logs of `path`. Caller holds sinkMutex_.
+void pruneArchives(const std::filesystem::path& path,unsigned kept)
+{
+    struct Archive{std::wstring stamp;int n;std::filesystem::path file;};
+    std::vector<Archive> archives;
+    std::error_code ec;
+    const auto folder=path.parent_path().empty()?std::filesystem::path(L"."):path.parent_path();
+    for(std::filesystem::directory_iterator it(folder,ec),end;!ec&&it!=end;it.increment(ec))
+        if(const auto stamp=archiveStamp(it->path().filename().wstring(),path))archives.push_back({stamp->first,stamp->second,it->path()});
+    if(archives.size()<=kept)return;
+    std::sort(archives.begin(),archives.end(),[](const Archive& a,const Archive& b){return a.stamp!=b.stamp?a.stamp>b.stamp:a.n>b.n;});
+    for(size_t i=kept;i<archives.size();++i)std::filesystem::remove(archives[i].file,ec);
 }
 }
 
@@ -94,10 +132,13 @@ bool Logger::openFile(const std::wstring& path, bool append)
     // Field logs reached 129-186 MB by appending every session forever (audit
     // 2026-10-15). A big log from earlier sessions moves aside once at start; a
     // second running instance holds the file, so the rename fails and nothing moves.
-    uint64_t movedBytes=0;
+    uint64_t movedBytes=0;std::filesystem::path movedTo;
     if(append&&rotateAtOpen_){
         const auto size=std::filesystem::file_size(fsPath,ec);
-        if(!ec&&size>=rotateAtOpen_&&MoveFileExW(path.c_str(),oldLogPath(fsPath).c_str(),MOVEFILE_REPLACE_EXISTING))movedBytes=size;
+        if(!ec&&size>=rotateAtOpen_){
+            movedTo=archivePath(fsPath);
+            if(MoveFileExW(path.c_str(),movedTo.c_str(),0)){movedBytes=size;pruneArchives(fsPath,keptLogs_);}
+        }
     }
     // Diagnostics may read a running session without stopping capture. Keep
     // concurrent writers excluded so another instance cannot truncate this log.
@@ -110,8 +151,8 @@ bool Logger::openFile(const std::wstring& path, bool append)
     const auto size=append?std::filesystem::file_size(fsPath,ec):0;
     fileBytes_=ec?0:size;nextRotation_=rotateWhileRunning_;
     if(movedBytes){
-        std::fprintf(file_,"%s t=%lu [INFO ] [log] earlier sessions moved to %s (%llu bytes)\n",timestampUtc().c_str(),GetCurrentThreadId(),
-            oldLogPath(fsPath).filename().string().c_str(),static_cast<unsigned long long>(movedBytes));
+        std::fprintf(file_,"%s t=%lu [INFO ] [log] earlier sessions moved to %s (%llu bytes; the newest %u moved logs are kept)\n",timestampUtc().c_str(),
+            GetCurrentThreadId(),movedTo.filename().string().c_str(),static_cast<unsigned long long>(movedBytes),keptLogs_);
         std::fflush(file_);
     }
     return true;
@@ -126,15 +167,17 @@ bool Logger::rotateLocked(const char* reason)
     const std::filesystem::path current(path_);
     const uint64_t bytes=fileBytes_;
     std::fflush(file_);std::fclose(file_);file_=nullptr;
-    const bool moved=MoveFileExW(path_.c_str(),oldLogPath(current).c_str(),MOVEFILE_REPLACE_EXISTING)!=FALSE;
+    const auto movedTo=archivePath(current);
+    const bool moved=MoveFileExW(path_.c_str(),movedTo.c_str(),0)!=FALSE;
     const DWORD error=moved?0:GetLastError();
+    if(moved)pruneArchives(current,keptLogs_);
     file_=_wfsopen(path_.c_str(),L"ab",_SH_DENYWR);
     if(file_==nullptr)return false;
     std::setvbuf(file_,nullptr,_IOFBF,64*1024);
     std::error_code ec;const auto size=std::filesystem::file_size(current,ec);
     fileBytes_=ec?0:size;nextRotation_=moved?rotateWhileRunning_:fileBytes_+rotateWhileRunning_;
     if(moved)std::fprintf(file_,"%s t=%lu [INFO ] [log] rotated reason=%s; the earlier part of this session is in %s (%llu bytes)\n",timestampUtc().c_str(),
-        GetCurrentThreadId(),reason,oldLogPath(current).filename().string().c_str(),static_cast<unsigned long long>(bytes));
+        GetCurrentThreadId(),reason,movedTo.filename().string().c_str(),static_cast<unsigned long long>(bytes));
     else std::fprintf(file_,"%s t=%lu [WARN ] [log] rotation refused error=%lu; continuing in this file\n",timestampUtc().c_str(),GetCurrentThreadId(),error);
     std::fflush(file_);bufferedLogBytes_=0;lastFileFlushTick_=GetTickCount64();
     return moved;

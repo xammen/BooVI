@@ -381,7 +381,10 @@ QmlPlayerBridge::QmlPlayerBridge(engine::EngineController& engine, std::filesyst
         else veyra::log::warn("ui-prefs","volume not saved");
     });
     impl_->timer = new QTimer(this);
+    impl_->uiWatchdog = std::make_unique<engine::EngineWatchdog>(nullptr, "ui-hang", "interface thread", 15000);
+    connect(qApp, &QCoreApplication::aboutToQuit, this, [this] { impl_->uiWatchdog->disarm(); });
     connect(impl_->timer, &QTimer::timeout, this, [this] {
+        impl_->uiWatchdog->beat();
         const bool had = impl_->haveSnapshot;
         const uint64_t before = impl_->publishedRevision;
         const bool wasRunning = impl_->snapshot.running;
@@ -706,6 +709,7 @@ QmlPlayerBridge::QmlPlayerBridge(engine::EngineController& engine, std::filesyst
 }
 
 QmlPlayerBridge::~QmlPlayerBridge() {
+    impl_->uiWatchdog.reset();
     flushHdrMemory();
     if (qApp) qApp->removeEventFilter(this);
     if (qApp) qApp->removeNativeEventFilter(&impl_->displayChangeFilter);

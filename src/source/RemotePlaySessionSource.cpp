@@ -2,6 +2,7 @@
 #include "veyra/Log.h"
 #include "veyra/remoteplay/StreamRecovery.h"
 #include "veyra/remoteplay/ControllerQueue.h"
+#include "veyra/remoteplay/Discovery.h"
 #include <algorithm>
 #include <vector>
 #include <cmath>
@@ -10,6 +11,25 @@ extern "C" {
 #include <libavutil/frame.h>
 }
 namespace veyra::source {
+namespace {
+// After the console ended a stream itself (field log 2026-11-20: quitReason=12, a stream it shut
+// down), whether it now answers discovery as resting. Off the session, which is torn down at once;
+// one probe at a time, stopped at exit. No address or console id is logged.
+void probeConsoleAfterQuit(std::string host,std::string consoleId,int quitReason){
+    static std::mutex mutex;static std::jthread probe;
+    std::lock_guard lock(mutex);
+    probe=std::jthread([host=std::move(host),consoleId=std::move(consoleId),quitReason](std::stop_token stop){
+        std::mutex waitMutex;std::condition_variable_any settle;std::unique_lock waitLock(waitMutex);
+        if(settle.wait_for(waitLock,stop,std::chrono::seconds(3),[]{return false;})||stop.stop_requested())return;
+        const auto report=remoteplay::discoverLocalPs5(stop);
+        if(stop.stop_requested())return;
+        const auto console=std::find_if(report.hosts.begin(),report.hosts.end(),[&](const remoteplay::DiscoveredConsole& c){
+            return (!consoleId.empty()&&c.consoleId==consoleId)||c.host==host;});
+        log::info("remoteplay-quit",std::format("console 3 s after quitReason={}: {} (consoles answering={} error={})",quitReason,
+            console==report.hosts.end()?"did not answer":console->standby?"resting (standby)":"awake",report.hosts.size(),report.error));
+    });
+}
+}
 bool RemotePlaySessionSource::connect(RemotePlayConnectDesc desc) {
     close();
     { std::lock_guard lock(mutex_); initialized_=started_=failed_=false; skipped_=publishedSequence_=0; recovery_={}; rates_={}; feedback_={}; controller_={}; pendingControllers_.clear(); snapshot_={};
@@ -204,6 +224,7 @@ void RemotePlaySessionSource::run(std::stop_token stop, RemotePlayConnectDesc de
                     }else if(action==remoteplay::StreamRecovery::Action::Reconnect){retryWasRpInUse=native.startupRetryAllowed;retry=true;break;}
                     else if(action==remoteplay::StreamRecovery::Action::Fail){
                         log::error("remoteplay-recovery",std::format("recovery stopped attempts={} quitReason={} error={}",recovery.reconnects(),native.lastQuitReason,snapshot.errorCode));
+                        if(native.lastQuitReason)probeConsoleAfterQuit(desc.request.host,desc.request.consoleId,native.lastQuitReason);
                         std::lock_guard lock(mutex_);failed_=true;recovery_.active=false;
                         recovery_.message=snapshot.state==remoteplay::SessionState::LoginPinRequired?L"等待 PS5 登录 PIN 超时，请重新连接。":native.startupRetryAllowed?L"PS5 仍被串流会话占用，请结束其他串流或稍后重试；无需重新配对。":!native.automaticRetryAllowed?L"PS5 已结束或拒绝串流，请检查主机状态后重新连接。":L"PS5 串流未恢复，请检查主机及网络后点击连接；无需重新配对。";
                         recovery_.message+=std::format(L"（终止码 {} / 错误 {}）",native.lastQuitReason,snapshot.errorCode);break;

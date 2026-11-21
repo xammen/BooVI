@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 
 # BooVI's version: the one place it is set. The EXE's version resource, the app's
 # about line and the release zip's name (scripts/fork/package.ps1) all read it.
-project(veyra VERSION 1.0.2 LANGUAGES C CXX RC)
+project(veyra VERSION 1.1.0 LANGUAGES C CXX RC)
 # Moonlight/Xbox have C sources independently of the optional PS5 backend.
 # Shown in the EXE's version resource and in the package name. CMake versions
 # must be numeric, so a beta marker goes here instead (-DVEYRA_DISPLAY_VERSION=1.1.0beta).
@@ -1373,6 +1373,8 @@ if(VEYRA_BUILD_QML_UI AND Qt6_FOUND)
     set(VEYRA_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
     include(VeyraGuest)
     target_sources(veyra_qml_bridge PRIVATE src/ui/GuestShareModel.cpp include/veyra/ui/GuestShareModel.h)
+    # Fork, partage à plusieurs: the room's news to the owner's Discord channel.
+    target_sources(veyra_qml_bridge PRIVATE src/ui/DiscordNotifier.cpp include/veyra/ui/DiscordNotifier.h)
     # Fork, invités: friends' long-lived accesses and the gateway (GuestAccess.h).
     target_sources(veyra_qml_bridge PRIVATE src/ui/GuestAccessModel.cpp include/veyra/ui/GuestAccessModel.h include/veyra/guest/GuestAccess.h)
     # Fork, "rejoindre un partage": the native guest client's UI model.

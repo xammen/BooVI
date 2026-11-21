@@ -6,6 +6,7 @@
 #include <QGuiApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QTimer>
 #include <QSaveFile>
 #include <QUrl>
 
@@ -27,7 +28,13 @@ const char* phaseName(source::GuestClientStats::State state) {
 }
 } // namespace
 
-GuestJoinModel::GuestJoinModel(QObject* parent) : QObject(parent) {}
+GuestJoinModel::GuestJoinModel(QObject* parent) : QObject(parent) {
+    // Tests: VEYRA_TEST_JOIN_ROOM="ask@8,roll@14" sends those room commands that many seconds in.
+    for (const QString& step : qEnvironmentVariable("VEYRA_TEST_JOIN_ROOM").split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+        const QStringList at = step.split(QLatin1Char('@'));
+        if (at.size() == 2) QTimer::singleShot(int(at[1].toDouble() * 1000), this, [this, c = at[0]] { veyra::log::info("guest-client-ui", "test: room " + c.toStdString()); room(c); });
+    }
+}
 
 bool GuestJoinModel::setLink(const QString& link) {
     const auto parsed = guest::parseShareLink(link.toStdString());
@@ -118,6 +125,22 @@ void GuestJoinModel::updateStream(bool active, const source::GuestClientStats& s
                   {"anticipationConfidence", s.anticipation.confidence}, {"anticipationLagMs", s.anticipation.lagMs},
                   {"anticipationFps", s.anticipation.presentsPerSecond}};
     }
+    // The host's room (RoomModel.h): who holds the controller, the queue, the dice; and this
+    // client's own place in it.
+    QVariantMap room;
+    if (active && !s.room.empty()) {
+        room = QJsonDocument::fromJson(QByteArray::fromStdString(s.room)).object().toVariantMap();
+        const QString you = room.value(QStringLiteral("you")).toString();
+        QString seat;
+        for (const auto& m : room.value(QStringLiteral("members")).toList())
+            if (m.toMap().value(QStringLiteral("id")).toString() == you) seat = m.toMap().value(QStringLiteral("seat")).toString();
+        const QString role = room.value(QStringLiteral("holder")).toString() == you ? QStringLiteral("hold")
+                           : room.value(QStringLiteral("queue")).toList().contains(you) ? QStringLiteral("queue")
+                           : seat == QLatin1String("watcher") ? QStringLiteral("watch") : QStringLiteral("free");
+        room.insert(QStringLiteral("role"), role);
+        room.insert(QStringLiteral("notice"), QString::fromStdString(s.roomNotice));
+    }
+    if (room != room_) { room_ = room; emit changed(); }
     // No network path from here: the browser falls back to TURN over TLS on 443 on its own.
     const bool browser = phase == QLatin1String("failed") && s.iceFailed;
     const bool streaming = active && s.state == source::GuestClientStats::State::Streaming;
@@ -133,7 +156,11 @@ void GuestJoinModel::updateStream(bool active, const source::GuestClientStats& s
 
 QVariantMap GuestJoinModel::state() const {
     return {{"phase", phase_}, {"streaming", streaming_}, {"linkValid", linkValid_}, {"host", host_},
-            {"lastLabel", lastHost_}, {"message", message_}, {"stream", stream_}, {"access", access_}, {"saved", saved_}, {"browser", browser_}};
+            {"lastLabel", lastHost_}, {"message", message_}, {"stream", stream_}, {"access", access_}, {"saved", saved_}, {"browser", browser_}, {"room", room_}};
+}
+
+void GuestJoinModel::room(const QString& command) {
+    if (roomHandler_ && streaming_) roomHandler_(command.toStdString());
 }
 
 bool GuestJoinModel::openInBrowser() {

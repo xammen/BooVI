@@ -83,4 +83,5 @@ ManagePresetsDialog 1.0 ManagePresetsDialog.qml
 Ps5InputChips 1.0 Ps5InputChips.qml
 SharePanel 1.0 SharePanel.qml
 GuestChip 1.0 GuestChip.qml
+JoinRoomChip 1.0 JoinRoomChip.qml
 PadNotice 1.0 PadNotice.qml

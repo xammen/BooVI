@@ -24,6 +24,9 @@ struct CaptureAudioState {
     double inputPeak=0; // Historical API name: peak AFTER sample conversion.
     uint64_t inputBlocks=0;
     std::optional<double> skewMs;
+    // driftHeld: drift checks (every 250 ms) past the old 60 ms limit that did not re-anchor, the
+    // audio being at its latency floor (captureDriftReanchor).
+    uint64_t driftHeld=0;
     uint64_t resets=0,overflows=0,underruns=0,underrunFrames=0,silenceFrames=0,
         invalidPaddingSamples=0,nonFiniteSamples=0,clippedSamples=0,peakProtectedSamples=0,endpointRetries=0,
         overRangeSamples=0,emptyPulls=0,recoveryFades=0,clockStalledGaps=0;

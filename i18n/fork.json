@@ -50,11 +50,48 @@
    "en": "%1 is waiting for your OK"
   },
   {
+   "fr": "%1 invité(s)",
+   "src": [
+    "qml/GuestChip.qml"
+   ],
+   "en": "%1 guest(s)"
+  },
+  {
    "fr": "%1 joue",
    "src": [
+    "qml/GuestChip.qml",
+    "qml/JoinRoomChip.qml",
     "qml/SettingsPage.qml"
    ],
    "en": "%1 is playing"
+  },
+  {
+   "fr": "%1 joue depuis %2",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "%1 has been playing for %2"
+  },
+  {
+   "fr": "%1 min",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "%1 min"
+  },
+  {
+   "fr": "%1 parties",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "%1 plays"
+  },
+  {
+   "fr": "%1 s",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "%1 s"
   },
   {
    "fr": "%1 veut jouer sur ta ps5",
@@ -90,6 +127,13 @@
     "qml/SettingsPage.qml"
    ],
    "en": "%1, set before this version. they add work to every frame."
+  },
+  {
+   "fr": "%1/%2 invités · envoi %3",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "%1/%2 guests · sending %3"
   },
   {
    "fr": ". un clic et tu es en jeu, en %1.",
@@ -143,6 +187,13 @@
    "en": "100 Mb/s"
   },
   {
+   "fr": "a la manette",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "has the controller"
+  },
+  {
    "fr": "accepter",
    "src": [
     "qml/Main.qml",
@@ -177,6 +228,13 @@
     "qml/SettingsPage.qml"
    ],
    "en": "access"
+  },
+  {
+   "fr": "accès permanent",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "permanent access"
   },
   {
    "fr": "accès personnel · hôte %1 · gardé sur ce pc après la première partie",
@@ -447,6 +505,13 @@
     "qml/Sources.qml"
    ],
    "en": "paired"
+  },
+  {
+   "fr": "attendre",
+   "src": [
+    "qml/JoinRoomChip.qml"
+   ],
+   "en": "wait"
   },
   {
    "fr": "aucune",
@@ -791,11 +856,11 @@
    "en": "what the guest receives"
   },
   {
-   "fr": "ce que reçoit l'invité, au plus",
+   "fr": "ce que reçoivent tes invités, au plus",
    "src": [
     "qml/SharePanel.qml"
    ],
-   "en": "what the guest receives, at most"
+   "en": "what your guests receive, at most"
   },
   {
    "fr": "ce que sa page affiche : « en attente de l'accord de … ».",
@@ -812,11 +877,11 @@
    "en": "what your graphics card does with the stream."
   },
   {
-   "fr": "ce que ta connexion envoie au plus vers ton ami, en Mb/s. sa page ne dépasse jamais ça, même en manuel à fond ; BooVI baisse aussi tout seul quand des paquets se perdent.",
+   "fr": "ce que ta connexion envoie au plus, en Mb/s, partagé entre tes invités : celui qui a la manette passe d'abord. leurs pages ne dépassent jamais ça ; BooVI baisse aussi tout seul quand des paquets se perdent.",
    "src": [
     "qml/SettingsPage.qml"
    ],
-   "en": "the most your connection sends to your friend, in Mb/s. their page never goes past it, even set to the max by hand; BooVI also lowers it on its own when packets get lost."
+   "en": "the most your connection sends, in Mb/s, shared among your guests: whoever has the controller comes first. their pages never go past it; BooVI also lowers it on its own when packets get lost."
   },
   {
    "fr": "celle de windows",
@@ -824,6 +889,13 @@
     "qml/SettingsPage.qml"
    ],
    "en": "same as windows"
+  },
+  {
+   "fr": "celui qui a la manette reçoit des images réelles en automatique : les modes fluides attendent les images générées par ta carte (15 à 30 ms de plus).",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "whoever has the controller gets real pictures in automatic: the smooth modes wait for the frames your card generates (15 to 30 ms more)."
   },
   {
    "fr": "cet écran ne le gère pas.",
@@ -998,6 +1070,13 @@
    "en": "paste the link of a friend who shares"
   },
   {
+   "fr": "colle le lien d'un webhook de ton salon (paramètres du salon → intégrations → webhooks). il reste chiffré sur ce pc.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "paste a webhook link from your channel (channel settings → integrations → webhooks). it stays encrypted on this pc."
+  },
+  {
    "fr": "colle le lien de ton ami",
    "src": [
     "qml/Sources.qml"
@@ -1070,13 +1149,6 @@
     "qml/StreamOverlay.qml"
    ],
    "en": "confidence %1"
-  },
-  {
-   "fr": "configurée",
-   "src": [
-    "qml/SharePanel.qml"
-   ],
-   "en": "configured"
   },
   {
    "fr": "confirmer",
@@ -1189,13 +1261,6 @@
    "en": "turn off https"
   },
   {
-   "fr": "couper l'invité",
-   "src": [
-    "qml/SharePanel.qml"
-   ],
-   "en": "kick the guest"
-  },
-  {
    "fr": "couper le son",
    "src": [
     "qml/SettingsPage.qml"
@@ -1208,6 +1273,13 @@
     "qml/StreamOverlay.qml"
    ],
    "en": "mute · %1 %"
+  },
+  {
+   "fr": "couper sa visite",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "end their visit"
   },
   {
    "fr": "courbe",
@@ -1322,6 +1394,13 @@
    "en": "direct"
   },
   {
+   "fr": "discord",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "discord"
+  },
+  {
    "fr": "droite",
    "src": [
     "qml/KbmBindings.qml"
@@ -1408,13 +1487,6 @@
    "en": "decoder"
   },
   {
-   "fr": "décodée → envoyée : réelles %1 · fluide %2. les modes fluides attendent les images générées par ta carte (15 à 30 ms de plus).",
-   "src": [
-    "qml/SharePanel.qml"
-   ],
-   "en": "decoded → sent: real %1 · smooth %2. smooth modes wait for the frames your GPU generates (15 to 30 ms more)."
-  },
-  {
    "fr": "définition",
    "src": [
     "qml/SettingsPage.qml",
@@ -1465,6 +1537,13 @@
    "en": "movement"
   },
   {
+   "fr": "dés : %1 gagne (%2)",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "dice: %1 wins (%2)"
+  },
+  {
    "fr": "désactivée",
    "src": [
     "qml/SettingsPage.qml"
@@ -1493,11 +1572,11 @@
    "en": "it may still be connected to the PS5. plug it in over USB, or turn it off, hold Create then PS until the light bar blinks, and add it in Windows Bluetooth settings."
   },
   {
-   "fr": "en attente de l'invité",
+   "fr": "en attente d'invités",
    "src": [
     "qml/SharePanel.qml"
    ],
-   "en": "waiting for the guest"
+   "en": "waiting for guests"
   },
   {
    "fr": "en cours",
@@ -1545,6 +1624,7 @@
   {
    "fr": "enregistrer",
    "src": [
+    "qml/SettingsPage.qml",
     "qml/StreamOverlay.qml"
    ],
    "en": "record"
@@ -1596,11 +1676,33 @@
    "en": "close"
   },
   {
+   "fr": "file : %1",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "queue: %1"
+  },
+  {
+   "fr": "file d'attente",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "queue"
+  },
+  {
    "fr": "file d'attente courte",
    "src": [
     "qml/SettingsPage.qml"
    ],
    "en": "short queue"
+  },
+  {
+   "fr": "file n° %1",
+   "src": [
+    "qml/JoinRoomChip.qml",
+    "qml/SharePanel.qml"
+   ],
+   "en": "queue #%1"
   },
   {
    "fr": "fixe",
@@ -1788,6 +1890,20 @@
    "en": "yesterday %1"
   },
   {
+   "fr": "historique des parties",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "play history"
+  },
+  {
+   "fr": "historique visible par les invités",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "history visible to guests"
+  },
+  {
    "fr": "hors ligne",
    "src": [
     "qml/SetupPc.qml"
@@ -1817,11 +1933,11 @@
    "en": "id saved on this pc"
   },
   {
-   "fr": "il joue",
+   "fr": "il faut au moins deux joueurs pour les dés",
    "src": [
-    "qml/GuestChip.qml"
+    "qml/JoinRoomChip.qml"
    ],
-   "en": "playing"
+   "en": "the dice need at least two players"
   },
   {
    "fr": "il ne s'affiche qu'une fois : envoie-le en privé. il ouvre la page dans un navigateur, ou se colle dans « rejoindre un partage » de BooVI.",
@@ -1838,13 +1954,6 @@
    "en": "they share from BooVI and send you a link. here, your own graphics card does the super resolution and the frame gen, at your screen's refresh rate."
   },
   {
-   "fr": "il regarde",
-   "src": [
-    "qml/GuestChip.qml"
-   ],
-   "en": "watching"
-  },
-  {
    "fr": "il regarde ta partie",
    "src": [
     "qml/Main.qml"
@@ -1857,6 +1966,13 @@
     "qml/SharePanel.qml"
    ],
    "en": "they receive: %1"
+  },
+  {
+   "fr": "ils regardent",
+   "src": [
+    "qml/GuestChip.qml"
+   ],
+   "en": "they watch"
   },
   {
    "fr": "IMAGE",
@@ -1947,28 +2063,6 @@
    "en": "invite a friend"
   },
   {
-   "fr": "invité : %1 · accès permanent",
-   "src": [
-    "qml/SharePanel.qml"
-   ],
-   "en": "guest: %1 · personal access"
-  },
-  {
-   "fr": "invité : application BooVI",
-   "src": [
-    "qml/SharePanel.qml"
-   ],
-   "en": "guest: BooVI app"
-  },
-  {
-   "fr": "invité connecté",
-   "src": [
-    "qml/GuestChip.qml",
-    "qml/SharePanel.qml"
-   ],
-   "en": "guest connected"
-  },
-  {
    "fr": "invité inactif",
    "src": [
     "qml/SettingsPage.qml"
@@ -1981,6 +2075,13 @@
     "qml/SettingsPage.qml"
    ],
    "en": "guests"
+  },
+  {
+   "fr": "invités à la fois",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "guests at once"
   },
   {
    "fr": "jamais",
@@ -2058,6 +2159,34 @@
    "en": "how BooVI looks."
   },
   {
+   "fr": "l'hôte a coupé les dés",
+   "src": [
+    "qml/JoinRoomChip.qml"
+   ],
+   "en": "the host turned the dice off"
+  },
+  {
+   "fr": "l'hôte a refusé",
+   "src": [
+    "qml/JoinRoomChip.qml"
+   ],
+   "en": "the host said no"
+  },
+  {
+   "fr": "l'hôte joue",
+   "src": [
+    "qml/JoinRoomChip.qml"
+   ],
+   "en": "the host plays"
+  },
+  {
+   "fr": "l'hôte t'a mis en spectateur",
+   "src": [
+    "qml/JoinRoomChip.qml"
+   ],
+   "en": "the host made you a spectator"
+  },
+  {
    "fr": "l'hôte t'envoie ses vraies images. la frame gen et la super résolution tournent ici : dlss sur rtx 40 et 50, fsr 3.1 sur toute carte dx12. tu pourras changer en jeu.",
    "src": [
     "qml/SetupJoin.qml"
@@ -2077,20 +2206,6 @@
     "qml/SharePanel.qml"
    ],
    "en": "guest plays"
-  },
-  {
-   "fr": "l'invité n'a pas de manette : sa page lui montre comment en brancher une.",
-   "src": [
-    "qml/SharePanel.qml"
-   ],
-   "en": "the guest has no controller: their page shows them how to connect one."
-  },
-  {
-   "fr": "l'invité se connecte…",
-   "src": [
-    "qml/SharePanel.qml"
-   ],
-   "en": "the guest is connecting…"
   },
   {
    "fr": "l'écran",
@@ -2241,6 +2356,20 @@
    "en": "the xbox sends 1080p. your graphics card does the rest. you can change it in game."
   },
   {
+   "fr": "lancer les dés",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "roll the dice"
+  },
+  {
+   "fr": "lancer les dés pour la manette",
+   "src": [
+    "qml/JoinRoomChip.qml"
+   ],
+   "en": "roll the dice for the controller"
+  },
+  {
    "fr": "langue",
    "src": [
     "qml/SettingsPage.qml"
@@ -2290,6 +2419,13 @@
    "en": "your ps5 account's code, not the pairing one."
   },
   {
+   "fr": "le déconnecter",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "disconnect them"
+  },
+  {
    "fr": "le flux s'affiche à sa taille d'origine.",
    "src": [
     "qml/SettingsPage.qml"
@@ -2330,6 +2466,13 @@
     "qml/SettingsPage.qml"
    ],
    "en": "%1's link"
+  },
+  {
+   "fr": "le lien de partage change à chaque partage et quand tu le renouvelles. le navigateur ne transmet ni le gyroscope, ni le pavé tactile (sauf son clic), ni les gâchettes adaptatives. les conditions de sony ne prévoient pas qu'une autre personne joue à distance sur ton compte.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "the share link changes with every share and when you renew it. the browser passes on neither the gyroscope, nor the touchpad (except its click), nor the adaptive triggers. sony's terms do not foresee someone else playing remotely on your account."
   },
   {
    "fr": "le maximum que la ps5 envoie en remote play.",
@@ -2444,6 +2587,41 @@
    "en": "Sony's terms do not provide for someone else playing remotely on your account."
   },
   {
+   "fr": "les dés",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "dice"
+  },
+  {
+   "fr": "les dés roulent déjà",
+   "src": [
+    "qml/JoinRoomChip.qml"
+   ],
+   "en": "the dice are already rolling"
+  },
+  {
+   "fr": "les dés viennent d'être lancés, attends un peu",
+   "src": [
+    "qml/JoinRoomChip.qml"
+   ],
+   "en": "the dice were just rolled, wait a moment"
+  },
+  {
+   "fr": "les nouveaux venus",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "newcomers"
+  },
+  {
+   "fr": "leur page montre les dernières parties : qui, quand, combien de temps.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "their page shows the last plays: who, when, how long."
+  },
+  {
    "fr": "lien http de ton tailnet : l'image passe, mais les navigateurs ne lisent la manette qu'en https.",
    "src": [
     "qml/SharePanel.qml"
@@ -2451,11 +2629,11 @@
    "en": "http link in your tailnet: the picture plays, but browsers only read a pad over https."
   },
   {
-   "fr": "lien https de ton tailnet : ton ami doit y être, ou tu lui partages ce pc dans tailscale.",
+   "fr": "lien https de ton tailnet : tes amis doivent y être, ou tu leur partages ce pc dans tailscale.",
    "src": [
     "qml/SharePanel.qml"
    ],
-   "en": "https link in your tailnet: your friend must be in it, or you share this pc with them in tailscale."
+   "en": "https link in your tailnet: your friends must be in it, or you share this pc with them in tailscale."
   },
   {
    "fr": "lien https sur %1 : ton ami n'installe rien, l'image va de ton pc au sien.",
@@ -2484,6 +2662,13 @@
     "qml/StreamOverlay.qml"
    ],
    "en": "software"
+  },
+  {
+   "fr": "lui passer la manette",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "hand them the controller"
   },
   {
    "fr": "luminosité",
@@ -2533,13 +2718,6 @@
    "en": "controller connected · %1"
   },
   {
-   "fr": "manette de l'invité : %1",
-   "src": [
-    "qml/SharePanel.qml"
-   ],
-   "en": "guest's controller: %1"
-  },
-  {
    "fr": "manette en arrière-plan",
    "src": [
     "qml/SettingsPage.qml"
@@ -2552,6 +2730,21 @@
     "qml/StreamOverlay.qml"
    ],
    "en": "controller paused"
+  },
+  {
+   "fr": "manette libre",
+   "src": [
+    "qml/GuestChip.qml",
+    "qml/JoinRoomChip.qml"
+   ],
+   "en": "controller free"
+  },
+  {
+   "fr": "manette libre : le premier qui la demande l'a",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "controller free: the first to ask gets it"
   },
   {
    "fr": "manette → ps5",
@@ -2711,13 +2904,6 @@
    "en": "native: your super resolution's output (1440p for example), with no extra copy. 720p needs half the bitrate of 1080p."
   },
   {
-   "fr": "native · %1p",
-   "src": [
-    "qml/SharePanel.qml"
-   ],
-   "en": "native · %1p"
-  },
-  {
    "fr": "neutre",
    "src": [
     "qml/SettingsPage.qml"
@@ -2732,18 +2918,18 @@
    "en": "no"
   },
   {
-   "fr": "non standard",
-   "src": [
-    "qml/SharePanel.qml"
-   ],
-   "en": "non-standard"
-  },
-  {
    "fr": "nouveau lien",
    "src": [
     "qml/SettingsPage.qml"
    ],
    "en": "new link"
+  },
+  {
+   "fr": "nouveau lien : ceux qui ont l'ancien partent",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "new link: those with the old one leave"
   },
   {
    "fr": "nvidia reflex",
@@ -2811,6 +2997,13 @@
    "en": "opening the room…"
   },
   {
+   "fr": "ouverture du salon… · ",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "opening the room… · "
+  },
+  {
    "fr": "ouvre sunshine sur le pc (https://ip-du-pc:47990), onglet pin, et tape ce code.",
    "src": [
     "qml/SetupPc.qml"
@@ -2870,11 +3063,32 @@
    "en": "sharing"
   },
   {
+   "fr": "partage arrêté",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "share stopped"
+  },
+  {
+   "fr": "partage bloqué",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "share stuck"
+  },
+  {
    "fr": "PARTAGE BOOVI",
    "src": [
     "qml/Sources.qml"
    ],
    "en": "BOOVI SHARE"
+  },
+  {
+   "fr": "partage ouvert",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "share open"
   },
   {
    "fr": "partager",
@@ -2942,11 +3156,46 @@
    "en": "performance"
   },
   {
+   "fr": "personne n'a encore joué",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "nobody has played yet"
+  },
+  {
+   "fr": "personne ne joue",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "nobody is playing"
+  },
+  {
    "fr": "perte",
    "src": [
     "qml/StreamOverlay.qml"
    ],
    "en": "loss"
+  },
+  {
+   "fr": "peut jouer · cliquer : regarde seulement",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "can play · click: watch only"
+  },
+  {
+   "fr": "peuvent jouer",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "can play"
+  },
+  {
+   "fr": "peuvent prendre la manette (file d'attente, dés), ou regardent seulement. tu changes chacun depuis « partager ».",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "can take the controller (queue, dice), or only watch. you change each one from \"share\"."
   },
   {
    "fr": "ping",
@@ -2998,6 +3247,20 @@
    "en": "to keep its display on the game picture and off the interface, BooVI has to restart. the current stream stops."
   },
   {
+   "fr": "prendre",
+   "src": [
+    "qml/JoinRoomChip.qml"
+   ],
+   "en": "take"
+  },
+  {
+   "fr": "priorité à toi",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "you come first"
+  },
+  {
    "fr": "processeur",
    "src": [
     "qml/SettingsPage.qml"
@@ -3041,6 +3304,13 @@
    "en": "ready"
   },
   {
+   "fr": "ps5 libre",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "ps5 free"
+  },
+  {
    "fr": "qualité",
    "src": [
     "qml/SettingsPage.qml"
@@ -3069,6 +3339,41 @@
    "en": "when the camera turns, the picture follows its motion without lines. on a move too sudden, the real frame stays on screen instead of a broken one."
   },
   {
+   "fr": "quand quelqu'un attend, la manette passe au suivant après ce temps.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "when someone is waiting, the controller passes to the next one after this time."
+  },
+  {
+   "fr": "quand tu appuies sur ta propre manette, tu reprends la main ; l'invité la retrouve après deux minutes sans toi.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "when you press your own controller, you take over; the guest gets it back after two minutes without you."
+  },
+  {
+   "fr": "quelqu'un a la manette",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "someone has the controller"
+  },
+  {
+   "fr": "quelqu'un part",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "someone leaves"
+  },
+  {
+   "fr": "quelqu'un se connecte",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "someone connects"
+  },
+  {
    "fr": "qui joue",
    "src": [
     "qml/SharePanel.qml"
@@ -3081,6 +3386,13 @@
     "qml/SettingsPage.qml"
    ],
    "en": "who plays while a guest is here. you can change it during the game, from “share”."
+  },
+  {
+   "fr": "quitter la file",
+   "src": [
+    "qml/JoinRoomChip.qml"
+   ],
+   "en": "leave the queue"
   },
   {
    "fr": "quitter le plein écran",
@@ -3133,11 +3445,39 @@
    "en": "refuse"
   },
   {
+   "fr": "regarde",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "watches"
+  },
+  {
+   "fr": "regarde seulement",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "watch only"
+  },
+  {
+   "fr": "regarde seulement · cliquer : peut jouer",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "watch only · click: can play"
+  },
+  {
    "fr": "regarde si tu joues",
    "src": [
     "qml/SettingsPage.qml"
    ],
    "en": "watches while you play"
+  },
+  {
+   "fr": "regardent",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "watch"
   },
   {
    "fr": "regarder",
@@ -3157,11 +3497,11 @@
    "en": "watch only"
   },
   {
-   "fr": "regarder seulement : tout ce que l'invité appuie est ignoré.",
+   "fr": "regarder seulement : aucune manette d'invité n'arrive à la ps5.",
    "src": [
     "qml/SharePanel.qml"
    ],
-   "en": "watch only: everything the guest presses is ignored."
+   "en": "watch only: no guest's controller reaches the ps5."
   },
   {
    "fr": "rejoindre",
@@ -3176,6 +3516,13 @@
     "qml/Sources.qml"
    ],
    "en": "join a share"
+  },
+  {
+   "fr": "relais cloudflare",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "cloudflare relay"
   },
   {
    "fr": "relier ton compte",
@@ -3199,6 +3546,20 @@
    "en": "unmute"
   },
   {
+   "fr": "rendre",
+   "src": [
+    "qml/JoinRoomChip.qml"
+   ],
+   "en": "give back"
+  },
+  {
+   "fr": "rendre la manette",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "hand the controller back"
+  },
+  {
    "fr": "replay",
    "src": [
     "qml/SettingsPage.qml"
@@ -3212,6 +3573,13 @@
     "qml/StreamOverlay.qml"
    ],
    "en": "resume"
+  },
+  {
+   "fr": "reprendre la manette",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "take the controller back"
   },
   {
    "fr": "restaurer",
@@ -3233,6 +3601,13 @@
     "qml/SetupPs5.qml"
    ],
    "en": "remember the sign-in code"
+  },
+  {
+   "fr": "retirer",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "remove"
   },
   {
    "fr": "retour",
@@ -3365,6 +3740,13 @@
    "en": "resolution and refresh rate"
   },
   {
+   "fr": "résultat des dés",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "dice result"
+  },
+  {
    "fr": "réveil de la ps5…",
    "src": [
     "qml/SettingsPage.qml"
@@ -3400,6 +3782,13 @@
    "en": "their connection: test running or not done yet"
   },
   {
+   "fr": "sa manette : %1",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "their controller: %1"
+  },
+  {
    "fr": "sa manette envoie des données mais aucun bouton n'est arrivé : il peut la configurer depuis sa page.",
    "src": [
     "qml/SharePanel.qml"
@@ -3407,11 +3796,18 @@
    "en": "their controller sends data but no button has come through: they can set it up from their page."
   },
   {
-   "fr": "salon ouvert sur %1",
+   "fr": "sa part : %1",
    "src": [
     "qml/SharePanel.qml"
    ],
-   "en": "room open on %1"
+   "en": "their share: %1"
+  },
+  {
+   "fr": "salon ouvert sur %1 · ",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "room open on %1 · "
   },
   {
    "fr": "sans fin",
@@ -3440,6 +3836,13 @@
     "qml/SetupXbox.qml"
    ],
    "en": "sign in"
+  },
+  {
+   "fr": "se connecte…",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "connecting…"
   },
   {
    "fr": "se déconnecter",
@@ -3786,6 +4189,27 @@
    "en": "gpu time of the chain (super resolution, frame gen, present) per received picture."
   },
   {
+   "fr": "tes amis ouvrent ce lien dans chrome ou edge, sans rien installer.",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "your friends open this link in chrome or edge, nothing to install."
+  },
+  {
+   "fr": "tes amis regardent ton stream depuis leur navigateur ou BooVI, avec le son ; un seul tient la manette à la fois. il leur faut le lien, chrome ou edge, et une manette pour jouer.",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "your friends watch your stream from their browser or BooVI, with sound; one holds the controller at a time. they need the link, chrome or edge, and a controller to play."
+  },
+  {
+   "fr": "tes amis regardent ton stream, un seul tient la manette, depuis leur navigateur ou BooVI.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "your friends watch your stream, one holds the controller, from their browser or BooVI."
+  },
+  {
    "fr": "test manette",
    "src": [
     "qml/SharePanel.qml"
@@ -3793,11 +4217,11 @@
    "en": "controller test"
   },
   {
-   "fr": "ton ami ouvre ce lien dans chrome ou edge, il n'installe rien. quiconque a le lien peut rejoindre tant que le partage dure.",
+   "fr": "tester",
    "src": [
-    "qml/SharePanel.qml"
+    "qml/SettingsPage.qml"
    ],
-   "en": "your friend opens this link in chrome or edge and installs nothing. anyone with the link can join while sharing lasts."
+   "en": "test"
   },
   {
    "fr": "ton nom pour tes invités",
@@ -3857,6 +4281,13 @@
    "en": "always send the controller"
   },
   {
+   "fr": "tour de manette",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "controller turn"
+  },
+  {
    "fr": "tout couper",
    "src": [
     "qml/SettingsPage.qml"
@@ -3900,11 +4331,33 @@
    "en": "find your pc"
   },
   {
+   "fr": "tu as la manette",
+   "src": [
+    "qml/GuestChip.qml",
+    "qml/JoinRoomChip.qml"
+   ],
+   "en": "you have the controller"
+  },
+  {
+   "fr": "tu as repris la manette",
+   "src": [
+    "qml/SharePanel.qml"
+   ],
+   "en": "you took the controller back"
+  },
+  {
    "fr": "tu es en jeu.",
    "src": [
     "qml/HomePage.qml"
    ],
    "en": "you're in the game."
+  },
+  {
+   "fr": "tu regardes",
+   "src": [
+    "qml/JoinRoomChip.qml"
+   ],
+   "en": "you watch"
   },
   {
    "fr": "un ami allume ta ps5 et joue avec son propre lien, même quand tu n'es pas là.",
@@ -3921,18 +4374,11 @@
    "en": "a friend plays with you remotely"
   },
   {
-   "fr": "un ami regarde ton stream et joue avec sa manette, depuis son navigateur.",
+   "fr": "un invité peut lancer les dés pour la manette. ce pc tire les dés, tout le monde voit le lancer, le gagnant joue.",
    "src": [
     "qml/SettingsPage.qml"
    ],
-   "en": "a friend watches your stream and plays with their pad, from their browser."
-  },
-  {
-   "fr": "un ami regarde ton stream et joue avec sa manette, depuis son navigateur. il lui faut le lien, chrome ou edge, et une manette branchée sur son pc.",
-   "src": [
-    "qml/SharePanel.qml"
-   ],
-   "en": "a friend watches your stream and plays with their pad, from their browser. they need the link, chrome or edge, and a pad plugged into their pc."
+   "en": "a guest can roll the dice for the controller. this pc draws the dice, everyone sees the roll, the winner plays."
   },
   {
    "fr": "un jeu tourne",
@@ -3956,18 +4402,18 @@
    "en": "a fixed delay, to tune by ear."
   },
   {
-   "fr": "un seul invité à la fois, avec un lien qui change à chaque partage et quand tu le coupes. le navigateur ne transmet ni le gyroscope, ni le pavé tactile (sauf son clic), ni les gâchettes adaptatives. les conditions de sony ne prévoient pas qu'une autre personne joue à distance sur ton compte.",
-   "src": [
-    "qml/SettingsPage.qml"
-   ],
-   "en": "one guest at a time, with a link that changes every time you share and when you kick them. the browser carries neither the gyro, nor the touchpad (except its click), nor the adaptive triggers. sony's terms do not foresee someone else playing remotely on your account."
-  },
-  {
    "fr": "une limite fixe, en images par seconde.",
    "src": [
     "qml/SettingsPage.qml"
    ],
    "en": "a fixed limit, in frames per second."
+  },
+  {
+   "fr": "une seule manette arrive à la ps5 : les autres regardent en direct, avec le son. chacun reçoit l'image que sa connexion supporte ; ton envoi max est partagé entre eux.",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "only one controller reaches the ps5: the others watch live, with sound. each gets the picture their connection can take; your max upload is shared among them."
   },
   {
    "fr": "utile pour signaler un problème.",
@@ -4033,6 +4479,13 @@
    "en": "checking"
   },
   {
+   "fr": "webhook configuré",
+   "src": [
+    "qml/SettingsPage.qml"
+   ],
+   "en": "webhook set"
+  },
+  {
    "fr": "windows affiche en hdr sur cet écran.",
    "src": [
     "qml/SettingsPage.qml"
@@ -4070,7 +4523,6 @@
   {
    "fr": "à deux",
    "src": [
-    "qml/GuestChip.qml",
     "qml/SettingsPage.qml",
     "qml/SharePanel.qml"
    ],

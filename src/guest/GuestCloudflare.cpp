@@ -1,4 +1,5 @@
 #include "GuestCloudflare.h"
+#include "veyra/guest/GuestStreamer.h"
 
 #include <windows.h>
 #include <wincrypt.h>
@@ -91,6 +92,15 @@ std::string loadOrCreateRoomKey() {
     std::string key = newRoomKey();
     if (!seal(path, key)) return {};
     return key;
+}
+
+std::string loadDiscordWebhook() { return unseal(guestFile(L"discord.dpapi")); }
+
+bool saveDiscordWebhook(const std::string& url) { return seal(guestFile(L"discord.dpapi"), url); }
+
+void clearDiscordWebhook() {
+    std::error_code ec;
+    if (const auto path = guestFile(L"discord.dpapi"); !path.empty()) std::filesystem::remove(path, ec);
 }
 
 nlohmann::json fetchTurnIceServers(const CloudflareConfig& config, int ttlSeconds, std::string& error) {

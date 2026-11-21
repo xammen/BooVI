@@ -16,10 +16,14 @@
 
 namespace veyra::engine {
 namespace {
-// Long enough for graph rebuilds and runtime/model loading inside one loop
-// iteration; a healthy loop beats every few milliseconds.
-constexpr uint64_t kReportMs = 8000;
 constexpr unsigned kMaxFrames = 48;
+
+// Milliseconds without the time the computer slept, so a resume is not taken for a stall.
+uint64_t awakeMs() {
+    ULONGLONG t = 0;
+    QueryUnbiasedInterruptTime(&t);
+    return t / 10000;
+}
 
 std::mutex g_dumpMutex;
 std::wstring g_dumpDirectory;
@@ -105,12 +109,12 @@ std::string describe(uintptr_t pc) {
     return text;
 }
 
-void logStack(const char* label, const StackSample& sample) {
+void logStack(const char* tag, const char* label, const StackSample& sample) {
     for (unsigned i = 0; i < sample.count; ++i)
-        log::error("engine-hang", std::format("{} frame={} {}", label, i, describe(sample.pc[i])));
+        log::error(tag, std::format("{} frame={} {}", label, i, describe(sample.pc[i])));
 }
 
-void writeDump() {
+void writeDump(const char* tag) {
     std::wstring directory;
     { std::lock_guard lock(g_dumpMutex); directory = g_dumpDirectory; }
     if (directory.empty() || g_dumpsWritten.fetch_add(1) != 0) return;
@@ -118,14 +122,14 @@ void writeDump() {
                                     PMINIDUMP_USER_STREAM_INFORMATION, PMINIDUMP_CALLBACK_INFORMATION);
     const HMODULE dbghelp = LoadLibraryExW(L"dbghelp.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
     const auto write = dbghelp ? reinterpret_cast<WriteDump>(GetProcAddress(dbghelp, "MiniDumpWriteDump")) : nullptr;
-    if (!write) { log::error("engine-hang", "minidump unavailable (dbghelp)"); return; }
+    if (!write) { log::error(tag, "minidump unavailable (dbghelp)"); return; }
     SYSTEMTIME st{};
     GetLocalTime(&st);
     const auto name = std::format(L"veyra-hang-{:04}{:02}{:02}-{:02}{:02}{:02}-{}.dmp", st.wYear, st.wMonth, st.wDay,
                                   st.wHour, st.wMinute, st.wSecond, GetCurrentProcessId());
     const auto path = std::filesystem::path(directory) / name;
     const HANDLE file = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (file == INVALID_HANDLE_VALUE) { log::error("engine-hang", std::format("minidump open failed error={}", GetLastError())); return; }
+    if (file == INVALID_HANDLE_VALUE) { log::error(tag, std::format("minidump open failed error={}", GetLastError())); return; }
     // Thread stacks, module list and handle table (which event/mutex a wait is
     // on); no heap, so the file stays small enough to send with the logs.
     const auto type = MINIDUMP_TYPE(MiniDumpWithThreadInfo | MiniDumpWithHandleData | MiniDumpWithUnloadedModules);
@@ -133,12 +137,15 @@ void writeDump() {
     LARGE_INTEGER bytes{};
     GetFileSizeEx(file, &bytes);
     CloseHandle(file);
-    log::error("engine-hang", std::format("minidump written={} file={} bytes={}", ok != FALSE, path.filename().string(), bytes.QuadPart));
+    log::error(tag, std::format("minidump written={} file={} bytes={}", ok != FALSE, path.filename().string(), bytes.QuadPart));
 }
 } // namespace
 
 struct EngineWatchdog::State {
     Notify notify;
+    const char* tag = "engine-hang";
+    const char* ownerName = "playback loop";
+    uint64_t reportMs = 8000;   // engine: long enough for graph rebuilds and model loading in one iteration
     std::atomic<uint64_t> lastBeat{0};
     std::atomic<bool> armed{false}, reporting{false};
     std::atomic<const char*> stage{nullptr};
@@ -172,13 +179,13 @@ struct EngineWatchdog::State {
                 std::unique_lock lock(mutex);
                 if (wake.wait_for(lock, std::chrono::milliseconds(250), [&] { return stopping; })) break;
             }
-            const uint64_t now = GetTickCount64();
+            const uint64_t now = awakeMs();
             const uint64_t beatAt = lastBeat.load();
             const uint64_t stalled = now > beatAt ? now - beatAt : 0;
             const bool active = armed.load();
             if (reporting.load()) {
                 if (!active || beatAt != beatAtReport) {
-                    log::warn("engine-hang", std::format("owner {} after {} ms (stage={})", active ? "moved again" : "left the playback loop",
+                    log::warn(tag, std::format("owner {} after {} ms (stage={})", active ? "moved again" : "was disarmed",
                                                          (active ? beatAt : now) - beatAtReport, stage.load() ? stage.load() : "none"));
                     reporting = false;
                     tell(0);
@@ -191,9 +198,9 @@ struct EngineWatchdog::State {
                     StackSample again{};
                     if (thread && sampleThread(thread, again)) {
                         const bool same = again.count == first.count && std::memcmp(again.pc, first.pc, sizeof(uintptr_t) * first.count) == 0;
-                        log::error("engine-hang", std::format("resample owner={} stalledMs={} cpuMsSinceReport={} stack={}", id, stalled,
+                        log::error(tag, std::format("resample owner={} stalledMs={} cpuMsSinceReport={} stack={}", id, stalled,
                                                               threadCpuMs(thread) - cpuAtReport, same ? "unchanged" : "changed"));
-                        if (!same) logStack("resample", again);
+                        if (!same) logStack(tag, "resample", again);
                         Logger::instance().flush();
                     }
                     if (thread) CloseHandle(thread);
@@ -202,7 +209,7 @@ struct EngineWatchdog::State {
                 }
                 continue;
             }
-            if (!active || stalled < kReportMs) continue;
+            if (!active || stalled < reportMs) continue;
             reporting = true;
             beatAtReport = beatAt;
             DWORD id = 0;
@@ -210,13 +217,13 @@ struct EngineWatchdog::State {
             first.count = 0;
             const bool sampled = thread && sampleThread(thread, first);
             cpuAtReport = thread ? threadCpuMs(thread) : 0;
-            log::error("engine-hang", std::format("owner={} stalledMs={} lastStage={} cpuMs={} stackFrames={} nvidiaOverlay={} rtss={} gamePP={} (playback loop made no progress; capture/audio threads are separate)",
+            log::error(tag, std::format("owner={} stalledMs={} lastStage={} cpuMs={} stackFrames={} nvidiaOverlay={} rtss={} gamePP={} ({} made no progress; other threads are separate)",
                                                   id, stalled, stage.load() ? stage.load() : "none", cpuAtReport, sampled ? first.count : 0,
-                                                  gfx::nvidiaOverlayRunning(), gfx::rivaTunerRunning(), gfx::gamePPRunning() || gfx::gamePPInjected()));
-            if (sampled) logStack("stack", first);
+                                                  gfx::nvidiaOverlayRunning(), gfx::rivaTunerRunning(), gfx::gamePPRunning() || gfx::gamePPInjected(), ownerName));
+            if (sampled) logStack(tag, "stack", first);
             if (thread) CloseHandle(thread);
             Logger::instance().flush();
-            writeDump();
+            writeDump(tag);
             Logger::instance().flush();
             samples = 1;
             resampleAt = now + 10000;
@@ -229,8 +236,11 @@ struct EngineWatchdog::State {
     }
 };
 
-EngineWatchdog::EngineWatchdog(Notify notify) : state_(std::make_shared<State>()) {
+EngineWatchdog::EngineWatchdog(Notify notify, const char* tag, const char* owner, uint64_t reportMs) : state_(std::make_shared<State>()) {
     state_->notify = std::move(notify);
+    state_->tag = tag;
+    state_->ownerName = owner;
+    state_->reportMs = reportMs;
     std::thread([state = state_] { state->watch(); }).detach();
 }
 
@@ -253,7 +263,7 @@ void EngineWatchdog::beat() {
         s.owner = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_LIMITED_INFORMATION, FALSE, id);
         s.ownerId = id;
     }
-    s.lastBeat.store(GetTickCount64(), std::memory_order_relaxed);
+    s.lastBeat.store(awakeMs(), std::memory_order_relaxed);
     s.armed.store(true, std::memory_order_release);
 }
 

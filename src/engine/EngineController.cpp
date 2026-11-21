@@ -218,6 +218,20 @@ void EngineController::remotePlayController(const remoteplay::ControllerState& s
         anticipation_.input(DeadlineWait::now100ns(),float(state.rightX)/32767.0f,float(state.rightY)/32767.0f);}
 #endif
     else if(controlRemote_)controlRemote_->controller(state);}
+void EngineController::guestClientRoom(const std::string& command){
+#ifdef VEYRA_ENABLE_GUEST_CLIENT
+    std::shared_ptr<source::GuestClientSource> c;{std::lock_guard lock(mutex_);c=activeGuestClient_;}
+    if(c)c->roomCommand(command);
+#else
+    (void)command;
+#endif
+}
+remoteplay::InputSession EngineController::inputSession()const{std::lock_guard lock(mutex_);
+    remoteplay::InputSession out{snapshot_.remotePlay,false,snapshot_.running,snapshot_.transport==TransportState::Opening,snapshot_.transport==TransportState::Stopping};
+#ifdef VEYRA_ENABLE_GUEST_CLIENT
+    out.guestClient=snapshot_.guestClientActive;
+#endif
+    return out;}
 bool EngineController::remotePlayGotoBed(){std::shared_ptr<source::RemotePlaySessionSource> s;{std::lock_guard lock(mutex_);s=activeRemote_?activeRemote_:controlRemote_;}return s&&s->gotoBed();}
 void EngineController::remotePlayLoginPin(std::string pin){std::lock_guard lock(mutex_);if(activeRemote_)activeRemote_->loginPin(std::move(pin));else if(controlRemote_)controlRemote_->loginPin(std::move(pin));}
 void EngineController::startRemoteControl(source::RemotePlayConnectDesc desc){
@@ -1103,6 +1117,7 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
             std::array<TimingWindow,size_t(diagnostics::GpuStage::Count)> gpuStageTimes;
             std::array<uint64_t,size_t(diagnostics::GpuStage::Count)> lastGpuSampleEnd{};
             auto nextTimingLog=Clock::now()+std::chrono::seconds(1);
+            unsigned avSkewSeconds=0;
             // Video memory watchdog. A field log (RTX 5060 Ti, 2026-10-01) grew +3 GB a minute while
             // fullscreen, kept it after leaving fullscreen, and every pass slowed down once usage
             // passed the budget (5 fps). Unreproduced here. On growth beyond max(2 GiB, budget/4)
@@ -2848,12 +2863,12 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
                 // The guest's early tap (real pictures): its conversion follows the graph's lists
                 // on the same queue; the frame's presentation waits for it (realFrameRead). The
                 // fluide feeds take the presented frames instead (earlyGate_).
-                if(processed&&earlyGate_.live&&!rereadCached&&!out.passthrough&&!earlyGate_.target->presentedFeed()&&earlyGate_.target->wanted()){
+                if(processed&&earlyGate_.live&&!rereadCached&&!out.passthrough&&earlyGate_.target->wanted()){
                     auto* early=earlyGate_.target;auto* texture=graph->videoFrameResource(out.videoSlot);
                     Status tapStatus=Status::Ok;uint32_t tapSlot=0;
                     if(auto* list=texture?ring.acquireNext(tapSlot,tapStatus):nullptr){
                         const uint32_t hdrMode=graph->hdrOutput()?(graph->hdr10Output()?2u:1u):0u;
-                        if(!early->record(list,{texture,graph->outputFormat(),graph->workWidth(),graph->workHeight(),hdrMode,graph->outputDitherStep(),false,liveInputReady}))ring.discardRecording();
+                        if(!early->record(list,{texture,graph->outputFormat(),graph->workWidth(),graph->workHeight(),hdrMode,graph->outputDitherStep(),false,liveInputReady,true,true}))ring.discardRecording();
                         else if(ring.submitAndSignal(tapSlot)){early->submitted(ctx.fence(),ring.lastSignaledValue());graph->realFrameRead(out.videoSlot);}
                         else early->discarded();
                     }
@@ -3458,6 +3473,16 @@ void EngineController::run(HWND window,std::wstring path,PlayerOptions options,s
                         dedupLogged=st;dedupRepeatMax8=0;dedupRepeatMaxOver=0;dedupNewMinOver=UINT64_MAX;
                     }
                     veyra::log::info("capture-timing",std::format("revision={} received={} processed={} dropped={} callbackFps={:.2f} readAgeMs={:.3f} callbackToPresentReturnP95Ms={:.3f} processCpuP95Ms={:.3f} gpuReadyP95Ms={:.3f} schedulingWaitP95Ms={:.3f} presentCpuP95Ms={:.3f} gpuColorP95Ms={:.3f} gpuSrP95Ms={:.3f} gpuFlowP95Ms={:.3f} gpuNrP95Ms={:.3f} gpuResidualP95Ms={:.3f} gpuFgBatchP95Ms={:.3f} gpuBlitP95Ms={:.3f} slotWaits={} slotWaitMs={:.3f} commandSubmits={} displaySubmits={} expiredGenerated={} nr={} nvof={} generated={} historyResets={} presentationDrains={} presentationCompletedReal={} presentationSkippedGenerated={} presentationCancelledJobs={} singleGpuOwner=1 batchCapacity=2 (not HDMI-to-display latency)",options.settings.revision,captureStats.received,sourceFrames-statsSourceBase,captureStats.dropped,captureStats.callbackFps,captureStats.readAgeMs,ageP95,processTimes.p95(),liveScheduler?completed.readyP95:gpuReadyTimes.p95(),waitP95,presentP95,gpuP95(diagnostics::GpuStage::Color),gpuP95(diagnostics::GpuStage::Sr),gpuP95(diagnostics::GpuStage::Flow),gpuP95(diagnostics::GpuStage::Nr),gpuP95(diagnostics::GpuStage::Residual),gpuP95(diagnostics::GpuStage::FgBatch),gpuP95(diagnostics::GpuStage::Blit),slotWaitCount,slotWaitMilliseconds,commandSubmits,submitted,expired,graphStats.nrEvaluateCount,graphStats.nvofExecuteCount,graphStats.fgGeneratedFrames,historyResets.load(),presentationDrains.load(),presentationCompletedReal.load(),presentationSkippedGenerated.load(),presentationCancelledJobs.load()));
+                    // Audit 2026-11-21: skewMs is against the Present of the picture, not the picture on
+                    // screen; with a 32 ms fluide hold and ~7 ms to scanout, -42 ms read as either in sync
+                    // or 40 ms off. Every 10 s: the same skew against Present + the measured scanout p50.
+                    if(++avSkewSeconds>=10){
+                        avSkewSeconds=0;
+                        const auto skew=[&]{std::lock_guard lock(mutex_);return snapshot_.captureAudio.skewMs;}();
+                        const double scanout=presenter.scanoutP50Ms();
+                        if(skew)veyra::log::info("av-skew",std::format("presentSkewMs={:.1f} scanoutP50Ms={:.2f} screenSkewMs={} (audio device position minus the picture on screen, taken as its Present plus the scanout p50; negative: audio behind; the audio output latency after the device position is not included)",
+                            *skew,scanout,scanout>0?std::format("{:.1f}",*skew+scanout):std::string("unknown")));
+                    }
                     nextTimingLog=Clock::now()+std::chrono::seconds(1);
                 }
                 loopTrace.mark("periodicLogs");

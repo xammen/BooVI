@@ -150,6 +150,39 @@ svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width:
 #manual input[type=range] { flex: 1; accent-color: var(--accent); }
 #netNow { margin-top: 12px; }
 #netActions { margin-top: 12px; }
+/* the room: who watches, who holds the controller, the queue, the dice */
+#room { position: fixed; right: 16px; bottom: 72px; width: min(340px, calc(100vw - 32px)); padding: 14px 16px; z-index: 4; transition: opacity .2s var(--ease), transform .2s var(--ease); }
+#room.off { opacity: 0; transform: translateY(6px); pointer-events: none; }
+#room .head { display: flex; align-items: center; gap: 8px; color: var(--t2); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+#room .head .grow { flex: 1; }
+#room .head .btn { height: 24px; padding: 0 8px; text-transform: none; letter-spacing: 0; }
+#roomLine { color: var(--t1); font-size: 14px; margin: 10px 0 2px; font-variant-numeric: tabular-nums; }
+#roomList { margin-top: 10px; }
+.who { display: flex; align-items: center; gap: 10px; height: 30px; border-top: 1px solid var(--line); }
+.who:first-child { border-top: 0; }
+.who .n { flex: 1; min-width: 0; color: var(--t1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.who .r { color: var(--t3); font-size: 11px; white-space: nowrap; }
+.who.hold .r { color: var(--accent-text); }
+.who.me .n::after { content: " · toi"; color: var(--t3); }
+#roomActions { margin-top: 12px; }
+#roomActions .btn[hidden] { display: none; }
+#roomHistory { margin-top: 12px; }
+#roomHistory:empty { display: none; }
+#roomHistory .kv { margin-top: 6px; }
+#nameRow { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+#nameRow[hidden] { display: none; }
+#nameRow label { color: var(--t2); font-size: 12px; white-space: nowrap; }
+#guestName { flex: 1; min-width: 0; font: inherit; font-size: 13px; color: var(--t1); background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-md); height: 32px; padding: 0 10px; transition: border-color .15s var(--ease); }
+#guestName:focus { outline: none; border-color: rgba(155,123,234,.6); }
+#dice { position: fixed; left: 50%; top: 50%; transform: translate(-50%, calc(-50% + 6px)); padding: 20px 24px; min-width: min(300px, calc(100vw - 32px)); z-index: 6; opacity: 0; pointer-events: none; transition: opacity .2s var(--ease), transform .2s var(--ease); }
+#dice.on { opacity: 1; transform: translate(-50%, -50%); }
+#diceTitle { color: var(--t2); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; text-align: center; }
+#diceFaces { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin-top: 16px; }
+.die { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 72px; }
+.die b { width: 48px; height: 48px; display: grid; place-items: center; border: 1px solid var(--line2); border-radius: var(--r-lg); background: var(--card3); color: var(--t1); font-size: 22px; font-weight: 500; font-variant-numeric: tabular-nums; transition: background .2s var(--ease), border-color .2s var(--ease), color .2s var(--ease); }
+.die.win b { border-color: rgba(155,123,234,.6); background: var(--accent-soft); color: var(--accent-hi); }
+.die span { max-width: 72px; color: var(--t2); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#diceResult { margin-top: 16px; min-height: 1.4em; color: var(--t1); text-align: center; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 </style>
 </head>
@@ -162,7 +195,8 @@ svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width:
   <div class="card" id="gateCard">
     <div class="brand"><b>BooVI</b> · invité</div>
     <h1>tu es invité à jouer</h1>
-    <p class="lead">le stream ps5 de ton ami s'affiche ici, avec le son. branche une manette sur ce pc et appuie sur un bouton : elle joue sur la console.</p>
+    <p class="lead">le stream ps5 de ton ami s'affiche ici, avec le son. d'autres amis peuvent regarder avec toi ; une seule manette joue sur la console à la fois. branche la tienne et appuie sur un bouton.</p>
+    <div id="nameRow"><label for="guestName">ton pseudo</label><input id="guestName" maxlength="24" autocomplete="nickname" spellcheck="false" placeholder="ton prénom"></div>
     <div class="state"><i class="dot" id="gateDot"></i><div id="gateText"><span>prêt</span> · clique pour rejoindre</div></div>
     <div class="row">
       <button class="btn primary" id="join">rejoindre</button>
@@ -238,6 +272,17 @@ svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width:
   <div class="row" id="netActions"><button class="btn" id="retest">retester la connexion</button></div>
 </div>
 
+<div id="room" class="card off">
+  <div class="head"><i class="dot" id="roomDot2"></i><span>salon</span><span class="grow"></span><span id="roomCount"></span><button class="btn" id="roomClose" title="fermer">fermer</button></div>
+  <div id="roomLine">—</div>
+  <div class="muted" id="roomTurn"></div>
+  <div id="roomList"></div>
+  <div class="row" id="roomActions"><button class="btn primary" id="roomAsk">demander la manette</button><button class="btn" id="roomRoll">lancer les dés</button></div>
+  <div class="note" id="roomNote"></div>
+  <div id="roomHistory"></div>
+</div>
+<div id="dice" class="card" role="status" aria-live="polite"><div id="diceTitle">dés</div><div id="diceFaces"></div><div id="diceResult"></div></div>
+
 <div id="banner" class="card"><i class="dot busy"></i><span id="bannerText">reconnexion…</span></div>
 
 <div id="decodeNotice" class="card off" role="status">
@@ -248,6 +293,8 @@ svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width:
 <div id="bar" class="card">
   <button class="btn chip" id="padChip" title="manette"><i class="dot" id="padDot"></i><span id="padText">aucune manette détectée</span></button>
   <div class="div"></div>
+  <button class="btn chip" id="roomChip" title="salon (s)" hidden><i class="dot" id="roomDot"></i><span id="roomText">salon</span></button>
+  <div class="div" id="roomDiv" hidden></div>
   <button class="btn" id="btnSound" title="son (m)"><svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg><span>son</span></button>
   <button class="btn" id="btnNet" title="connexion et qualité (q)"><svg viewBox="0 0 24 24"><path d="M2 9a15 15 0 0 1 20 0M5.5 12.5a10 10 0 0 1 13 0M9 16a5 5 0 0 1 6 0M12 19.5h.01"/></svg><span>qualité</span></button>
   <button class="btn" id="btnHud" title="stats (h)"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg><span>stats</span></button>
@@ -792,6 +839,14 @@ if (given("t")) sessionStorage.setItem(kept("token"), token);
 if (given("a")) { try { localStorage.setItem(kept("access"), access); } catch (_) {} }
 if (given("t") || given("a")) history.replaceState(null, "", location.pathname + (params.get("test") ? "?test=1" : ""));
 const credential = () => access ? { access } : { token };
+// This tab's id: a reconnection replaces its own previous connection and keeps its place in the
+// room. The name the friend typed (a friend's access brings its own).
+const gid = (() => {
+  try { let g = sessionStorage.getItem("boovi-gid"); if (!g) { g = Math.random().toString(36).slice(2, 12) + Date.now().toString(36); sessionStorage.setItem("boovi-gid", g); } return g; }
+  catch (_) { return Math.random().toString(36).slice(2, 12); }
+})();
+let myName = params.get("name") || (() => { try { return localStorage.getItem("boovi-name") || ""; } catch (_) { return ""; } })();
+const sessionBody = () => ({ ...credential(), name: myName, gid, room: 1 });
 
 // ---- signaling: POST to the host's own server, or {id, path, body} through its room on the
 // broker, answered {id, status, body}. The room's socket closes once the answer is in.
@@ -852,7 +907,7 @@ const video = $("video"), audio = $("audio");
 const fmt = (v, d = 1) => v == null || !isFinite(v) || v < 0 ? "—" : v.toFixed(d).replace(".", ",");
 const median = a => { if (!a.length) return -1; const s = [...a].sort((x, y) => x - y); return s[s.length >> 1]; };
 
-let pc = null, channels = {}, attempt = 0, stopped = false, wantSound = true, connectedOnce = false, reconnectTimer = 0;
+let pc = null, channels = {}, attempt = 0, stopped = false, wantSound = true, connectedOnce = false, reconnectTimer = 0, consoleWaking = false;
 
 function toast(text, bad) {
   const t = $("toast"); t.textContent = text; t.classList.toggle("bad", !!bad); t.classList.add("on");
@@ -860,7 +915,9 @@ function toast(text, bad) {
 }
 function gate(state, text, kind) {
   $("gateDot").className = "dot " + (kind || "");
-  $("gateText").innerHTML = "<span>" + state + "</span>" + (text ? " · " + text : "");
+  const head = document.createElement("span");
+  head.textContent = state;
+  $("gateText").replaceChildren(head, text ? " · " + text : "");
 }
 function banner(text) { $("banner").classList.toggle("on", !!text); if (text) $("bannerText").textContent = text; }
 
@@ -884,7 +941,7 @@ const visitEnd = {
 async function knock() {
   for (;;) {
     if (stopped) return null;
-    const r = await signal("/session", credential()), j = r.j;
+    const r = await signal("/session", sessionBody()), j = r.j;
     if (r.status === 200) return { r, j };
     const host = j.host || "ton ami";
     if (r.status === 202 && visitText[j.state]) {
@@ -930,10 +987,13 @@ async function connect() {
       ({ r, j: offer } = got);
       if (!connectedOnce) gate("connexion", "préparation du stream", "busy");
     } else {
-      r = await signal("/session", { token });
+      r = await signal("/session", sessionBody());
       offer = r.j;
     }
+    if (r.status === 403 && offer.state === "kicked") { fatal("l'hôte t'a déconnecté", "demande-lui avant de revenir"); return; }
     if (r.status === 403) { fatal("lien invalide ou expiré", "demande un nouveau lien à ton ami"); return; }
+    if (r.status === 409 && offer.state === "full") throw new Error("le salon est plein");
+    consoleWaking = !!offer.console;
     if (!r.ok) throw new Error(offer.error || ("http " + r.status));
     pc = takePeer();
     pc.setConfiguration({ ...pc.getConfiguration(), iceServers: offer.ice || [] });
@@ -994,6 +1054,7 @@ function onConnected() {
   $("gate").classList.add("hidden");
   $("hudDot").className = "dot ok"; $("hudState").textContent = "connecté";
   toast("connecté · bon jeu");
+  if (consoleWaking) banner("la ps5 se réveille · l'image arrive");
   placePad();
   if (autoTest) setTest(true);
 }
@@ -1005,7 +1066,10 @@ function openChannel(ch) {
   if (ch.label === "stats") { ch.onmessage = e => onStats(JSON.parse(e.data)); ch.onopen = () => { syncBurst(); }; }
   if (ch.label === "feedback") ch.onmessage = e => onFeedback(JSON.parse(e.data));
   if (ch.label === "probe") { ch.binaryType = "arraybuffer"; ch.onmessage = e => onProbe(e.data); }
+  if (ch.label === "room") ch.onmessage = e => { try { onRoom(JSON.parse(e.data)); } catch (_) {} };
   if (ch.label === "stats") ch.addEventListener("open", () => { sendWish(); setTimeout(startProbe, 600); });
+  // Tests: ?net=1 keeps the connection card open.
+  if (ch.label === "stats" && params.get("net") === "1") ch.addEventListener("open", () => { netPinned = true; showNet(true); });
 }
 const send = (label, data) => { const c = channels[label]; if (c && c.readyState === "open") { try { c.send(data); return true; } catch (_) {} } return false; };
 
@@ -1039,12 +1103,14 @@ function onStats(m) {
     }
   } else if (m.t === "st") {
     hostMode = m.mode;
-    $("hudMode").textContent = { guest: "tu joues", together: "à deux", watch: "tu regardes" }[m.mode] || "";
+    if (!salon) $("hudMode").textContent = { guest: "tu joues", together: "à deux", watch: "tu regardes" }[m.mode] || "";
     if (m.feed) { host = m; renderNet(); }
   } else if (m.t === "probe-end") {
     setTimeout(finishProbe, 400);
   } else if (m.t === "bye") {
-    if (m.why === "kick") fatal("l'hôte t'a déconnecté", "le lien a changé");
+    if (m.why === "kick") fatal("l'hôte t'a déconnecté", "demande-lui avant de revenir");
+    else if (m.why === "link renewed") fatal("le lien a changé", "demande le nouveau lien à ton ami");
+    else if (m.why === "visit ended") fatal("visite terminée", "ton ami a fermé la visite");
     else if (m.why === "sharing stopped") fatal("partage arrêté", "ton ami a arrêté de partager");
   }
 }
@@ -1150,11 +1216,15 @@ function renderNet() {
     } else { $("netDot").className = "dot"; $("netLine").textContent = "connexion pas encore testée"; }
   }
   const best = host && host.best && host.tested ? host.best : null;
-  $("netBest").innerHTML = best ? "conseillé : <b>" + feedLabel(best.feed) + " · " + sizeLabel(best.size, host.src) + "</b> (25 % de marge)" : "";
+  $("netBest").innerHTML = (best ? "conseillé : <b>" + feedLabel(best.feed) + " · " + sizeLabel(best.size, host.src) + "</b> (25 % de marge)" : "")
+    + (host && host.plays && quality.auto ? (best ? "<br>" : "") + "tu as la manette : automatique garde les images réelles, les plus rapides." : "");
   segSet("segAuto", quality.auto ? "1" : "0");
   $("manual").hidden = quality.auto;
   const maxFeed = max ? FEEDS.indexOf(max.feed) : 2, maxSize = max ? SIZES.indexOf(max.size) : 2;
   segSet("segFeed", quality.feed, v => FEEDS.indexOf(v) > maxFeed);
+  // What the fluide feeds cost here, as the host measures it: they wait for its frame generation.
+  const cost = host && host.fluideMs > 1 ? " · +" + Math.round(host.fluideMs) + " ms" : "";
+  for (const b of $("segFeed").querySelectorAll("button")) b.textContent = feedLabel(b.dataset.v) + (b.dataset.v === "real" ? "" : cost);
   segSet("segSize", quality.size, v => SIZES.indexOf(v) > maxSize);
   $("segSize").querySelector('[data-v="native"]').textContent = host && host.src > 1080 ? "native · " + host.src + "p" : "native";
   const capMbps = max ? Math.round(max.kbps / 1000) : 100;
@@ -1185,6 +1255,7 @@ function watchFrames() {
   if (!("requestVideoFrameCallback" in HTMLVideoElement.prototype) || watchFrames.on) return;
   watchFrames.on = true;
   const cb = (now, md) => {
+    if (consoleWaking) { consoleWaking = false; banner(""); }
     // while the lab's stage draws the stream it keeps the numbers; the video's own only compare
     if (lab.staged) { lab.videoShown(md, md.expectedDisplayTime || now); video.requestVideoFrameCallback(cb); return; }
     shown = md.presentedFrames;
@@ -1200,6 +1271,122 @@ function watchFrames() {
     video.requestVideoFrameCallback(cb);
   };
   video.requestVideoFrameCallback(cb);
+}
+
+// ---- the room: several friends on one share, one holds the controller. The host decides
+// everything (who may play, the queue, the dice drawn on its PC); this page shows its snapshot
+// and asks: {t: "ask" | "cancel" | "release" | "roll"} on the "room" channel.
+let salon = null, salonAt = 0;
+const refusedText = { watcher: "l'hôte t'a mis en spectateur", "not-allowed": "l'hôte a coupé les dés", "too-soon": "les dés viennent d'être lancés, attends un peu",
+                      "too-few": "il faut au moins deux joueurs pour les dés", busy: "les dés roulent déjà" };
+const nameOf = id => ((salon && salon.members.find(x => x.id === id)) || {}).name || "?";
+const span = s => s < 60 ? Math.max(0, Math.round(s)) + " s" : Math.floor(s / 60) + " min";
+function myRole() {
+  if (!salon) return "";
+  if (salon.holder === salon.you) return "hold";
+  if (salon.queue.includes(salon.you)) return "queue";
+  return ((salon.members.find(x => x.id === salon.you) || {}).seat === "watcher") ? "watch" : "free";
+}
+function onRoom(m) {
+  if (m.t === "refused") { toast(refusedText[m.why] || "refusé", true); return; }
+  if (m.t !== "room") return;
+  const prev = salon;
+  salon = m; salonAt = performance.now(); window.__room = m;
+  if (m.dice && m.dice.in > 0 && (!prev || !prev.dice || prev.dice.n !== m.dice.n)) showDice(m.dice);
+  const had = prev && prev.holder === prev.you, has = m.holder === m.you;
+  if (has && !had && !(m.dice && m.dice.in > 0)) toast("à toi de jouer · tu as la manette");
+  if (had && !has) toast(m.owner ? "l'hôte reprend la manette" : "tu n'as plus la manette");
+  $("roomChip").hidden = $("roomDiv").hidden = false;
+  if (!prev) {
+    // Tests (scripts in the run notes): ?salon=1 opens the card, ?ask=N and ?roll=N send that command N s in.
+    if (params.get("salon") === "1") showRoom(true);
+    for (const c of ["ask", "roll"]) if (Number(params.get(c)) > 0) setTimeout(() => send("room", JSON.stringify({ t: c })), Number(params.get(c)) * 1000);
+  }
+  renderRoom();
+}
+function row(cls, name, role) {
+  const d = document.createElement("div"); d.className = "who " + cls;
+  const dot = document.createElement("i"); dot.className = "dot" + (cls.includes("hold") ? " ok" : "");
+  const n = document.createElement("span"); n.className = "n"; n.textContent = name;
+  const r = document.createElement("span"); r.className = "r"; r.textContent = role;
+  d.append(dot, n, r); return d;
+}
+function renderRoom() {
+  if (!salon) return;
+  const role = myRole(), q = salon.queue.indexOf(salon.you) + 1, t = (performance.now() - salonAt) / 1000;
+  const held = salon.held + t, left = salon.left >= 0 ? salon.left - t : -1;
+  const holder = salon.holder ? nameOf(salon.holder) : "";
+  $("roomText").textContent = role === "hold" ? "tu as la manette" : role === "queue" ? "file n° " + q : role === "watch" ? "tu regardes"
+                            : salon.owner ? "l'hôte joue" : holder ? holder + " joue" : "manette libre";
+  $("roomDot").className = $("roomDot2").className = "dot " + (role === "hold" ? "ok" : role === "queue" ? "busy" : "");
+  $("hudMode").textContent = role === "hold" ? "tu joues" : role === "queue" ? "en file" : "tu regardes";
+  $("roomCount").textContent = salon.members.length + "/" + salon.max;
+  $("roomLine").textContent = salon.owner ? "l'hôte a repris la manette" : holder ? (role === "hold" ? "tu as la manette" : holder + " a la manette") + " · " + span(held)
+                            : "manette libre · demande-la";
+  $("roomTurn").textContent = salon.turn > 0 && holder && left >= 0 && salon.queue.length ? "tour de " + Math.round(salon.turn / 60) + " min · encore " + span(left) : "";
+  const list = $("roomList"); list.textContent = "";
+  for (const x of salon.members) {
+    const qi = salon.queue.indexOf(x.id) + 1;
+    const r = x.id === salon.holder ? "a la manette" : qi ? "file n° " + qi : x.seat === "watcher" ? "regarde seulement" : "regarde";
+    list.append(row((x.id === salon.you ? "me " : "") + (x.id === salon.holder ? "hold" : ""), x.name + (x.native ? " · BooVI" : ""), r));
+  }
+  const ask = $("roomAsk");
+  ask.hidden = role === "watch";
+  ask.textContent = role === "hold" ? "rendre la manette" : role === "queue" ? "quitter la file" : holder || salon.owner ? "attendre la manette" : "prendre la manette";
+  ask.className = "btn" + (role === "free" ? " primary" : "");
+  const players = salon.members.filter(x => x.seat === "player").length;
+  $("roomRoll").hidden = !salon.allowDice || players < 2 || role === "watch";
+  $("roomNote").textContent = role === "watch" ? "l'hôte t'a mis en spectateur : tu regardes, sans manette." : "";
+  const h = $("roomHistory"); h.textContent = "";
+  if (salon.history && salon.history.length) {
+    const title = document.createElement("div"); title.className = "muted"; title.textContent = "dernières parties";
+    const kvs = document.createElement("div"); kvs.className = "kv";
+    for (const e of salon.history.slice(0, 5)) {
+      const k = document.createElement("div"); k.className = "k";
+      k.textContent = e.name + " · " + new Date(e.at * 1000).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+      const v = document.createElement("div"); v.className = "v"; v.textContent = span(e.s);
+      kvs.append(k, v);
+    }
+    h.append(title, kvs);
+  }
+}
+function showRoom(on) { $("room").classList.toggle("off", !on); $("roomChip").classList.toggle("on", on); if (on) renderRoom(); }
+$("roomChip").onclick = () => showRoom($("room").classList.contains("off"));
+$("roomClose").onclick = () => showRoom(false);
+$("roomAsk").onclick = () => {
+  const role = myRole();
+  send("room", JSON.stringify({ t: role === "hold" ? "release" : role === "queue" ? "cancel" : "ask" }));
+};
+$("roomRoll").onclick = () => send("room", JSON.stringify({ t: "roll" }));
+setInterval(renderRoom, 1000);
+// The dice are drawn on the host; this only plays the roll it sent, then shows its result.
+function showDice(d) {
+  const last = d.rounds[d.rounds.length - 1], box = $("diceFaces");
+  box.textContent = "";
+  const cells = last.map(t => {
+    const c = document.createElement("div"); c.className = "die";
+    const b = document.createElement("b"); b.textContent = "·";
+    const n = document.createElement("span"); n.textContent = nameOf(t.id);
+    c.append(b, n); box.append(c);
+    return { c, b, t };
+  });
+  $("diceTitle").textContent = d.by ? "dés lancés par " + nameOf(d.by) : "dés lancés par l'hôte";
+  $("diceResult").textContent = "";
+  $("dice").classList.add("on");
+  const quiet = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const total = Math.max(500, d.in - 400), start = performance.now();
+  const settle = () => {
+    for (const x of cells) { x.b.textContent = x.t.value; x.c.classList.toggle("win", x.t.id === d.winner); }
+    $("diceResult").textContent = (d.winner === salon.you ? "à toi de jouer" : nameOf(d.winner) + " prend la manette") + (d.rounds.length > 1 ? " · égalité départagée" : "");
+    clearTimeout(showDice.timer); showDice.timer = setTimeout(() => $("dice").classList.remove("on"), 2600);
+  };
+  const spin = () => {
+    const t = performance.now() - start;
+    if (quiet || t >= total) { settle(); return; }
+    for (const x of cells) x.b.textContent = 1 + Math.floor(Math.random() * 6);
+    setTimeout(spin, 50 + t / 14);
+  };
+  spin();
 }
 
 // ---- pads. Three sources give one state, read every animation frame and every 4 ms and sent in
@@ -1631,6 +1818,7 @@ function render() {
 
 // ---- controls
 function startJoin(sound) {
+  if (!access) { myName = $("guestName").value.trim().slice(0, 24) || myName; try { localStorage.setItem("boovi-name", myName); } catch (_) {} }
   wantSound = sound; stopped = false; attempt = 0;
   $("join").disabled = true;
   audio.muted = !sound;
@@ -1645,11 +1833,15 @@ $("btnNet").onclick = () => { const on = $("net").classList.contains("off"); net
 $("btnTest").onclick = () => setTest(!testOn);
 $("btnWarp").onclick = () => lab.setWarp(!lab.warp);
 $("btnFull").onclick = () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => {});
+$("guestName").value = myName;
+$("nameRow").hidden = !!access;
+$("guestName").addEventListener("keydown", e => { e.stopPropagation(); if (e.key === "Enter") startJoin(true); });
 window.addEventListener("keydown", e => {
   if (e.key === "f") $("btnFull").onclick();
   if (e.key === "h") $("btnHud").onclick();
   if (e.key === "q") $("btnNet").onclick();
   if (e.key === "m") $("btnSound").onclick();
+  if (e.key === "s" && salon) $("roomChip").onclick();
 });
 // Closing the tab tells the host at once, so its own pad takes over without waiting.
 // A Steam Controller goes back to keyboard and mouse.

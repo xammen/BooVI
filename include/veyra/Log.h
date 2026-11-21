@@ -37,10 +37,11 @@ public:
     bool openFile(const std::wstring& path, bool append = false);
     // Bounded size for the long-running app log (call before openFile). An existing
     // file of at least startBytes, or a file that reaches runningBytes while being
-    // written, is renamed to "<name>.old<ext>" (replacing the previous one) and a
-    // fresh file is started. 0 disables either check; off unless called, so worker
-    // and test logs keep appending.
-    void setRotation(uint64_t startBytes, uint64_t runningBytes);
+    // written, is renamed to "<name>.<UTC yyyyMMdd-HHmmss><ext>" and a fresh file is
+    // started under the same name. The newest `kept` renamed files stay, older ones are
+    // deleted. 0 disables either check; off unless called, so worker and test logs keep
+    // appending.
+    void setRotation(uint64_t startBytes, uint64_t runningBytes, unsigned kept = 5);
     void closeFile();
     void setConsoleEnabled(bool enabled);
     // Enable before realtime producers start. Output I/O then belongs to a
@@ -85,6 +86,7 @@ private:
     size_t bufferedLogBytes_=0;
     std::wstring path_;
     uint64_t fileBytes_=0,rotateAtOpen_=0,rotateWhileRunning_=0,nextRotation_=0;
+    unsigned keptLogs_=5;
     diagnostics::DiagnosticHistory diagnostics_;std::string latestProblem_;
 };
 

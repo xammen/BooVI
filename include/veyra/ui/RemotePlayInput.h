@@ -3,7 +3,9 @@
 // every 1 ms, so a stalled UI thread no longer delays or drops input. The thread owns the SDL
 // pad reader (initialized, polled and shut down there), the keyboard/mouse mapper and a
 // message-only window that receives raw keyboard and mouse input while the capture is on.
-// The UI thread only starts and stops it and exchanges the few values below.
+// The UI thread only starts and stops it and exchanges the few values below. The thread also
+// ends by itself once the engine's session no longer wants input (InputLifetime.h), so a
+// stalled UI thread cannot keep it polling the pad after the stream.
 #include <windows.h>
 
 #include <atomic>
@@ -26,9 +28,9 @@ public:
     RemotePlayInput(const RemotePlayInput&) = delete;
     RemotePlayInput& operator=(const RemotePlayInput&) = delete;
 
-    void start();   // no-op while running
+    void start();   // no-op while running; a thread that ended by itself is joined and started again
     void stop();    // sends a neutral state, then joins
-    bool running() const { return thread_.joinable(); }
+    bool running() const { return thread_.joinable(); }   // true until stop(), even once the thread ended by itself
 
     // Set by the UI thread.
     void setBackground(bool on) { background_ = on; }      // read the pad without the focus
@@ -48,10 +50,10 @@ private:
     void run(std::stop_token stop);
 
     engine::EngineController& engine_;
-    std::atomic<bool> background_{false}, focused_{true}, calibrate_{false}, tapPs_{false};
+    std::atomic<bool> background_{false}, focused_{true}, calibrate_{false}, tapPs_{false}, ended_{false};
     std::atomic<HWND> kbmWindow_{nullptr};
     std::atomic<guest::GuestStreamer*> guest_{nullptr};
-    mutable std::mutex mutex_;   // guards the three below
+    mutable std::mutex mutex_;   // guards the three below, and the thread's choice to end (ended_)
     remoteplay::KbmSettings settings_;
     unsigned settingsVersion_ = 0;
     remoteplay::ControllerInput::Capabilities capabilities_;

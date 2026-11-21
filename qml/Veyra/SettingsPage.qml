@@ -264,7 +264,7 @@ VPage {
                                  pad: qsTr("la manette que la console reçoit."),
                                  kbm: qsTr("jouer à la souris, convertie en manette."),
                                  captures: qsTr("enregistrer, garder les dernières secondes, prendre une image."),
-                                 partage: qsTr("un ami regarde ton stream et joue avec sa manette, depuis son navigateur."),
+                                 partage: qsTr("tes amis regardent ton stream, un seul tient la manette, depuis leur navigateur ou BooVI."),
                                  invites: qsTr("un ami allume ta ps5 et joue avec son propre lien, même quand tu n'es pas là."),
                                  app: qsTr("l'apparence de BooVI.") })[root.section]
                         color: Theme.t2
@@ -986,7 +986,7 @@ VPage {
                         }
                         UiRow {
                             title: qsTr("envoi max")
-                            desc: qsTr("ce que ta connexion envoie au plus vers ton ami, en Mb/s. sa page ne dépasse jamais ça, même en manuel à fond ; BooVI baisse aussi tout seul quand des paquets se perdent.")
+                            desc: qsTr("ce que ta connexion envoie au plus, en Mb/s, partagé entre tes invités : celui qui a la manette passe d'abord. leurs pages ne dépassent jamais ça ; BooVI baisse aussi tout seul quand des paquets se perdent.")
                             UiSeg {
                                 options: [{ id: "20", label: "20" }, { id: "35", label: "35" }, { id: "50", label: "50" }, { id: "80", label: "80" }, { id: "100", label: "100" }]
                                 current: String(veyra.preferences.guestBitrateMbps || 50)
@@ -1025,9 +1025,126 @@ VPage {
                             }
                         }
                     }
+                    // Several friends on one share (RoomModel.h): who may play, turns, dice.
+                    UiCard {
+                        UiRow {
+                            first: true
+                            title: qsTr("invités à la fois")
+                            desc: qsTr("une seule manette arrive à la ps5 : les autres regardent en direct, avec le son. chacun reçoit l'image que sa connexion supporte ; ton envoi max est partagé entre eux.")
+                            UiSeg {
+                                options: [{ id: "1", label: "1" }, { id: "2", label: "2" }, { id: "3", label: "3" }, { id: "4", label: "4" }, { id: "6", label: "6" }]
+                                current: String(veyra.preferences.guestMaxViewers || 4)
+                                onPicked: id => veyra.setPreference("guestMaxViewers", Number(id))
+                            }
+                        }
+                        UiRow {
+                            title: qsTr("les nouveaux venus")
+                            desc: qsTr("peuvent prendre la manette (file d'attente, dés), ou regardent seulement. tu changes chacun depuis « partager ».")
+                            UiSeg {
+                                options: [{ id: "player", label: qsTr("peuvent jouer") }, { id: "watcher", label: qsTr("regardent") }]
+                                current: veyra.preferences.guestDefaultSeat || "player"
+                                onPicked: id => veyra.setPreference("guestDefaultSeat", id)
+                            }
+                        }
+                        UiRow {
+                            title: qsTr("tour de manette")
+                            desc: qsTr("quand quelqu'un attend, la manette passe au suivant après ce temps.")
+                            UiSeg {
+                                options: [{ id: "0", label: qsTr("non") }, { id: "15", label: "15 min" }, { id: "30", label: "30 min" }, { id: "60", label: "1 h" }]
+                                current: String(veyra.preferences.guestTurnMinutes || 0)
+                                onPicked: id => veyra.setPreference("guestTurnMinutes", Number(id))
+                            }
+                        }
+                        UiRow {
+                            title: qsTr("les dés")
+                            desc: qsTr("un invité peut lancer les dés pour la manette. ce pc tire les dés, tout le monde voit le lancer, le gagnant joue.")
+                            UiSwitch { on: veyra.preferences.guestDice !== false; onSwitched: v => veyra.setPreference("guestDice", v) }
+                        }
+                        UiRow {
+                            title: qsTr("priorité à toi")
+                            desc: qsTr("quand tu appuies sur ta propre manette, tu reprends la main ; l'invité la retrouve après deux minutes sans toi.")
+                            UiSwitch { on: veyra.preferences.guestOwnerPriority !== false; onSwitched: v => veyra.setPreference("guestOwnerPriority", v) }
+                        }
+                        UiRow {
+                            title: qsTr("historique visible par les invités")
+                            desc: qsTr("leur page montre les dernières parties : qui, quand, combien de temps.")
+                            UiSwitch { on: veyra.preferences.guestHistoryToGuests === true; onSwitched: v => veyra.setPreference("guestHistoryToGuests", v) }
+                        }
+                    }
+
+                    // Discord (GuestNotify.h): the webhook stays sealed on this PC, never shown again.
+                    UiCard {
+                        id: discordCard
+                        readonly property var g: typeof vyGuest !== "undefined" && vyGuest ? vyGuest : null
+                        readonly property var d: g ? g.discord : ({})
+                        readonly property var ev: d.events || ({})
+                        UiRow {
+                            first: true
+                            title: qsTr("discord")
+                            desc: discordCard.d.configured ? qsTr("webhook configuré") + (discordCard.d.status ? " · " + discordCard.d.status : "")
+                                                           : qsTr("colle le lien d'un webhook de ton salon (paramètres du salon → intégrations → webhooks). il reste chiffré sur ce pc.")
+                            UiField {
+                                id: hookField
+                                visible: !discordCard.d.configured
+                                implicitWidth: 220
+                                fieldHeight: 32
+                                echoMode: TextInput.Password
+                                placeholderText: "https://discord.com/api/webhooks/…"
+                            }
+                            UiButton {
+                                visible: !discordCard.d.configured
+                                text: qsTr("enregistrer")
+                                size: 32
+                                enabled: hookField.text.length > 0
+                                onClicked: if (discordCard.g && discordCard.g.setDiscordWebhook(hookField.text)) hookField.text = ""
+                            }
+                            UiButton { visible: discordCard.d.configured === true; text: qsTr("tester"); size: 32; onClicked: discordCard.g.testDiscord() }
+                            UiButton { visible: discordCard.d.configured === true; text: qsTr("retirer"); size: 32; onClicked: discordCard.g.clearDiscordWebhook() }
+                        }
+                        Repeater {
+                            model: [{ id: "free", label: qsTr("ps5 libre") }, { id: "joined", label: qsTr("quelqu'un se connecte") },
+                                    { id: "left", label: qsTr("quelqu'un part") }, { id: "pad", label: qsTr("quelqu'un a la manette") },
+                                    { id: "queue", label: qsTr("file d'attente") }, { id: "dice", label: qsTr("résultat des dés") },
+                                    { id: "share-started", label: qsTr("partage ouvert") }, { id: "share-stopped", label: qsTr("partage arrêté") },
+                                    { id: "share-stuck", label: qsTr("partage bloqué") }]
+                            delegate: UiRow {
+                                required property var modelData
+                                visible: discordCard.d.configured === true
+                                title: modelData.label
+                                UiSwitch { on: discordCard.ev[modelData.id] === true; onSwitched: v => discordCard.g.setDiscordEvent(modelData.id, v) }
+                            }
+                        }
+                    }
+
+                    // Who held the controller, when, how long (guest-plays.dpapi).
+                    UiCard {
+                        id: playsCard
+                        readonly property var g: typeof vyGuest !== "undefined" && vyGuest ? vyGuest : null
+                        readonly property var list: g ? g.plays : []
+                        function length(s) {
+                            if (s < 60) return s + " s"
+                            const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60)
+                            return h > 0 ? h + " h " + (m < 10 ? "0" : "") + m : m + " min"
+                        }
+                        UiRow {
+                            first: true
+                            title: qsTr("historique des parties")
+                            desc: playsCard.list.length > 0 ? qsTr("%1 parties").arg(playsCard.list.length) : qsTr("personne n'a encore joué")
+                            UiButton { visible: playsCard.list.length > 0; text: qsTr("effacer"); size: 32; onClicked: playsCard.g.clearPlays() }
+                        }
+                        Repeater {
+                            model: playsCard.list.slice(0, 12)
+                            delegate: UiRow {
+                                required property var modelData
+                                title: modelData.name
+                                desc: Qt.formatDateTime(new Date(modelData.at), "dd/MM HH:mm")
+                                Text { text: playsCard.length(modelData.seconds); color: Theme.t2; font.family: Theme.fontMono; font.pixelSize: Theme.fsMeta }
+                            }
+                        }
+                    }
                     Text {
                         Layout.fillWidth: true
-                        text: qsTr("un seul invité à la fois, avec un lien qui change à chaque partage et quand tu le coupes. le navigateur ne transmet ni le gyroscope, ni le pavé tactile (sauf son clic), ni les gâchettes adaptatives. les conditions de sony ne prévoient pas qu'une autre personne joue à distance sur ton compte.")
+                        text: qsTr("le lien de partage change à chaque partage et quand tu le renouvelles. le navigateur ne transmet ni le gyroscope, ni le pavé tactile (sauf son clic), ni les gâchettes adaptatives. les conditions de sony ne prévoient pas qu'une autre personne joue à distance sur ton compte.")
                         color: Theme.t3
                         font.family: Theme.fontMono
                         font.pixelSize: Theme.fsMeta
@@ -1123,7 +1240,7 @@ VPage {
                             readonly property var v: invitesSection.a ? invitesSection.a.visit : ({})
                             title: v.phase === "playing" ? qsTr("%1 joue").arg(v.name) : v.phase === "asking" ? qsTr("%1 attend ton accord").arg(v.name) : qsTr("%1 arrive").arg(v.name)
                             desc: v.phase === "waking" ? qsTr("réveil de la ps5…") : v.phase === "connecting" ? qsTr("connexion…")
-                                : v.phase === "playing" ? qsTr("depuis %1").arg(Qt.formatTime(new Date(v.since), "HH:mm")) : ""
+                                : v.phase === "playing" ? qsTr("depuis %1").arg(Qt.formatTime(new Date(v.since), "HH:mm")) + (v.friends && v.friends.length > 1 ? " · " + v.friends.join(", ") : "") : ""
                             UiButton { visible: invitesSection.a && invitesSection.a.pending.name !== undefined; text: qsTr("accepter"); kind: "solid"; size: 32; focusPolicy: Qt.NoFocus; onClicked: invitesSection.a.approve() }
                             UiButton { visible: invitesSection.a && invitesSection.a.pending.name !== undefined; text: qsTr("refuser"); size: 32; onClicked: invitesSection.a.refuse() }
                             UiButton { visible: invitesSection.a && invitesSection.a.pending.name === undefined; text: qsTr("couper"); size: 32; onClicked: invitesSection.a.endVisit() }

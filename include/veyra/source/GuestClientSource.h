@@ -30,6 +30,7 @@ namespace veyra::source {
 
 struct GuestClientDesc {
     std::string link;                 // the share link, token included; never logged
+    std::string name;                 // what the host's room shows for this friend (a share link; an access brings its own)
     std::shared_ptr<ID3D12Device> decodeDevice;
     std::shared_ptr<ID3D12CommandQueue> decodeQueue;
     const std::atomic<bool>* stopRequested = nullptr;
@@ -49,6 +50,8 @@ struct GuestClientStats {
     bool iceFailed = false;           // Failed because no network path was found: the browser may still get through
     bool extendedInput = false;       // the host takes the extended pad message
     std::string controlMode;          // the host's choice: "guest", "together", "watch"
+    std::string room;                 // the host's last room snapshot (RoomModel.h snapshotJson), JSON; empty from an older host
+    std::string roomNotice;           // the host refused a room command: "watcher", "too-soon"…
     uint64_t units = 0, decoded = 0, dropped = 0, decodeErrors = 0, keyframeRequests = 0, inputsSent = 0;
     double receivedFps = 0, decodedFps = 0, videoMbps = 0, decodeMs = 0, rttMs = 0;
     double hostToScreenMs = -1;       // picture decoded on the host -> presented here, clock-synced median
@@ -94,6 +97,9 @@ public:
 
     // The PS5 input thread's pad, every pass the send gate lets through.
     void controller(const remoteplay::ControllerState& state);
+    // A room command for the host (RoomModel.h RoomCommand: "ask", "cancel", "release", "roll").
+    // Any thread; sent from a thread of its own, never the caller's.
+    void roomCommand(const std::string& command);
     remoteplay::ControllerFeedback takeFeedback();
 
 private:

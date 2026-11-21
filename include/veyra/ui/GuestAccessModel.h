@@ -11,13 +11,17 @@
 //   minimizes to it. "démarrer avec Windows" writes HKCU\...\Run only when ticked.
 // - A visit: the friend's page knocks (AccessDesk); the host is asked when the access says so
 //   (in-app prompt, tray notification, 60 s then refused); a free console is woken and
-//   connected with the existing PS5 Play flow (remembered login PIN, PS tap after a wake); the
-//   friend plays in the access's mode. When they leave or stay idle the visit ends: the PS5
-//   session stops, or, when this visit woke the console, it is put to rest after the rest delay.
+//   connected with the existing PS5 Play flow (remembered login PIN, PS tap after a wake). Once
+//   the host said yes the friend's page connects while the console wakes; the picture follows.
+//   Other friends join the running visit (the room decides who holds the controller). When the
+//   last one leaves, or nobody's pad moves for the idle delay, the visit ends: the PS5 session
+//   stops, or, when this visit woke the console, it is put to rest after the rest delay; a visit
+//   that ended before the picture or within 30 s of it keeps it 90 s for a retry.
 //
 // Tests: VEYRA_TEST_ACCESS_SOURCE=<video> plays that file instead of the PS5 Play flow;
 // VEYRA_TEST_ACCESS_FILE=<file> creates an access "test" (and a revoked one) at start and writes
 // their links there; VEYRA_TEST_ACCESS_APPROVE set makes "test" ask the host, =1 approves it after a second.
+#include <QHash>
 #include <QObject>
 #include <QPointer>
 #include <QString>
@@ -93,6 +97,10 @@ private:
     void publish();                          // the accesses to the desk
     void tick();
     void startVisit(const guest::Visit& v);
+    void ask(const QString& name, bool busy, guest::ControlMode mode);
+    std::optional<guest::VisitGuest> pendingGuest() const;
+    void leaveFriend(const guest::VisitGuest& g, const QString& outcome, const char* state = nullptr, const QString& detail = {});
+    void cutFriend(const QString& accessId);
     void startConsole();
     bool sessionLive() const;
     bool consoleBusy() const;
@@ -120,8 +128,13 @@ private:
 
     // The visit being driven, a copy of the desk's.
     std::optional<guest::Visit> current_;
-    qint64 askedAtMs_ = 0, consoleAtMs_ = 0, playingSinceMs_ = 0, seenAtMs_ = 0;
+    qint64 askedAtMs_ = 0, consoleAtMs_ = 0, playingSinceMs_ = 0;
+    // Each friend of the visit, by access id: when they joined it, were asked about, first and
+    // last seen connected.
+    struct Seen { qint64 joinedMs = 0, askedMs = 0, firstMs = 0, lastMs = 0; };
+    QHash<QString, Seen> seen_;
     bool consoleStarted_ = false, applied_ = false;
+    bool friendLeft_ = false;   // a friend of this visit already has their line in the history
     bool ownsSession_ = false;   // this gateway started the console's session (kept for the rest delay)
     bool wokeByAccess_ = false;  // that session woke the console from rest mode
 };

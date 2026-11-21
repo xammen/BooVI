@@ -25,6 +25,17 @@ inline double captureSafeCorrectionPpm(double requested,double current,double qu
     // Safety overrides the downward slew immediately; keep the FIR history.
     return std::clamp(std::max(slewed,reservoirLimit),-5000.0,5000.0);
 }
+// Whether the live drift loop fades and re-anchors. Errors are the played audio PTS minus its
+// target, in ms (negative: late). `anchorErrorMs` is the error a fresh anchor reached (at most 0),
+// once measured. Audio ahead, or a jump in the video delay, re-anchors past 60 ms as before. Late
+// audio re-anchors only when it is also 20 ms later than what an anchor reaches: below that it is
+// the latency floor (capture block, queue reserve, endpoint), which a re-anchor cannot remove.
+// Field log 2026-11-20: 22 of 26 re-anchors fired at -60 ms with the target at 0 to 5 ms, and
+// each came back to -42 to -55 ms within seconds, a 30 ms fade for nothing every 30 s or so.
+inline bool captureDriftReanchor(double errorMs,double filteredErrorMs,std::optional<double> anchorErrorMs){
+    constexpr double kLimitMs=60,kGainMs=20;
+    return errorMs>kLimitMs||filteredErrorMs<std::min(-kLimitMs,anchorErrorMs.value_or(0.0)-kGainMs);
+}
 // Float PCM can legitimately exceed unity before final user gain/downmix.
 // Do not introduce block AGC or clamp finite samples in the conversion stage.
 inline CaptureSampleStats inspectCapturePcm(float* samples,size_t count){

@@ -254,7 +254,27 @@ pipeline::FramePacket RemotePlaySource::makePacket(const remoteplay::VideoSample
     packet.compressedBytes = static_cast<std::uint32_t>(sample.payload.bytes().size());
     const auto stamp = clock_.video(sourceIndex, sample.arrival100ns);
     if (stamp) {
-        if(sourceIndex%600==0)veyra::log::info("remoteplay-clock",std::format("wireIndex={} ptsMs={:.3f} arrivalMinusPtsMs={:.3f} nominalFps={} (arrival-disciplined local estimate, not PS5 native PTS)",sourceIndex,double(stamp->pts100ns)/10000,double(sample.arrival100ns-static_cast<int64_t>(origin100ns_)-stamp->pts100ns)/10000,info_.averageFps));
+        // Audit 2026-11-21: arrivalMinusPts had a p99 of 239 ms in 10 s samples, with no way to
+        // tell an estimate reset from a late picture. Each reset is logged, and the 10 s line
+        // carries the largest value of each second.
+        const double lateMs=double(sample.arrival100ns-static_cast<int64_t>(origin100ns_)-stamp->pts100ns)/10000;
+        if(stamp->discontinuity&&clockLastArrival_){
+            ++clockResets_;
+            veyra::log::info("remoteplay-clock",std::format("estimate reset {} arrivalGapMs={:.1f} indexGap={} (a gap over 200 ms or half a second of pictures)",
+                clockResets_,double(sample.arrival100ns-clockLastArrival_)/10000,sourceIndex-clockLastIndex_));
+        }
+        clockLastArrival_=sample.arrival100ns;clockLastIndex_=sourceIndex;
+        if(const std::int64_t second=sample.arrival100ns/10000000;second!=clockSecond_){
+            if(clockSecond_>=0){clockMaxima_.push_back(clockSecondMaxMs_);if(clockMaxima_.size()>30)clockMaxima_.pop_front();}
+            clockSecond_=second;clockSecondMaxMs_=lateMs;
+        }else clockSecondMaxMs_=std::max(clockSecondMaxMs_,lateMs);
+        if(sourceIndex%600==0){
+            std::string maxima;
+            for(const double v:clockMaxima_)maxima+=std::format("{}{:.1f}",maxima.empty()?"":",",v);
+            clockMaxima_.clear();
+            veyra::log::info("remoteplay-clock",std::format("wireIndex={} ptsMs={:.3f} arrivalMinusPtsMs={:.3f} nominalFps={} max1sMs=[{}] resets={} (arrival-disciplined local estimate, not PS5 native PTS)",
+                sourceIndex,double(stamp->pts100ns)/10000,lateMs,info_.averageFps,maxima,clockResets_));
+        }
         packet.pts = pipeline::Rational{stamp->pts100ns, 10000000};
         packet.duration = pipeline::Rational{stamp->duration100ns, 10000000};
         if (stamp->discontinuity) packet.flags |= static_cast<pipeline::FrameFlags>(pipeline::FrameFlagBits::Discontinuity);

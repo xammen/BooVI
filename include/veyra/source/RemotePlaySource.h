@@ -91,6 +91,13 @@ private:
     remoteplay::ChiakiBackend backend_;
     std::optional<remoteplay::SessionInbox::Token> token_;
     remoteplay::RemotePlayClock clock_;
+    // remoteplay-clock diagnostics: the largest arrival minus estimated PTS of each second (logged
+    // with the 10 s line), and the previous frame, to report the estimate's gap resets.
+    std::int64_t clockSecond_ = -1;
+    double clockSecondMaxMs_ = 0;
+    std::deque<double> clockMaxima_;
+    std::int64_t clockLastArrival_ = 0;
+    std::uint64_t clockLastIndex_ = 0, clockResets_ = 0;
     remoteplay::NativeConnectRequest request_;
     SourceInfo info_{};
     AVCodecContext* codecContext_ = nullptr;

@@ -17,6 +17,7 @@
 #include <deque>
 #include <format>
 #include <mutex>
+#include <optional>
 #include <thread>
 
 namespace veyra::guest {
@@ -240,6 +241,7 @@ struct GuestVideo::State {
     std::atomic<uint64_t> skipped{0};
     std::string error;
     bool vendorChecked = false;
+    std::optional<std::chrono::steady_clock::time_point> deadline;   // closing: wait until then at most
 
     void retire(std::shared_ptr<Pipe>& pipe) {
         if (!pipe) return;
@@ -253,14 +255,20 @@ struct GuestVideo::State {
 
 GuestVideo::GuestVideo(Sink sink) : s_(std::make_unique<State>()) { s_->sink = std::move(sink); }
 
-GuestVideo::~GuestVideo() {
-    std::unique_lock lock(s_->m);
+void GuestVideo::close(std::chrono::steady_clock::time_point deadline) {
+    std::lock_guard lock(s_->m);
     s_->enabled = false;
     s_->retire(s_->current);
+    s_->deadline = deadline;
+}
+
+GuestVideo::~GuestVideo() {
+    if (!s_->deadline) close(std::chrono::steady_clock::now() + std::chrono::seconds(3));
+    std::unique_lock lock(s_->m);
     // The presenter is gone or no longer calls in: wait for the GPU and the threads.
-    for (int i = 0; i < 300 && !s_->retired.empty(); ++i) {
+    for (;;) {
         s_->reap();
-        if (s_->retired.empty()) break;
+        if (s_->retired.empty() || std::chrono::steady_clock::now() >= *s_->deadline) break;
         lock.unlock(); std::this_thread::sleep_for(std::chrono::milliseconds(10)); lock.lock();
     }
     for (auto& p : s_->retired) p->pending = -1;
@@ -311,14 +319,12 @@ VideoStats GuestVideo::stats() const {
 
 bool GuestVideo::wanted() const {
     auto& s = *s_;
-    if (!s.enabled.load(std::memory_order_relaxed)) return false;
+    if (!s.enabled.load(std::memory_order_relaxed) || s.presented.load(std::memory_order_relaxed)) return false;
     std::lock_guard lock(s.m);
     if (s.credit + double(sink::recordingClockUs() - s.creditAtUs) * kRealFps / 1e6 < 1) return false;
     // An encoder still opening takes nothing; one that stopped is reported by record().
     return !s.current || s.current->ready.load() || s.current->finished.load();
 }
-
-bool GuestVideo::presentedFeed() const { return s_->presented.load(std::memory_order_relaxed); }
 
 bool GuestVideo::record(ID3D12GraphicsCommandList* list, const Frame& frame) {
     auto& s = *s_;
@@ -326,7 +332,10 @@ bool GuestVideo::record(ID3D12GraphicsCommandList* list, const Frame& frame) {
     if (s.pendingPipe) { s.pendingPipe->discarded(); s.pendingPipe.reset(); }
     s.reap();
     const bool presented = s.presented.load();
-    if (!s.enabled || !list || !frame.texture || (frame.generated && !presented)) return false;
+    if (!s.enabled || !list || !frame.texture) return false;
+    // Fluide: the presented frames. Real pictures: the early tap on a live session, else the
+    // presented frames that are not generated.
+    if (presented ? frame.early : frame.generated || (frame.live && !frame.early)) return false;
     if (s.current && !s.current->ready.load() && s.current->finished.load()) {
         // The encoder failed: report it and stop converting frames for nothing.
         std::lock_guard text(s.current->textMutex);
@@ -383,5 +392,29 @@ void GuestVideo::discarded() {
     std::lock_guard lock(s_->m);
     if (s_->pendingPipe) { s_->pendingPipe->discarded(); s_->pendingPipe.reset(); }
 }
+
+GuestVideoSet::GuestVideoSet(Sink sink) {
+    for (size_t i = 0; i < kSlots; ++i) videos_.push_back(std::make_unique<GuestVideo>([sink, i](EncodedFrame&& f) { sink(i, std::move(f)); }));
+}
+
+GuestVideoSet::~GuestVideoSet() {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    for (auto& v : videos_) v->close(deadline);
+}
+
+bool GuestVideoSet::wanted() const {
+    for (const auto& v : videos_) if (v->wanted()) return true;
+    return false;
+}
+
+bool GuestVideoSet::record(ID3D12GraphicsCommandList* list, const Frame& frame) {
+    live_.store(frame.live || frame.early, std::memory_order_relaxed);
+    bool any = false;
+    for (auto& v : videos_) any |= v->record(list, frame);
+    return any;
+}
+
+void GuestVideoSet::submitted(ID3D12Fence* fence, uint64_t value) { for (auto& v : videos_) v->submitted(fence, value); }
+void GuestVideoSet::discarded() { for (auto& v : videos_) v->discarded(); }
 
 } // namespace veyra::guest

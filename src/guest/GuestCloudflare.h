@@ -6,6 +6,8 @@
 //                      Cloudflare TURN key.
 //   room.dpapi         the room key (GuestRoom.h), made on first use: the broker link and the
 //                      friends' access links (GuestAccess.h) stay the same from share to share.
+//   discord.dpapi      the Discord webhook URL the owner pasted in réglages → partage
+//                      (GuestNotify.h, GuestStreamer.h); a secret: whoever has it posts in the channel.
 #include <optional>
 #include <string>
 

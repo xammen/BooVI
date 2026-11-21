@@ -78,17 +78,21 @@ inline Size parseSize(std::string_view v, Size fallback) {
 
 // Automatique's rungs, from the least to the most: each feed the host allows at 1080p (or
 // its smaller size), then the host's feed at native size when it allows that.
-inline std::vector<Quality> ladder(const Limit& limit) {
+// `latencyFirst`, for the viewer who plays: real pictures only, 1080p then native. The fluide
+// feeds wait for the host's frame generation (about 25 ms more from decode to send with fluide
+// 4X, PERF audit 2026-11-21): automatique never trades that for smoothness under a player's pad.
+inline std::vector<Quality> ladder(const Limit& limit, bool latencyFirst = false) {
     const Size base = std::min(limit.size, Size::P1080);
     std::vector<Quality> out;
-    for (int f = 0; f <= int(limit.feed); ++f) out.push_back({Feed(f), base, defaultKbps(Feed(f), base)});
-    if (limit.size == Size::Native) out.push_back({limit.feed, Size::Native, defaultKbps(limit.feed, Size::Native)});
+    const int top = latencyFirst ? 0 : int(limit.feed);
+    for (int f = 0; f <= top; ++f) out.push_back({Feed(f), base, defaultKbps(Feed(f), base)});
+    if (limit.size == Size::Native) out.push_back({Feed(top), Size::Native, defaultKbps(Feed(top), Size::Native)});
     return out;
 }
 
 // The best rung that fits a measured link with its margin; the least without a measurement.
-inline Quality bestFor(const Limit& limit, uint32_t linkKbps) {
-    const auto rungs = ladder(limit);
+inline Quality bestFor(const Limit& limit, uint32_t linkKbps, bool latencyFirst = false) {
+    const auto rungs = ladder(limit, latencyFirst);
     size_t i = 0;
     while (i + 1 < rungs.size() && uint32_t(linkKbps * kLinkMargin) >= rungs[i + 1].kbps) ++i;
     return rungs[i];
@@ -96,7 +100,16 @@ inline Quality bestFor(const Limit& limit, uint32_t linkKbps) {
 
 class RateControl {
 public:
-    void setLimit(const Limit& limit) { limit_ = limit; if (wish_.automatic) rung_ = std::min(rung_, ladder(limit_).size() - 1); clampKbps(); }
+    void setLimit(const Limit& limit) { limit_ = limit; if (wish_.automatic) rung_ = std::min(rung_, ladder(limit_, latencyFirst_).size() - 1); clampKbps(); }
+    // The viewer holds the controller (and the host lets guests play): automatique keeps to
+    // real pictures. A manual choice is left as it is.
+    void setLatencyFirst(bool on, int64_t nowUs) {
+        if (on == latencyFirst_) return;
+        latencyFirst_ = on;
+        if (wish_.automatic) { pickFromLink(nowUs); kbps_ = ceiling(); }
+    }
+    bool latencyFirst() const { return latencyFirst_; }
+    Quality best() const { return bestFor(limit_, tested_, latencyFirst_); }
     void setWish(const Wish& wish, int64_t nowUs) {
         const bool wasAuto = wish_.automatic;
         wish_ = wish;
@@ -129,7 +142,7 @@ public:
             clean_ = 0;
             congestedAtUs_ = nowUs;
             if (wish_.automatic) {
-                const auto rungs = ladder(limit_);
+                const auto rungs = ladder(limit_, latencyFirst_);
                 // Starved: this rung needs more than the link gives, take the one below.
                 while (rung_ > 0 && kbps_ < rungs[rung_].kbps * 0.7) { --rung_; downAtUs_ = nowUs; }
                 kbps_ = std::min(kbps_, ceiling());
@@ -142,7 +155,7 @@ public:
         if (nowUs - congestedAtUs_ < kHoldUs) return;
         if (link_ && tested_) link_ = std::min(tested_, uint32_t(link_ * 1.1));
         if (wish_.automatic) {
-            const auto rungs = ladder(limit_);
+            const auto rungs = ladder(limit_, latencyFirst_);
             if (rung_ + 1 < rungs.size() && nowUs - downAtUs_ > kHoldUs && usable() >= rungs[rung_ + 1].kbps) ++rung_;
         }
         kbps_ = std::min(ceiling(), uint32_t(kbps_ * 1.1));
@@ -177,7 +190,7 @@ private:
     uint32_t usable() const { return link_ ? uint32_t(link_ * kLinkMargin) : 0; }
     // Automatique's mode: the rung, held under what the guest's decoder showed it can take.
     Quality mode() const {
-        const Quality r = ladder(limit_)[rung_];
+        const Quality r = ladder(limit_, latencyFirst_)[rung_];
         const Feed f = std::min(r.feed, decodeFeed_);
         const Size s = std::min(r.size, decodeSize_);
         return {f, s, f == r.feed && s == r.size ? r.kbps : defaultKbps(f, s)};
@@ -193,8 +206,8 @@ private:
     }
     void clampKbps() { kbps_ = std::min(kbps_, ceiling()); }
     void pickFromLink(int64_t nowUs) {
-        const auto rungs = ladder(limit_);
-        const Quality best = bestFor(limit_, link_);
+        const auto rungs = ladder(limit_, latencyFirst_);
+        const Quality best = bestFor(limit_, link_, latencyFirst_);
         rung_ = 0;
         while (rung_ + 1 < rungs.size() && !(rungs[rung_].feed == best.feed && rungs[rung_].size == best.size)) ++rung_;
         downAtUs_ = nowUs - kHoldUs;
@@ -203,6 +216,7 @@ private:
 
     Limit limit_;
     Wish wish_;
+    bool latencyFirst_ = false;
     size_t rung_ = 0;
     Feed decodeFeed_ = Feed::Smooth120;   // decoderBehind's ceiling, for this guest
     Size decodeSize_ = Size::Native;

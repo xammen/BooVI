@@ -65,6 +65,14 @@ int main() {
     for (size_t i = 0; i < SourceLimiter::kMaxSources + 50; ++i) crowd.admit("s" + std::to_string(i), now);
     expect(crowd.admit("late", now + SourceLimiter::kWindowUs * 2), "limiter: a full table still takes a new address");
 
+    // ---- a connection answers with the credential that made it
+    const PeerCredential byLink{hashToken(t1), true, "203.0.113.9"}, byAccess{hashToken(t2), false, "198.51.100.1"};
+    expect(byLink.admits({hashToken(t1), true, "203.0.113.9"}) && byAccess.admits({hashToken(t2), false, "198.51.100.7"}),
+           "answer: the same credential (and, for the share link, the same address) is admitted");
+    expect(!byAccess.admits({hashToken(t1), false, "198.51.100.1"}), "answer: another friend's access cannot answer for this one");
+    expect(byLink.admits({hashToken(t1), true, "192.0.2.5"}), "answer: the share link from a new address (changed network) is the same guest");
+    expect(!byLink.admits({hashToken(t1), false, "203.0.113.9"}), "answer: an access with the share token's hash is not the share link");
+
     // ---- the desk: one visit at a time
     AccessDesk desk;
     int started = 0;
@@ -83,20 +91,28 @@ int main() {
     k = desk.knock(t1, 20, 0, 0);
     expect(!k.started && started == 1 && k.state == "asking" && desk.visit()->knockUs == 20, "desk: knocking again keeps the visit");
     k = desk.knock(t2, 30, 0, 0);
-    expect(k.status == 409 && k.state == "busy", "desk: a second friend sees busy");
+    expect(k.started && started == 2 && k.state == "asking" && desk.guests().size() == 2, "desk: a second friend joins the visit, the host is asked");
     expect(!desk.admitted(t1), "desk: not admitted while asking");
     desk.setPhase(VisitPhase::Ready);
     k = desk.knock(t1, 40, 0, 0);
-    expect(k.admitted && k.status == 200 && desk.admitted(t1) == std::optional<std::string>("lucas") && !desk.admitted(t2), "desk: ready, lucas is admitted, zoé is not");
+    expect(k.admitted && k.status == 200 && desk.admitted(t1)->accessId == "a1" && desk.admitted(t1)->name == "lucas" && !desk.admitted(t2), "desk: ready, lucas is admitted, by his access, zoé not yet");
+    desk.approveGuest("a2");
+    expect(desk.knock(t2, 41, 0, 0).admitted && desk.admitted(t2)->accessId == "a2", "desk: once the host says yes, zoé joins too");
+    desk.leave("a2", 42);
+    expect(!desk.admitted(t2) && desk.guests().size() == 1 && desk.visit(), "desk: zoé leaving keeps lucas's visit");
+    desk.setCapacity(1);
+    expect(desk.knock(t2, 43, 0, 0).state == "busy", "desk: a full room is busy");
+    desk.setCapacity(4);
     desk.end(50, "refused");
     k = desk.knock(t1, 60, 0, 0);
-    expect(k.status == 403 && k.state == "refused" && started == 1, "desk: a refusal stays readable");
+    expect(k.status == 403 && k.state == "refused" && started == 2, "desk: a refusal stays readable");
     k = desk.knock(t1, 60 + AccessDesk::kOutcomeUs, 0, 0);
-    expect(k.started && started == 2, "desk: after it, a new visit");
+    expect(k.started && started == 3, "desk: after it, a new visit");
     desk.setPhase(VisitPhase::Playing);
     list.erase(list.begin());
-    desk.setAccesses(list);
+    const auto revoked = desk.setAccesses(list);
     expect(!desk.visit() && !desk.admitted(t1), "desk: revoking lucas ends his visit at once");
+    expect(revoked.size() == 1 && revoked[0].accessId == "a1", "desk: and says lucas left, for his connection to be cut");
     expect(desk.knock(t1, 100, 0, 0).invalid, "desk: a revoked token is invalid");
 
     // Busy console: only an access that allows à deux or watching gets in, and the host is asked.
@@ -106,11 +122,73 @@ int main() {
     two[1].ask = false; two[1].modes = AllowGuest | AllowWatch;
     busy.setAccesses(two); busy.setOpen(true);
     expect(busy.knock(t1, 1, 0, 0).state == "waking", "busy desk: auto-approved access starts by waking the console");
+    expect(busy.admitted(t1).has_value(), "busy desk: and is let in to connect while it wakes");
     busy.end(2);
     busy.setConsoleBusy(true);
     expect(busy.knock(t1, 3, 0, 0).state == "busy", "busy desk: guest-only access sees busy");
     k = busy.knock(t2, 4, 0, 0);
     expect(k.state == "asking" && busy.visit()->mode == ControlMode::WatchOnly && busy.visit()->consoleBusy, "busy desk: zoé may watch, after the host says yes");
+
+    // Friends whose access does not ask join a running visit at once.
+    AccessDesk shared;
+    std::vector<Access> pair{make("c1", "lucas", t1), make("c2", "zoé", t2)};
+    pair[0].ask = pair[1].ask = false;
+    pair[1].modes = AllowWatch;
+    shared.setAccesses(pair); shared.setOpen(true);
+    k = shared.knock(t1, 1, 0, 0);
+    expect(k.state == "waking" && k.admitted, "open desk: lucas wakes the console and connects meanwhile");
+    k = shared.knock(t2, 2, 0, 0);
+    expect(k.state == "waking" && k.admitted && shared.admitted(t2), "open desk: zoé connects while the console wakes too");
+    shared.setPhase(VisitPhase::Ready);
+    k = shared.knock(t2, 3, 0, 0);
+    expect(k.admitted && k.watchOnly && k.accessId == "c2" && shared.admitted(t2)->watchOnly, "open desk: still in once it streams, as a watcher (her access only watches)");
+    AccessDesk later;
+    later.setAccesses(pair); later.setOpen(true);
+    later.knock(t1, 1, 0, 0);
+    later.knock(t2, 2, 0, 0);
+    const auto zoeGone = later.setAccesses({pair[0]});
+    expect(later.visit() && later.guests().size() == 1 && zoeGone.size() == 1 && zoeGone[0].accessId == "c2" && !later.admitted(t2),
+           "open desk: revoking a later friend lets just her go, and says so");
+    pair.erase(pair.begin());
+    const auto everyone = shared.setAccesses(pair);
+    expect(!shared.visit() && shared.guests().empty(), "open desk: revoking the starter ends the visit for all");
+    expect(everyone.size() == 2, "open desk: and names every friend who had to go");
+
+    // The console's progress approves the visit's starter, by identity, never whoever is first.
+    AccessDesk consent;
+    std::vector<Access> asked{make("d1", "lucas", t1), make("d2", "zoé", t2)};
+    asked[0].ask = false;
+    consent.setAccesses(asked); consent.setOpen(true);
+    consent.knock(t1, 1, 0, 0);
+    consent.knock(t2, 2, 0, 0);
+    expect(!consent.admitted(t2), "consent: zoé asks first, she waits for the host");
+    consent.leave("d1", 3);
+    consent.setPhase(VisitPhase::Ready);
+    expect(!consent.admitted(t2) && consent.knock(t2, 4, 0, 0).state == "asking", "consent: lucas leaving during the wake does not let zoé in without the host");
+    consent.approveGuest("d2");
+    expect(consent.admitted(t2).has_value(), "consent: the host's yes lets her in");
+
+    // Two accesses with one name (saved before names had to differ) stay two friends.
+    AccessDesk twins;
+    std::vector<Access> same{make("e1", "lucas", t1), make("e2", "lucas", t2)};
+    same[0].ask = same[1].ask = false;
+    same[1].modes = AllowWatch;
+    twins.setAccesses(same); twins.setOpen(true);
+    const auto first = twins.knock(t1, 1, 0, 0), second = twins.knock(t2, 2, 0, 0);
+    expect(first.accessId == "e1" && !first.watchOnly && second.accessId == "e2" && second.watchOnly, "twins: each knock names its own access and its own mode");
+    expect(twins.admitted(t1)->accessId == "e1" && twins.admitted(t2)->accessId == "e2" && !twins.admitted(t1)->watchOnly, "twins: admission tells them apart");
+
+    // Two friends cut one after the other both stay out: each keeps their own outcome.
+    AccessDesk cuts;
+    std::vector<Access> pairCut{make("f1", "lucas", t1), make("f2", "sam", t2)};
+    pairCut[0].ask = pairCut[1].ask = false;
+    cuts.setAccesses(pairCut); cuts.setOpen(true);
+    cuts.knock(t1, 1, 0, 0); cuts.knock(t2, 2, 0, 0);
+    cuts.setPhase(VisitPhase::Playing);
+    cuts.leave("f1", 10, "ended");
+    cuts.leave("f2", 11, "ended");
+    expect(cuts.knock(t1, 12, 0, 0).state == "ended" && cuts.knock(t2, 13, 0, 0).state == "ended", "cuts: the first friend cut stays out after a second cut");
+    expect(cuts.knock(t1, 10 + AccessDesk::kOutcomeUs, 0, 0).state != "ended", "cuts: until the outcome expires");
 
     if (failures) { std::printf("%d FAILED\n", failures); return 1; }
     std::printf("all passed\n");

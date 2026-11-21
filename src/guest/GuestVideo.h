@@ -10,6 +10,8 @@
 //   present, kept on an even grid of `fps` a second by their times.
 #include <d3d12.h>
 
+#include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -56,11 +58,14 @@ public:
     void setEnabled(bool on);
     // Any thread: the next frame is an IDR (a PLI, or a new guest).
     void requestKeyframe();
+    // Shutting down: the encoder closes now; the destructor waits for its GPU work and thread
+    // until `deadline` at most.
+    void close(std::chrono::steady_clock::time_point deadline);
     VideoStats stats() const;
 
-    // EarlyCapture: engine thread.
+    // EarlyCapture: engine thread. A real-pictures encoder takes the early tap on a live session,
+    // else the presented non-generated frames; a fluide one takes the presented frames only.
     bool wanted() const override;
-    bool presentedFeed() const override;
     bool record(ID3D12GraphicsCommandList* list, const Frame& frame) override;
     void submitted(ID3D12Fence* fence, uint64_t value) override;
     void discarded() override;
@@ -69,6 +74,31 @@ public:
 private:
     struct State;
     std::unique_ptr<State> s_;
+};
+
+// The engine's one EarlyCapture for every viewer of a share: each frame is offered to each
+// viewer's encoder, which takes it or not (its feed, its rate). The streamer lends a slot to a
+// viewer while it is connected; the sink gets the slot with each bitstream.
+class GuestVideoSet final : public engine::EarlyCapture {
+public:
+    static constexpr size_t kSlots = 6;
+    using Sink = std::function<void(size_t slot, EncodedFrame&&)>;
+    explicit GuestVideoSet(Sink sink);
+    // Every encoder closes at once; they share one 3 s wait.
+    ~GuestVideoSet() override;
+    GuestVideo& at(size_t slot) { return *videos_[slot]; }
+    // The last frame came from a live session (console stream, capture card): real pictures then
+    // come early, before frame generation. A file hands only presented frames over.
+    bool liveSource() const { return live_.load(std::memory_order_relaxed); }
+
+    bool wanted() const override;
+    bool record(ID3D12GraphicsCommandList* list, const Frame& frame) override;
+    void submitted(ID3D12Fence* fence, uint64_t value) override;
+    void discarded() override;
+
+private:
+    std::vector<std::unique_ptr<GuestVideo>> videos_;
+    std::atomic<bool> live_{false};
 };
 
 } // namespace veyra::guest

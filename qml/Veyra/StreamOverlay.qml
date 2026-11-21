@@ -664,10 +664,18 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: toolbar.top
         anchors.bottomMargin: 12
-        width: Math.min(400, root.width - 48)
+        width: Math.min(420, root.width - 48)
+        maxHeight: Math.max(240, toolbar.y - 36)
         preview: root.preview
         open: toolbar.shareOpen && toolbar.shareAvailable
         onCloseRequested: toolbar.shareOpen = false
+    }
+    JoinRoomChip {
+        objectName: "stream-join-room"
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.top: parent.top
+        anchors.topMargin: 24
+        room: root.kind === "join" && sources.join.room ? sources.join.room : ({})
     }
     GuestChip {
         objectName: "stream-guest-chip"

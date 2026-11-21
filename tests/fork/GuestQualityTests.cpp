@@ -87,6 +87,23 @@ int main() {
         expect(c.current().kbps == maxKbps(Feed::Smooth60, Size::P1080) && c.current().kbps == 30000, "manual 1080p 60 at 100 Mb/s is held to 30 Mb/s");
         expect(!c.decoderBehind() && c.current().feed == Feed::Smooth60, "a manual choice is not stepped down");
     }
+    {
+        // The player: a fast link no longer buys fluide 120 at native, which waits for the
+        // host's frame generation; real pictures at native size are the top rung.
+        const auto rungs = ladder(all, true);
+        expect(rungs.size() == 2 && rungs.back().feed == Feed::Real && rungs.back().size == Size::Native, "latency first: real 1080p, then real native");
+        RateControl c; c.setLimit(all); c.linkTested(150000, 0);
+        expect(c.current().feed == Feed::Smooth120, "a spectator on a fast link: fluide 120");
+        c.setLatencyFirst(true, 1);
+        expect(c.current().feed == Feed::Real && c.current().size == Size::Native, "the same link once it plays: real pictures at native size");
+        expect(c.best().feed == Feed::Real, "what the page is told is best follows");
+        c.setLatencyFirst(false, 2);
+        expect(c.current().feed == Feed::Smooth120, "back to watching: fluide again");
+        RateControl manual; manual.setLimit(all);
+        manual.setWish({false, Feed::Smooth60, Size::P1080, 30000}, 0);
+        manual.setLatencyFirst(true, 1);
+        expect(manual.current().feed == Feed::Smooth60, "a player who picks fluide by hand keeps it");
+    }
     expect(parseFeed("60", Feed::Real) == Feed::Smooth60 && parseFeed("x", Feed::Real) == Feed::Real, "feed names");
     expect(parseSize("native", Size::P720) == Size::Native, "size names");
     std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);

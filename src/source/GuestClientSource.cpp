@@ -33,6 +33,7 @@ extern "C" {
 #include "veyra/Log.h"
 #include "veyra/guest/BrokerSocket.h"
 #include "veyra/guest/GuestProtocol.h"
+#include "veyra/guest/RoomModel.h"
 #include "veyra/guest/TurnTunnel.h"
 #include "veyra/pipeline/ColorMetadata.h"
 #include "veyra/sink/AudioFormat.h"
@@ -343,7 +344,8 @@ struct GuestClientSource::Impl {
     std::unique_ptr<guest::TurnTunnel> tunnel;
     std::shared_ptr<rtc::PeerConnection> pc;
     std::shared_ptr<rtc::Track> video, audio;
-    std::shared_ptr<rtc::DataChannel> input, feedbackChannel, statsChannel;
+    std::shared_ptr<rtc::DataChannel> input, feedbackChannel, statsChannel, roomChannel;
+    std::string room, roomNotice;     // stateMutex: the host's last room snapshot, its last refusal
     // Callbacks run on libdatachannel's threads; close() shuts this gate first.
     struct Gate { std::recursive_mutex mutex; bool open = true; };
     std::shared_ptr<Gate> gate = std::make_shared<Gate>();
@@ -354,6 +356,8 @@ struct GuestClientSource::Impl {
     std::atomic<bool> extendedInput{false};
     std::atomic<bool> relayed{false};
     std::string controlMode;
+    // This run's id: a reconnection replaces its previous connection and keeps its place in the room.
+    std::string gid = std::to_string(GetTickCount64()) + "-" + std::to_string(GetCurrentProcessId());
 
     // Video: the WebRTC thread queues access units; the decode thread drains them.
     struct Unit { std::vector<uint8_t> data; uint32_t rtp; int64_t arrival; bool inputLoss = false; };
@@ -544,7 +548,8 @@ void GuestClientSource::run(GuestClientDesc desc) {
     const char* credentialKey = p.link.access ? "access" : "token";
     HttpResult session;
     for (;;) {
-        session = signaling.call(L"/session", json{{credentialKey, p.link.token}, {"client", "boovi"}, {"input", guest::kExtendedVersion}, {"feed", "real"}}.dump());
+        session = signaling.call(L"/session", json{{credentialKey, p.link.token}, {"client", "boovi"}, {"input", guest::kExtendedVersion}, {"feed", "real"},
+                                                   {"name", p.desc.name}, {"gid", p.gid}, {"room", 1}}.dump());
         if (cancelled() || !p.link.access || session.status != 202 || !session.error.empty()) break;
         const json wait = json::parse(session.body, nullptr, false);
         const std::string state = wait.is_object() && wait.contains("state") && wait["state"].is_string() ? wait["state"].get<std::string>() : "";
@@ -687,6 +692,18 @@ void GuestClientSource::run(GuestClientDesc desc) {
                 impl->feedbackChannel = channel;
                 channel->onMessage([impl, gate](rtc::message_variant data) {
                     std::lock_guard g2(gate->mutex); if (gate->open) impl->onFeedback(data);
+                });
+            } else if (label == "room") {
+                impl->roomChannel = channel;
+                channel->onMessage([impl, gate](rtc::message_variant data) {
+                    std::lock_guard g2(gate->mutex); if (!gate->open) return;
+                    const auto* text = std::get_if<std::string>(&data);
+                    if (!text || text->size() > 64 * 1024) return;
+                    const json m = json::parse(*text, nullptr, false);
+                    if (!m.is_object() || !m.contains("t") || !m["t"].is_string()) return;
+                    std::lock_guard lock(impl->stateMutex);
+                    if (m["t"] == "room") impl->room = *text;
+                    else if (m["t"] == "refused" && m.contains("why") && m["why"].is_string()) impl->roomNotice = m["why"].get<std::string>().substr(0, 24);
                 });
             } else if (label == "stats") {
                 impl->statsChannel = channel;
@@ -1105,6 +1122,19 @@ void GuestClientSource::controller(const remoteplay::ControllerState& state) {
     try { p.input->send(bytes.data(), bytes.size()); ++p.inputsSent; } catch (const std::exception&) {}
 }
 
+void GuestClientSource::roomCommand(const std::string& command) {
+    if (guest::roomCommandOf(command) == guest::RoomCommand::None) return;
+    std::shared_ptr<rtc::DataChannel> channel;
+    {
+        std::lock_guard g(p_->gate->mutex);
+        if (p_->gate->open) channel = p_->roomChannel;
+    }
+    if (!channel) return;
+    std::thread([channel, text = json{{"t", command}}.dump()] {
+        try { if (channel->isOpen()) channel->send(text); } catch (...) {}
+    }).detach();
+}
+
 remoteplay::ControllerFeedback GuestClientSource::takeFeedback() {
     remoteplay::ControllerFeedback out;
     if (!p_) return out;
@@ -1128,7 +1158,7 @@ GuestClientStats GuestClientSource::stats() const {
     { std::lock_guard lock(p.statsMutex); s.decoder = p.decoderName; s.gpu = p.gpuVendor; }
     s.relayed = p.relayed.load();
     s.extendedInput = p.extendedInput.load();
-    { std::lock_guard lock(p.stateMutex); s.controlMode = p.controlMode; }
+    { std::lock_guard lock(p.stateMutex); s.controlMode = p.controlMode; s.room = p.room; s.roomNotice = std::exchange(p.roomNotice, {}); }
     {
         std::lock_guard g(p.gate->mutex);
         if (p.gate->open && p.pc && s.state == GuestClientStats::State::Streaming)

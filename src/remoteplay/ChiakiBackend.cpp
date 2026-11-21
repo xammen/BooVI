@@ -2,6 +2,10 @@
 // Uses chiaki-ng's AGPL-3.0-only + OpenSSL-exception APIs; retain both licenses.
 // Windows native initialization and source regression evidence: see execution log.
 #include "veyra/remoteplay/ChiakiBackend.h"
+#include "veyra/Log.h"
+#include <format>
+#include <regex>
+#include <string>
 #include <chiaki/session.h>
 #if !defined(CHIAKI_VEYRA_VIDEO_METADATA_API) || CHIAKI_VEYRA_VIDEO_METADATA_API != 1
 #error The reviewed Chiaki video metadata patch is required
@@ -94,8 +98,15 @@ struct ChiakiBackend::Impl {
         switch(event->type){
         case CHIAKI_EVENT_CONNECTED:self.connected=true;self.token.connected();break;
         case CHIAKI_EVENT_LOGIN_PIN_REQUEST:self.token.loginPinRequired();break;
-        case CHIAKI_EVENT_QUIT:
-            self.connected=false;self.quitReason=static_cast<int>(event->quit.reason);
+        case CHIAKI_EVENT_QUIT:{
+            // Field log 2026-11-20 had only "quitReason=12"; the name and the console's own text
+            // say why (12 is a stream the console shut down). Addresses are not logged.
+            try{
+                const std::string text=event->quit.reason_str?std::string(event->quit.reason_str).substr(0,200):std::string();
+                log::warn("remoteplay-quit",std::format("reason={} name={} text=\"{}\"",static_cast<int>(event->quit.reason),
+                    chiaki_quit_reason_string(event->quit.reason),std::regex_replace(text,std::regex(R"(\d{1,3}(\.\d{1,3}){3})"),"<address>")));
+            }catch(...){}
+            self.connected=false;self.quitReason=static_cast<int>(event->quit.reason);}
             // A remote termination is not a successful decoded EOF.
             self.token.failed(2000+static_cast<int>(event->quit.reason));break;
         case CHIAKI_EVENT_RUMBLE:{std::lock_guard lock(self.feedbackMutex);self.feedback.rumble=true;self.feedback.left=event->rumble.left;self.feedback.right=event->rumble.right;break;}

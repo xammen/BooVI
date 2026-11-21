@@ -4,6 +4,7 @@
 #include "veyra/sink/RecordingAudioTap.h"
 #include "veyra/source/AudioInputRecovery.h"
 #include <chrono>
+#include <cstdlib>
 #include <thread>
 #include <iostream>
 #include <vector>
@@ -59,6 +60,34 @@ int main(int argc,char** argv){
         std::cout<<(pass?"PASS ":"FAIL ")<<"monitor gain=0 recordingFrames="<<recording->frames<<" replayFrames="<<replay->frames
             <<" recordingPeak="<<recording->peak<<" replayPeak="<<replay->peak<<" inputBlocks="<<state.inputBlocks
             <<" timestampsMonotonic="<<(recording->monotonic&&replay->monotonic)<<std::endl;
+        return pass?0:1;
+    }
+    if(argc>=2&&std::string_view(argv[1])=="--latency-floor"){
+        // Field log 2026-11-20: a PS5 stream whose video runs ahead of its audio leaves the
+        // automatic target at 0 ms, so the played audio sits at the latency floor (capture block,
+        // queue reserve, endpoint) about 50 ms behind it. The 60 ms drift limit then faded and
+        // re-anchored every 30 s or so without gaining anything. Here: 10 ms blocks arriving 0 to
+        // 12 ms late (argv[2] sets another maximum), video 10 ms ahead, muted output, for 40 s. Re-anchors beyond the start are
+        // failures; driftHeld counts those the 60 ms limit alone would have made.
+        CaptureAudioSession output;const auto wave=floatWave({2,SPEAKER_FRONT_LEFT|SPEAKER_FRONT_RIGHT});
+        output.setGain(0);output.setSync(0,0);
+        if(!output.configure(wave.Format,sizeof(wave))||!output.start())return 2;
+        std::vector<float> block(480*2,0.0f);const auto start=Clock::now();
+        const double maxJitterMs=argc>=3?std::clamp(std::atof(argv[2]),0.0,40.0):12.0;
+        uint32_t seed=12345;const auto jitterMs=[&]{seed=seed*1664525u+1013904223u;return double(seed>>8)/double(1u<<24)*maxJitterMs;};
+        uint64_t resetsAfterStart=0;
+        for(unsigned n=0;n<4000;++n){
+            pacer.until(start+std::chrono::microseconds(int64_t((n*10.0+jitterMs())*1000)));
+            if(!output.push(block.data(),block.size()*sizeof(float),n*10.0,n==0))return 3;
+            const auto host=std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now().time_since_epoch()).count()/100;
+            output.videoPresented(n*10.0+10.0,host,host);
+            if(n==300)resetsAfterStart=output.snapshot().resets;   // the start and its first anchor are over by 3 s
+        }
+        const auto state=output.snapshot();output.stop();
+        const uint64_t resets=state.resets-resetsAfterStart;
+        const bool pass=state.inputBlocks==4000&&resets==0;
+        std::cout<<(pass?"PASS ":"FAIL ")<<"latency floor maxJitterMs="<<maxJitterMs<<" resetsAfterStart="<<resets<<" driftHeld="<<state.driftHeld
+            <<" skewMs="<<state.skewMs.value_or(-999)<<" compensationMs="<<state.compensationMs<<" underruns="<<state.underruns<<std::endl;
         return pass?0:1;
     }
     if(argc>=2&&std::string_view(argv[1])=="--endpoint-switch"){

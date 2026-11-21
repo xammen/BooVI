@@ -20,6 +20,9 @@ int wmain(int argc,wchar_t** argv){
     if(argc!=2)return 2;
     const std::filesystem::path out=argv[1];std::filesystem::create_directories(out);
     int failures=0;
+    // Moved logs of an earlier run of this test would count as this run's.
+    for(const auto& entry:std::filesystem::directory_iterator(out))
+        if(const auto name=entry.path().filename().wstring();name.starts_with(L"rotation.")||name.starts_with(L"restart."))std::filesystem::remove(entry.path());
     const auto check=[&](bool ok,const char* label){std::printf("%s %s\n",ok?"PASS":"FAIL",label);failures+=!ok;};
     {
         auto owned=std::make_unique<veyra::Logger>();auto& logger=*owned;logger.setConsoleEnabled(false);
@@ -86,7 +89,29 @@ int wmain(int argc,wchar_t** argv){
         logger.openFile((out/L"rotation.log").wstring());logger.startAsync();
         for(int i=0;i<24;++i)logger.write(veyra::LogLevel::Info,"rotation","item="+std::to_string(i)+" "+std::string(80,'r'));
         logger.write(veyra::LogLevel::Info,"rotation","FINAL_ROTATION_MARKER");logger.closeFile();
-        check(std::filesystem::exists(out/L"rotation.old.log")&&read(out/L"rotation.log").find("FINAL_ROTATION_MARKER")!=std::string::npos,"asynchronous rotation preserves final marker and old log");
+        // Each moved part is rotation.<UTC stamp>[-n].log; the newest five stay.
+        std::vector<std::filesystem::path> moved;
+        for(const auto& entry:std::filesystem::directory_iterator(out)){
+            const auto name=entry.path().filename().wstring();
+            if(name.starts_with(L"rotation.2")&&name.ends_with(L".log"))moved.push_back(entry.path());
+        }
+        std::string kept;for(const auto& file:moved)kept+=read(file);
+        check(moved.size()==5&&read(out/L"rotation.log").find("FINAL_ROTATION_MARKER")!=std::string::npos,"asynchronous rotation keeps the final marker and the newest five moved logs");
+        check((kept+read(out/L"rotation.log")).find("item=23 ")!=std::string::npos&&kept.find("item=0 ")==std::string::npos,"the oldest moved logs are the ones deleted");
+    }
+    {
+        // A restart moves a big log aside under a new name: the one before it stays.
+        const auto path=(out/L"restart.log").wstring();
+        for(int run=0;run<2;++run){
+            auto owned=std::make_unique<veyra::Logger>();auto& logger=*owned;logger.setConsoleEnabled(false);logger.setRotation(64,0);
+            logger.openFile(path,true);logger.write(veyra::LogLevel::Info,"restart","RUN_"+std::to_string(run)+" "+std::string(100,'s'));logger.closeFile();
+        }
+        auto owned=std::make_unique<veyra::Logger>();auto& logger=*owned;logger.setConsoleEnabled(false);logger.setRotation(64,0);
+        logger.openFile(path,true);logger.closeFile();
+        std::string moved;int files=0;
+        for(const auto& entry:std::filesystem::directory_iterator(out))
+            if(entry.path().filename().wstring().starts_with(L"restart.2")){moved+=read(entry.path());++files;}
+        check(files==2&&moved.find("RUN_0")!=std::string::npos&&moved.find("RUN_1")!=std::string::npos,"two restarts keep both earlier logs");
     }
     {
         {auto owned=std::make_unique<veyra::Logger>();auto& logger=*owned;logger.setConsoleEnabled(false);logger.openFile((out/L"destructor.log").wstring());logger.startAsync();logger.write(veyra::LogLevel::Info,"shutdown","DESTRUCTOR_MARKER");}

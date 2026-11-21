@@ -783,7 +783,12 @@ void QmlPlayerBridge::tickPs5() {
     }
     if (i.ps5Input.running()) {
         const auto& s = i.snapshot;
-        if ((s.remotePlay && (s.running || s.transport == engine::TransportState::Opening)) || joinLive()) {
+        remoteplay::InputSession session{s.remotePlay, false, s.running, s.transport == engine::TransportState::Opening,
+                                         s.transport == engine::TransportState::Stopping};
+#ifdef VEYRA_ENABLE_GUEST_CLIENT
+        session.guestClient = s.guestClientActive;
+#endif
+        if (remoteplay::inputWanted(session)) {
             i.ps5Input.setBackground(i.prefBool("ps5ControlBackground", false));
             if (const bool focused = i.ps5Input.focused(); focused != i.ps5Focused) { i.ps5Focused = focused; changed = true; }
         } else {

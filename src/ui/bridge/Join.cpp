@@ -27,6 +27,7 @@ void QmlPlayerBridge::setupJoin() {
     auto& i = *impl_;
     i.join = std::make_unique<ui::GuestJoinModel>();
     i.join->setStoreFile(QString::fromStdWString((i.dataDir / L"guest-saved-access.dpapi").wstring()));
+    i.join->setRoomHandler([this](const std::string& command) { impl_->engine.guestClientRoom(command); });
     i.join->setLaunchHandler([this](const QString& link, const QString& host) -> bool {
         auto& j = *impl_;
         if (!j.videoWindow) return false;
@@ -39,6 +40,9 @@ void QmlPlayerBridge::setupJoin() {
         j.screenFillActive = false;
         auto desc = std::make_shared<source::GuestClientDesc>();
         desc->link = link.toStdString();
+        // The name the host's room shows: the one set in réglages, else this Windows account's.
+        desc->name = j.prefString("guestName").toStdString();
+        if (desc->name.empty()) { wchar_t user[128]{}; DWORD n = 128; if (GetUserNameW(user, &n)) desc->name = QString::fromWCharArray(user).left(24).toStdString(); }
         openAfterCinema(QStringLiteral("BooVI · %1").arg(host), [this, desc] {
             auto& k = *impl_;
             if (k.preOpen) k.preOpen();

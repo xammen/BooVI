@@ -1,5 +1,5 @@
-// Partager (fork): while a guest is connected this chip stays on the picture, top centre, so the
-// host always knows someone else sees the stream (and may drive the pad). A click opens the panel.
+// Partager (fork): while guests are connected this chip stays on the picture, top centre, so the
+// host always knows who sees the stream and who drives the pad. A click opens the panel.
 import QtQuick
 import QtQuick.Layouts
 
@@ -11,7 +11,7 @@ Rectangle {
     property real coverRadius: Theme.rLg
     readonly property var g: typeof vyGuest !== "undefined" && vyGuest ? vyGuest : null
     readonly property bool shown: preview || (g !== null && g.phase === "connected")
-    readonly property var st: preview ? ({ rtt: 18.4 }) : g ? g.stats : ({})
+    readonly property var room: preview ? ({ holderName: "lucas", count: 3, owner: false }) : g ? g.room : ({})
     readonly property string mode: preview ? "guest" : g ? g.mode : "guest"
     width: row.implicitWidth + 24
     height: 30
@@ -31,9 +31,9 @@ Rectangle {
         VIcon { name: "users"; size: 14; strokeWidth: 1.5; color: Theme.t2 }
         Text {
             id: label
-            text: (chip.g && chip.g.accessName.length > 0 ? chip.g.accessName : qsTr("invité connecté")) + " · "
-                  + (chip.mode === "guest" ? qsTr("il joue") : chip.mode === "together" ? qsTr("à deux") : qsTr("il regarde"))
-                  + (chip.st.rtt !== undefined && chip.st.rtt !== null && chip.st.rtt >= 0 ? " · " + Number(chip.st.rtt).toFixed(0) + " ms" : "")
+            text: qsTr("%1 invité(s)").arg(chip.room.count || 0) + " · "
+                  + (chip.mode === "watch" ? qsTr("ils regardent") : chip.room.owner ? qsTr("tu as la manette")
+                     : chip.room.holderName ? qsTr("%1 joue").arg(chip.room.holderName) : qsTr("manette libre"))
             color: Theme.t1
             font.family: Theme.fontMono
             font.pixelSize: Theme.fsMeta

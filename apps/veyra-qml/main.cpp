@@ -502,9 +502,11 @@ static int runApplication(int argc, char** argv, QString& restartProgram, QStrin
     auto logPath = overrideLength > 0 && overrideLength < 32768
                        ? std::filesystem::path(logOverride)
                        : veyra::runtime::logsDirectory() / L"veyra-qml.log";
-    // Bounded: earlier sessions move to veyra-qml.old.log once this file passes
-    // 16 MB at start, and a session that alone reaches 64 MB (about five hours of
-    // capture) continues in a fresh file (audit 2026-10-15 B3).
+    // Bounded: earlier sessions move to veyra-qml.<UTC stamp>.log once this file passes
+    // 16 MB at start, and a session that alone reaches 64 MB continues in a fresh file
+    // (audit 2026-10-15 B3). 64 MB is about 2.7 h of a PS5 stream with frame generation
+    // and a guest (28.7 MB in 73 min, field log 2026-11-20). The newest five moved logs
+    // stay, so a restart no longer replaces the evening before it.
     uint64_t rotateAtStart = 16ull << 20, rotateWhileRunning = 64ull << 20;
     // VEYRA_TEST_LOG_ROTATE_BYTES=N sets both limits to N bytes (rotation tests only).
     wchar_t rotateTest[32]{};
@@ -948,6 +950,9 @@ static int runApplication(int argc, char** argv, QString& restartProgram, QStrin
         } else if (a == QLatin1String("--share-panel")) {
             // Fork: the stream toolbar's "partager" panel open (screenshots, tests).
             testOptions.insert(QStringLiteral("sharePanel"), true);
+        } else if (a == QLatin1String("--grab-share") && hasValue) {
+            // Fork: the window saves itself to this PNG every 2 s (QQuickWindow::grabWindow; tests).
+            testOptions.insert(QStringLiteral("grabShare"), args.at(++i));
         } else if (a == QLatin1String("--share-kick-after") && hasValue) {
             // Fork: kick the guest this many seconds after sharing starts (tests).
             testOptions.insert(QStringLiteral("shareKickAfter"), args.at(++i).toInt());
@@ -993,7 +998,7 @@ static int runApplication(int argc, char** argv, QString& restartProgram, QStrin
 #ifdef VEYRA_ENABLE_GUEST
     if (testOptions.value(QStringLiteral("share")).toBool()) QTimer::singleShot(800, &guestShare, [&guestShare] { guestShare.start(); });
     if (const int kickAfter = testOptions.value(QStringLiteral("shareKickAfter")).toInt(); kickAfter > 0)
-        QTimer::singleShot(800 + kickAfter * 1000, &guestShare, [&guestShare] { guestShare.kick(); });
+        QTimer::singleShot(800 + kickAfter * 1000, &guestShare, [&guestShare] { guestShare.renewLink(); });
 #endif
 #ifdef VEYRA_ENABLE_GUEST_CLIENT
     if (!joinFile.isEmpty()) {
@@ -1057,6 +1062,15 @@ static int runApplication(int argc, char** argv, QString& restartProgram, QStrin
         return 1;
     }
     if (testSize.isValid()) window->resize(testSize);
+    // Fork, tests (--grab-share <png>): the window as Qt renders it, every 2 s, as <png>-<n>.png.
+    // grabWindow renders the scene again; the native video under it stays out of the picture.
+    if (const QString grab = testOptions.value(QStringLiteral("grabShare")).toString(); !grab.isEmpty()) {
+        auto* grabTimer = new QTimer(window);
+        QObject::connect(grabTimer, &QTimer::timeout, window, [window, grab, n = 0]() mutable {
+            window->grabWindow().save(QString(grab).replace(QStringLiteral(".png"), QStringLiteral("-%1.png").arg(++n)));
+        });
+        grabTimer->start(2000);
+    }
     bridge.attachMainWindow(static_cast<qulonglong>(window->winId()));
 #ifdef VEYRA_ENABLE_GUEST
     guestAccess.attachWindow(window, gatewayTray);

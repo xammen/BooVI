@@ -17,6 +17,7 @@
 #include "veyra/engine/EngineWatchdog.h"
 #include "veyra/sink/CaptureAudioSession.h"
 #include "veyra/remoteplay/SessionInbox.h"
+#include "veyra/remoteplay/InputLifetime.h"
 #ifdef VEYRA_ENABLE_MOONLIGHT
 #include "veyra/source/MoonlightSessionSource.h"
 #endif
@@ -223,8 +224,11 @@ public:
     void openRemotePlay(HWND, source::RemotePlayConnectDesc, PlayerOptions);
     remoteplay::ControllerFeedback remotePlayFeedback();
     void remotePlayController(const remoteplay::ControllerState&);
+    // Fork: a room command for the host of the joined share (GuestClientSource::roomCommand).
+    void guestClientRoom(const std::string& command);
     void remotePlayLoginPin(std::string);
     bool remotePlayGotoBed();   // fork: the live session asks the console to enter rest mode
+    remoteplay::InputSession inputSession()const;   // fork: cheap, for the PS5 input thread (InputLifetime.h)
     // PS5 手柄控制 beside a capture card: a controller-only Remote Play session
     // (the console's keepalive video and audio are dropped on receipt). Start and
     // stop are queued to a dedicated thread, so callers never wait for the
@@ -346,17 +350,17 @@ private:
     // frame through captures_.
     std::unique_ptr<LiveRecorder> replay_=std::make_unique<LiveRecorder>(true);
     PresentCaptureFanout captures_{*recorder_,*replay_};
-    // The early capture's place in the present fanout: it passes presented frames on while the
-    // session is not live, or while the target wants the presented stream (a live session
-    // otherwise feeds it before presentation). The target acts only on what it recorded.
+    // The early capture's place in the present fanout: it passes every presented frame on, marked
+    // with whether the session is live (a live session feeds real pictures before presentation,
+    // Frame::early). The target acts only on what it recorded.
     // presentSource100ns: when the picture about to be presented reached this PC, 0 for a file.
     // Engine thread, but for target, set before it starts.
     struct EarlyGate final:PresentCapture{
         EarlyCapture* target=nullptr;bool live=false;int64_t presentSource100ns=0;
         bool record(ID3D12GraphicsCommandList* list,const Frame& frame) override{
             const int64_t source=std::exchange(presentSource100ns,0);
-            if(!target||(live&&!target->presentedFeed()))return false;
-            Frame timed=frame;timed.sourceHost100ns=source;return target->record(list,timed);
+            if(!target)return false;
+            Frame timed=frame;timed.sourceHost100ns=source;timed.live=live;return target->record(list,timed);
         }
         void submitted(ID3D12Fence* fence,uint64_t value) override{if(target)target->submitted(fence,value);}
         void discarded() override{if(target)target->discarded();}

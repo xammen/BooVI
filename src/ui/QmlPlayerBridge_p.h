@@ -338,6 +338,8 @@ struct QmlPlayerBridge::Impl {
     QString remotePlayHost, remotePlayPin;
 
     QTimer* timer = nullptr;
+    // Logs where the interface thread is blocked when `timer` stops ticking (tag "ui-hang").
+    std::unique_ptr<engine::EngineWatchdog> uiWatchdog;
 
     // Canvas positions of the fixed input / optical-flow / output boxes. They are
     // editor furniture, not chain nodes, so they live beside the preferences.
