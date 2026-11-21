@@ -3,7 +3,9 @@
 // upload); the guest picks within it, by hand or "automatique". Automatique starts from the
 // page's link test and follows the page's reports: loss and a rising network delay lower the
 // bitrate, then the rung (fluide 120 -> 60 -> real pictures, native size -> 1080p); a clean link
-// climbs back up to what the test measured.
+// climbs back up to what the test measured. A guest whose decoder cannot keep up (its own
+// report, decoderBehind) steps down too, and stays there for the visit: fluide 120 -> 60 ->
+// real, then native -> 1080p -> 720p. Every mode has a bitrate ceiling (maxKbps), manual too.
 // Pure: tested in tests/fork/GuestQualityTests.cpp.
 #include <algorithm>
 #include <cstdint>
@@ -53,6 +55,15 @@ constexpr uint32_t defaultKbps(Feed f, Size s) {
     constexpr uint32_t table[3][3] = {{10000, 14000, 20000},    // 720p: real, 60, 120
                                       {20000, 25000, 35000},    // 1080p
                                       {30000, 38000, 52000}};   // native (1440p)
+    return table[size_t(s)][size_t(f)];
+}
+
+// The most a mode is worth: past it the picture barely improves, while the guest's decoder pays
+// for every bit (a software decoder most). Manual choices are held to it too.
+constexpr uint32_t maxKbps(Feed f, Size s) {
+    constexpr uint32_t table[3][3] = {{12000, 16000, 24000},    // 720p: real, 60, 120
+                                      {25000, 30000, 40000},    // 1080p
+                                      {35000, 45000, 60000}};   // native (1440p)
     return table[size_t(s)][size_t(f)];
 }
 
@@ -137,8 +148,21 @@ public:
         kbps_ = std::min(ceiling(), uint32_t(kbps_ * 1.1));
     }
 
+    // The guest's decoder is behind (its pictures pile up, or decoding takes the whole frame
+    // interval). Automatique: one step down, kept until the next guest. False when manual, or
+    // when nothing is left to drop.
+    bool decoderBehind() {
+        if (!wish_.automatic) return false;
+        const Quality q = current();
+        if (q.feed > Feed::Real) { decodeFeed_ = Feed(int(q.feed) - 1); decodeSize_ = q.size; }
+        else if (q.size > Size::P720) { decodeFeed_ = Feed::Real; decodeSize_ = Size(int(q.size) - 1); }
+        else return false;
+        kbps_ = std::min(kbps_, ceiling());
+        return true;
+    }
+
     Quality current() const {
-        if (wish_.automatic) { auto q = ladder(limit_)[rung_]; q.kbps = kbps_; return q; }
+        if (wish_.automatic) return {mode().feed, mode().size, kbps_};
         return {std::min(wish_.feed, limit_.feed), std::min(wish_.size, limit_.size), kbps_};
     }
     bool automatic() const { return wish_.automatic; }
@@ -151,13 +175,20 @@ public:
 private:
     static constexpr int64_t kHoldUs = 30000000;   // after a loss or a step down, 30 s before climbing again
     uint32_t usable() const { return link_ ? uint32_t(link_ * kLinkMargin) : 0; }
+    // Automatique's mode: the rung, held under what the guest's decoder showed it can take.
+    Quality mode() const {
+        const Quality r = ladder(limit_)[rung_];
+        const Feed f = std::min(r.feed, decodeFeed_);
+        const Size s = std::min(r.size, decodeSize_);
+        return {f, s, f == r.feed && s == r.size ? r.kbps : defaultKbps(f, s)};
+    }
     // The most the encoder gets in the current mode.
     uint32_t ceiling() const {
         uint32_t c = limit_.kbps;
         if (wish_.automatic) {
-            c = std::min(c, ladder(limit_)[rung_].kbps);
+            c = std::min(c, mode().kbps);
             if (link_) c = std::min(c, usable());
-        } else c = std::min(c, wish_.kbps);
+        } else c = std::min({c, wish_.kbps, maxKbps(std::min(wish_.feed, limit_.feed), std::min(wish_.size, limit_.size))});
         return std::max(kMinGuestKbps, c);
     }
     void clampKbps() { kbps_ = std::min(kbps_, ceiling()); }
@@ -173,6 +204,8 @@ private:
     Limit limit_;
     Wish wish_;
     size_t rung_ = 0;
+    Feed decodeFeed_ = Feed::Smooth120;   // decoderBehind's ceiling, for this guest
+    Size decodeSize_ = Size::Native;
     uint32_t kbps_ = defaultKbps(Feed::Real, Size::P1080);
     uint32_t link_ = 0, tested_ = 0;
     int clean_ = 0;

@@ -3,7 +3,8 @@
 // guest it names. The picture and the pad never pass here: they go peer to peer over WebRTC.
 //
 // The room lives while its host is connected, at most ROOM_TTL_S. Sockets hibernate between
-// messages, so a waiting room costs nothing.
+// messages, so a waiting room costs nothing. A host that leaves without coming back within
+// HOST_GONE_MS has its TURN credentials revoked: a crashed or killed host never hands them back.
 import { DurableObject } from "cloudflare:workers";
 
 import { randomId } from "./ids";
@@ -12,6 +13,8 @@ import type { Issue, TurnLedger } from "./ledger";
 export const MAX_GUESTS = 8;
 export const MAX_GUEST_MESSAGE = 64 * 1024;
 export const GUEST_MESSAGES_PER_MINUTE = 240;
+// Long enough for a host's own reconnection, whose relayed guests keep playing meanwhile.
+export const HOST_GONE_MS = 180_000;
 
 // Close codes the page and the app read.
 export const Closed = {
@@ -75,7 +78,12 @@ export class Room extends DurableObject<RoomEnv> {
       this.ctx.acceptWebSocket(server, ["host"]);
       server.serializeAttachment(attachment);
       const ttl = Math.max(60, Number(this.env.ROOM_TTL_S) || 43200);
-      if ((await this.ctx.storage.getAlarm()) === null) await this.ctx.storage.setAlarm(Date.now() + ttl * 1000);
+      // The room's expiry, kept across its host's reconnections; a pending sweep gives way to it.
+      let expires = await this.ctx.storage.get<number>("expiresMs");
+      if (expires === undefined) await this.ctx.storage.put("expiresMs", expires = Date.now() + ttl * 1000);
+      await this.ctx.storage.put("room", attachment.room);
+      await this.ctx.storage.delete("hostGoneMs");
+      await this.ctx.storage.setAlarm(expires);
       server.send(JSON.stringify({ t: "ready", entitled: attachment.entitled, ttl }));
       return new Response(null, { status: 101, webSocket: client });
     }
@@ -135,22 +143,32 @@ export class Room extends DurableObject<RoomEnv> {
     const a = ws.deserializeAttachment() as Attachment;
     try { ws.close(code === 1005 || code === 1006 ? 1000 : code, reason); } catch { /* already closed */ }
     // A host replaced by its own reconnection leaves the room open.
-    if (a.role === "host" && !this.ctx.getWebSockets("host").some((s) => s !== ws)) await this.closeAll(Closed.hostLeft, "host left");
+    if (a.role === "host" && !this.ctx.getWebSockets("host").some((s) => s !== ws)) await this.hostGone(Closed.hostLeft, "host left");
   }
 
   async webSocketError(ws: WebSocket): Promise<void> {
     await this.webSocketClose(ws, 1011, "error");
   }
 
+  // The room's expiry while its host is there; the sweep of its credentials once it is gone.
   async alarm(): Promise<void> {
-    await this.closeAll(Closed.expired, "room expired");
+    if (this.host()) { await this.hostGone(Closed.expired, "room expired"); return; }
+    const gone = await this.ctx.storage.get<number>("hostGoneMs");
+    const room = await this.ctx.storage.get<string>("room");
+    if (gone === undefined || !room) return;
+    if (Date.now() - gone < HOST_GONE_MS) { await this.ctx.storage.setAlarm(gone + HOST_GONE_MS); return; }
+    await this.ctx.storage.delete("hostGoneMs");
+    await this.ledger().endRoom(room);
   }
 
-  private async closeAll(code: number, reason: string): Promise<void> {
+  private async hostGone(code: number, reason: string): Promise<void> {
     for (const ws of this.ctx.getWebSockets()) {
       try { ws.send(JSON.stringify({ t: "closed", why: code === Closed.expired ? "expired" : "offline" })); } catch { /* closing */ }
       try { ws.close(code, reason); } catch { /* closed */ }
     }
-    await this.ctx.storage.deleteAlarm();
+    const now = Date.now();
+    await this.ctx.storage.delete("expiresMs");
+    await this.ctx.storage.put("hostGoneMs", now);
+    await this.ctx.storage.setAlarm(now + HOST_GONE_MS);
   }
 }

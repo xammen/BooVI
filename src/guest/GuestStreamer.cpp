@@ -254,12 +254,18 @@ struct GuestStreamer::Impl {
     std::atomic<AccessDesk*> desk{nullptr};
     std::atomic<ControlMode> mode{ControlMode::GuestPlays};
     std::shared_ptr<TestLimit> testLimit;
+    // Tests: the next N peers never get made (VEYRA_TEST_GUEST_STALL=<n>): a handler stuck
+    // until the share stops, as the 2026-11-20 wedge.
+    std::atomic<int> testStalls{0};
 
     // ---- what the guest receives (qualityMutex) ----
     std::mutex qualityMutex;
     RateControl rate;
     Quality applied{Feed::Real, Size::P1080, 0};
     double linkRtt = -1, linkLoss = -1;
+    // The guest's decoder: reports in a row that it is behind, and when it last caught up.
+    std::atomic<int> decodeSlowReports{0};
+    std::atomic<int64_t> behindKeyUs{0}, decodeStepUs{0};
 
     // ---- the link test ----
     std::mutex probeMutex;   // starting and joining probeThread
@@ -267,6 +273,10 @@ struct GuestStreamer::Impl {
     std::atomic<bool> probing{false}, probeStop{false};
     std::atomic<bool> guestLive{false};
     std::thread control, turnFetch;
+    // The control loop's heartbeat: status() says the share is stuck when it stops.
+    std::atomic<int64_t> controlBeatUs{0};
+    std::atomic<const char*> controlStage{"idle"};
+    std::atomic<bool> stallLogged{false};
 
     // ---- the guest's pad (inputMutex), written by the input channel, read every 1 ms ----
     std::mutex inputMutex;
@@ -352,7 +362,7 @@ struct GuestStreamer::Impl {
         }
         if (r.method == "POST" && (r.path == "/session" || r.path == "/answer")) {
             if (!limiter.admit(r.source, nowUs())) return {429, "application/json", R"({"error":"trop d'essais, attends une minute","state":"locked"})"};
-            return r.path == "/session" ? session(r.body, r.source) : answer(r.body, r.source);
+            return r.path == "/session" ? session(r) : answer(r);
         }
         return {404, "text/plain", "not found"};
     }
@@ -394,11 +404,13 @@ struct GuestStreamer::Impl {
         out = {403, "application/json", invalid};
         return std::nullopt;
     }
-    HttpResponse session(const std::string& body, const std::string& source) {
-        json in = json::parse(body, nullptr, false);
+    HttpResponse session(const HttpRequest& r) {
+        const std::string& source = r.source;
+        json in = json::parse(r.body, nullptr, false);
         const bool byAccess = in.is_object() && in.contains("access") && in["access"].is_string();
         if (!in.is_object() || (!byAccess && (!in.contains("token") || !in["token"].is_string()))) return {400, "text/plain", "bad request"};
         std::string access;
+        r.at("credential");
         if (byAccess) {
             HttpResponse wait;
             auto name = accessOk(in["access"].get<std::string>(), source, true, wait);
@@ -413,7 +425,9 @@ struct GuestStreamer::Impl {
         json ice = json::array();
         if (reach == Reach::Broker && relayFrom == Relay::Owner) {
             const int64_t asked = nowUs();
+            r.at("turn lease");
             lease = broker.requestTurn(kLeaseWait);
+            r.holdLease(lease.id);
             ice = lease.iceServers;
             veyra::log::info("guest", std::format("turn lease {} in {:.0f} ms", lease.id.empty() ? "refused (" + lease.why + ")" : std::string("granted"),
                                                   double(nowUs() - asked) / 1000.0));
@@ -421,8 +435,9 @@ struct GuestStreamer::Impl {
             std::lock_guard lock(m);
             ice = cloudflareIce;
         }
-        auto p = createPeer(native, access, ice, lease.id);
+        auto p = createPeer(native, access, ice, lease.id, r);
         if (!p) { broker.endTurn(lease.id); return {503, "application/json", R"({"error":"impossible de préparer la connexion"})"}; }
+        r.at("ice gathering");
         {
             std::unique_lock lock(gatherMutex);
             gatherCv.wait_for(lock, std::chrono::seconds(3), [&] { return p->gathered.load() || p->retired.load(); });
@@ -443,8 +458,9 @@ struct GuestStreamer::Impl {
         }
         return {200, "application/json", out.dump()};
     }
-    HttpResponse answer(const std::string& body, const std::string& source) {
-        json in = json::parse(body, nullptr, false);
+    HttpResponse answer(const HttpRequest& r) {
+        const std::string& source = r.source;
+        json in = json::parse(r.body, nullptr, false);
         const bool byAccess = in.is_object() && in.contains("access") && in["access"].is_string();
         if (!in.is_object() || (!byAccess && (!in.contains("token") || !in["token"].is_string())) || !in.contains("id") || !in.contains("sdp") || !in["sdp"].is_string() || !in["id"].is_string())
             return {400, "text/plain", "bad request"};
@@ -467,6 +483,7 @@ struct GuestStreamer::Impl {
             }
             if (!pt) return {400, "application/json", R"({"error":"ce navigateur ne décode pas le h.264"})"};
             p->videoConfig->payloadType = uint8_t(pt);
+            r.at("set remote description");
             p->pc->setRemoteDescription(remote);
             veyra::log::info("guest", std::format("answer accepted peer={} videoPt={}", p->id, pt));
         } catch (const std::exception& e) {
@@ -476,8 +493,13 @@ struct GuestStreamer::Impl {
         return {204, "text/plain", ""};
     }
 
-    std::shared_ptr<GuestPeer> createPeer(bool native, const std::string& access, const json& ice, const std::string& lease) {
+    std::shared_ptr<GuestPeer> createPeer(bool native, const std::string& access, const json& ice, const std::string& lease, const HttpRequest& r) {
         initRtcLogOnce();
+        r.at("new peer");
+        if (testStalls.fetch_sub(1) > 0) {
+            veyra::log::warn("guest", "test: this peer is stuck until the share stops");
+            for (;;) { { std::lock_guard lock(m); if (!active || stopping) return nullptr; } std::this_thread::sleep_for(std::chrono::milliseconds(50)); }
+        }
         ShareSettings s; std::string bindIp;
         {
             std::lock_guard lock(m);
@@ -595,6 +617,8 @@ struct GuestStreamer::Impl {
                     try { self->stats->send(reply); } catch (...) {}
                 } else if (kind == "rep") {
                     onReport(in);
+                } else if (kind == "behind") {
+                    onBehind(in);
                 } else if (kind == "want") {
                     onWish(in);
                 } else if (kind == "link") {
@@ -605,6 +629,7 @@ struct GuestStreamer::Impl {
                     probeStop = true;
                 }
             });
+            r.at("local offer");
             p->pc->setLocalDescription(rtc::Description::Type::Offer);
         } catch (const std::exception& e) {
             veyra::log::error("guest", std::string("peer setup failed: ") + e.what());
@@ -617,6 +642,7 @@ struct GuestStreamer::Impl {
             previous = std::move(peer);
             peer = p;
         }
+        r.at("retire the previous peer");
         if (previous) retirePeer(previous, "replaced by a new connection");
         veyra::log::info("guest", std::format("peer {} offered bind={} reach={} iceServers={} client={}", p->id, config.bindAddress.value_or("any"), reachName(s.reach), config.iceServers.size(), native ? "boovi" : "browser"));
         controlCv.notify_all();
@@ -648,11 +674,40 @@ struct GuestStreamer::Impl {
 
     void onReport(const json& in) {
         auto num = [&](const char* key) { return in.contains(key) && in[key].is_number() ? in[key].get<double>() : -1.0; };
-        { std::lock_guard lock(statsMutex); report = in; }
+        double sentFps;
+        { std::lock_guard lock(statsMutex); report = in; sentFps = fps; }
         // The page's loss and network time over its last 2 s window (GuestQuality.h).
         { std::lock_guard lock(qualityMutex); rate.report(std::max(0.0, num("loss")), num("net"), nowUs()); }
+        // A decoder that takes most of the frame interval, or shows fewer pictures than arrive
+        // while its buffer grows, is about to pile pictures up: two such reports (4 s) in a row.
+        const double dec = num("dec"), shown = num("fps"), jb = num("jb");
+        const bool slow = sentFps > 10 && ((dec > 0 && dec > 0.85 * 1000.0 / sentFps) || (shown >= 0 && shown < 0.85 * sentFps && jb > 50));
+        decodeSlowReports = slow ? decodeSlowReports + 1 : 0;
+        if (decodeSlowReports >= 2) {
+            decodeSlowReports = 0;
+            stepDownForDecoder(std::format("decode {:.1f} ms for {:.0f} pictures a second, {:.0f} shown, buffer {:.0f} ms", dec, sentFps, shown, jb));
+        }
         applyQuality("report");
         veyra::log::info("guest-report", in.dump());
+    }
+    // The page says its pictures pile up (GuestQuality.h, decoderBehind): a keyframe makes the
+    // browser drop what waits for its decoder, and automatique sends less.
+    void onBehind(const json& in) {
+        auto num = [&](const char* key) { return in.contains(key) && in[key].is_number() ? in[key].get<double>() : -1.0; };
+        const int64_t now = nowUs();
+        if (now - behindKeyUs < 1500000) return;
+        behindKeyUs = now;
+        video.requestKeyframe();
+        veyra::log::info("guest", std::format("guest behind: buffer {:.0f} ms, decode {:.1f} ms, {:.0f} shown a second; keyframe to catch up", num("jb"), num("dec"), num("fps")));
+        if (now - decodeStepUs > 4000000) stepDownForDecoder("pictures pile up");
+    }
+    void stepDownForDecoder(const std::string& why) {
+        bool stepped;
+        Quality q;
+        { std::lock_guard lock(qualityMutex); stepped = rate.decoderBehind(); q = rate.current(); }
+        decodeStepUs = nowUs();
+        if (stepped) veyra::log::info("guest-quality", std::format("guest decoder behind ({}): down to feed={} size={}", why, feedName(q.feed), sizeName(q.size)));
+        applyQuality("decoder behind");
     }
     // The guest's choice: automatique, or a feed, size and bitrate cap of their own.
     void onWish(const json& in) {
@@ -762,15 +817,19 @@ struct GuestStreamer::Impl {
         int64_t lastTick = nowUs(), lastLog = 0;
         std::unique_lock lock(m);
         while (active && !stopping) {
+            controlStage = "idle";
+            controlBeatUs = nowUs();
             controlCv.wait_for(lock, std::chrono::milliseconds(100));
             if (!active || stopping) break;
+            controlBeatUs = nowUs();
             auto p = peer;
             const bool kick = std::exchange(kickRequested, false);
             if (kick) { peer.reset(); token = randomToken(); }
             lock.unlock();
-            if (kick && p) { retirePeer(p, "kick"); p.reset(); }
+            if (kick && p) { controlStage = "retire (kick)"; retirePeer(p, "kick"); p.reset(); }
             if (p) {
                 const auto state = rtc::PeerConnection::State(p->state.load());
+                controlStage = "guest connected";
                 if (state == rtc::PeerConnection::State::Connected && !p->connectedHandled) onConnected(p);
                 const bool dead = state == rtc::PeerConnection::State::Failed || state == rtc::PeerConnection::State::Closed ||
                                   state == rtc::PeerConnection::State::Disconnected;
@@ -780,10 +839,12 @@ struct GuestStreamer::Impl {
                 const bool silent = p->connectedHandled && nowUs() - p->heardUs.load() > kSilentUs;
                 if (dead || late || silent || p->left.load()) {
                     { std::lock_guard l(m); if (peer == p) peer.reset(); }
+                    controlStage = "retire";
                     retirePeer(p, p->left.load() ? "guest left" : dead ? "connection lost" : silent ? "guest silent" : "never connected");
                     p.reset();
                 }
             }
+            controlStage = "statistics";
             if (p && p->connectedHandled) sendAcks(p);
             const int64_t t = nowUs();
             if (t - lastTick >= 1000000) {
@@ -814,6 +875,7 @@ struct GuestStreamer::Impl {
             rate = RateControl{};
             rate.setLimit(limit);
             applied = {Feed::Real, Size::P1080, 0};
+            decodeSlowReports = 0;
             linkRtt = linkLoss = -1;
         }
         applyQuality("guest connected");
@@ -923,6 +985,7 @@ bool GuestStreamer::start(const ShareSettings& settings, std::string& error) {
         p.cloudflareIce = json::array();
     }
     p.testLimit = TestLimit::fromEnvironment();
+    if (const char* v = std::getenv("VEYRA_TEST_GUEST_STALL"); v && *v) p.testStalls = std::atoi(v);
     if (p.testLimit) veyra::log::warn("guest", std::format("test bottleneck {} kbps from {:.0f} s after the guest connects", p.testLimit->kbps, double(p.testLimit->afterUs) / 1e6));
     {
         std::lock_guard lock(p.qualityMutex);
@@ -959,6 +1022,8 @@ bool GuestStreamer::start(const ShareSettings& settings, std::string& error) {
             else veyra::log::info("guest", std::format("cloudflare turn credentials ready ({} server entries, ttl {} s)", impl->cloudflareIce.size(), kTurnTtlSeconds));
         });
     }
+    p.controlBeatUs = nowUs();
+    p.stallLogged = false;
     p.control = std::thread([impl = p_.get()] { impl->controlLoop(); });
     std::string where;
     for (const auto& a : p.http.bound()) where += (where.empty() ? "" : ",") + a;
@@ -1061,6 +1126,11 @@ ShareStatus GuestStreamer::status() const {
         out.targetKbps = out.quality.kbps;
     }
     out.broker = p.broker.phase();
+    // A request past its deadline, or a control loop that stopped: nothing else will come through.
+    const bool stalled = out.phase != Phase::Off && nowUs() - p.controlBeatUs.load() > 5000000;
+    if (stalled && !p.stallLogged.exchange(true))
+        veyra::log::error("guest", std::format("the share's control loop has not run for {:.0f} s, at \"{}\"", double(nowUs() - p.controlBeatUs.load()) / 1e6, p.controlStage.load()));
+    if (stalled || p.broker.overdue() > 0) out.error = "le partage ne répond plus : redémarre BooVI";
     if (out.reach == Reach::Broker && out.phase != Phase::Off) out.publicUrl = p.broker.roomLink();
     if (peer && peer->connectedHandled.load()) {
         out.remote = peer->remote; out.candidate = peer->candidate; out.relayed = peer->relayed; out.nativeClient = peer->native;

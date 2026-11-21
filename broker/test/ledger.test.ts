@@ -173,3 +173,48 @@ describe("status", () => {
     });
   });
 });
+
+describe("a room whose host is gone", () => {
+  it("revokes what it still holds, a failed revocation included, and charges up to now", async () => {
+    await withBook({ TURN_BUDGET_GB: "900" }, async (book, api, clock) => {
+      const a = await book.issue("room"), b = await book.issue("room"), other = await book.issue("other");
+      if (!a.ok || !b.ok || !other.ok) throw new Error("not issued");
+      api.revokes = false;
+      clock.now += 60_000;
+      expect(await book.end("room", b.lease)).toBe(false);   // kept
+      api.revokes = true;
+      clock.now += 4 * 60_000;
+      expect(await book.endRoom("room")).toBe(2);
+      expect(api.revoked).toEqual(["u2", "u1", "u2"]);
+      // two credentials at 5 min + grace each, the other room's untouched
+      expect(sum(book)).toBe(2 * (300 + 60) * 15e6 + 216 * GB);
+      expect(await book.endRoom("room")).toBe(0);
+    });
+  });
+
+  it("leaves an expired credential alone", async () => {
+    await withBook({ TURN_BUDGET_GB: "900" }, async (book, api, clock) => {
+      expect((await book.issue("room")).ok).toBe(true);
+      clock.now += 14400_000 + 1;
+      expect(await book.endRoom("room")).toBe(0);
+      expect(api.revoked).toEqual([]);
+      expect(sum(book)).toBe(216 * GB);
+    });
+  });
+});
+
+describe("the owner's correction", () => {
+  it("settles an expired credential down to when it ended, never up", async () => {
+    await withBook({ TURN_BUDGET_GB: "900" }, async (book, _api, clock) => {
+      const r = await book.issue("room");
+      if (!r.ok) throw new Error("not issued");
+      expect(book.settle(r.lease, NOV + 120_000)).toBeNull();   // still alive
+      clock.now += 14400_000 + 1;
+      expect(book.settle(r.lease, NOV - 1)).toBeNull();          // before its issue
+      expect(book.settle(r.lease, NOV + 120_000)).toMatchObject({ state: "ended", chargedBytes: (120 + 60) * 15e6 });
+      expect(book.settle(r.lease, NOV + 3600_000)).toMatchObject({ chargedBytes: (120 + 60) * 15e6 });
+      expect(book.settle("no such lease", NOV)).toBeNull();
+      expect(book.leases()).toEqual([{ id: r.lease, room: "room", issuedMs: NOV, ttlS: 14400, chargedBytes: (120 + 60) * 15e6, state: "ended" }]);
+    });
+  });
+});

@@ -111,6 +111,21 @@ VPage {
                     lineHeight: 1.6
                     wrapMode: Text.Wrap
                 }
+                // A join that found no network path: the same link in the browser, one click.
+                RowLayout {
+                    visible: sources.join.browser === true
+                    Layout.maximumWidth: 480
+                    spacing: 12
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("pas de chemin réseau vers ton ami depuis l'application. le navigateur passe souvent quand même.")
+                        wrapMode: Text.WordWrap
+                        color: Theme.t2
+                        font.family: Theme.fontMono
+                        font.pixelSize: Theme.fsMeta
+                    }
+                    UiButton { text: qsTr("ouvrir dans le navigateur"); size: 32; onClicked: veyra.join.openInBrowser() }
+                }
             }
 
             ColumnLayout {

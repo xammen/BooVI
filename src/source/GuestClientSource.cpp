@@ -26,12 +26,14 @@ extern "C" {
 #include <format>
 #include <mutex>
 #include <numbers>
+#include <optional>
 #include <thread>
 #include <vector>
 
 #include "veyra/Log.h"
 #include "veyra/guest/BrokerSocket.h"
 #include "veyra/guest/GuestProtocol.h"
+#include "veyra/guest/TurnTunnel.h"
 #include "veyra/pipeline/ColorMetadata.h"
 #include "veyra/sink/AudioFormat.h"
 #include "veyra/source/CaptureCompressedDecoder.h"
@@ -214,10 +216,15 @@ void findLegacyRoom(guest::ShareLink& link) {
     log::info("guest-client", "the link's host answers through its broker room");
 }
 
+bool envOn(const char* name) { char v[4]{}; return GetEnvironmentVariableA(name, v, 4) && v[0] == '1'; }
+
 // The host's /session "ice" list: STUN, then Cloudflare's TURN over UDP (what libjuice relays).
+// Tests: VEYRA_TEST_GUEST_CLIENT_NO_UDP_TURN=1 sends UDP TURN to 192.0.2.1 (TEST-NET-1, nothing
+// answers), as a network that drops UDP to the relay.
 std::vector<rtc::IceServer> iceServersFrom(const json& list) {
     std::vector<rtc::IceServer> out;
     if (!list.is_array()) return out;
+    const bool noUdpTurn = envOn("VEYRA_TEST_GUEST_CLIENT_NO_UDP_TURN");
     for (const auto& server : list) {
         if (!server.is_object() || !server.contains("urls")) continue;
         const json urls = server["urls"].is_array() ? server["urls"] : json::array({server["urls"]});
@@ -231,12 +238,78 @@ std::vector<rtc::IceServer> iceServersFrom(const json& list) {
                 const std::string hostPort = u.substr(5, u.find('?') - 5);
                 const size_t colon = hostPort.rfind(':');
                 if (colon == std::string::npos) continue;
-                out.emplace_back(hostPort.substr(0, colon), uint16_t(std::atoi(hostPort.c_str() + colon + 1)),
+                out.emplace_back(noUdpTurn ? std::string("192.0.2.1") : hostPort.substr(0, colon), uint16_t(std::atoi(hostPort.c_str() + colon + 1)),
                                  server["username"].get<std::string>(), server["credential"].get<std::string>(), rtc::IceServer::RelayType::TurnUdp);
             } catch (const std::exception&) {}
         }
     }
     return out;
+}
+
+// The same list's TURN over a stream, as a browser falls back to: TLS on 443 first, then any
+// TLS, then TCP. Empty host when there is none.
+struct StreamTurn { std::string host, username, credential; uint16_t port = 0; bool tls = false; };
+StreamTurn streamTurnFrom(const json& list) {
+    StreamTurn best;
+    int bestRank = 0;
+    if (!list.is_array()) return best;
+    for (const auto& server : list) {
+        if (!server.is_object() || !server.contains("urls") || !server.contains("username") || !server["username"].is_string() ||
+            !server.contains("credential") || !server["credential"].is_string()) continue;
+        const json urls = server["urls"].is_array() ? server["urls"] : json::array({server["urls"]});
+        for (const auto& url : urls) {
+            if (!url.is_string()) continue;
+            const std::string u = url.get<std::string>();
+            const bool tls = u.starts_with("turns:");
+            if (!tls && !(u.starts_with("turn:") && u.find("transport=tcp") != std::string::npos)) continue;
+            const size_t from = tls ? 6 : 5, query = u.find('?');
+            const std::string hostPort = u.substr(from, query == std::string::npos ? std::string::npos : query - from);
+            const size_t colon = hostPort.rfind(':');
+            const uint16_t port = colon == std::string::npos ? uint16_t(tls ? 5349 : 3478) : uint16_t(std::atoi(hostPort.c_str() + colon + 1));
+            const int rank = tls && port == 443 ? 3 : tls ? 2 : 1;
+            if (rank <= bestRank || !port) continue;
+            bestRank = rank;
+            best = {hostPort.substr(0, colon), server["username"].get<std::string>(), server["credential"].get<std::string>(), port, tls};
+        }
+    }
+    return best;
+}
+
+// An SDP without its non-relay candidate lines.
+std::string relayCandidatesOnly(const std::string& sdp) {
+    std::string out;
+    size_t at = 0;
+    while (at < sdp.size()) {
+        size_t end = sdp.find('\n', at);
+        end = end == std::string::npos ? sdp.size() : end + 1;
+        const std::string_view line(sdp.data() + at, end - at);
+        if (!line.starts_with("a=candidate:") || line.find(" typ relay") != std::string_view::npos) out.append(line);
+        at = end;
+    }
+    return out;
+}
+
+const char* candidateTypeName(rtc::Candidate::Type t) {
+    switch (t) {
+    case rtc::Candidate::Type::Host: return "host";
+    case rtc::Candidate::Type::ServerReflexive: return "srflx";
+    case rtc::Candidate::Type::PeerReflexive: return "prflx";
+    case rtc::Candidate::Type::Relayed: return "relay";
+    default: return "?";
+    }
+}
+const char* transportName(rtc::Candidate::TransportType t) {
+    return t == rtc::Candidate::TransportType::Udp ? "udp" : t == rtc::Candidate::TransportType::Unknown ? "?" : "tcp";
+}
+// "host 3, srflx 1, relay 2": a description's candidates by type, no address.
+std::string candidateSummary(std::optional<rtc::Description> d) {
+    if (!d) return "none";
+    int n[5]{};
+    for (const auto& c : d->extractCandidates()) ++n[std::min(int(c.type()), 4)];
+    std::string out;
+    const char* names[5] = {"?", "host", "srflx", "prflx", "relay"};
+    for (int i = 1; i < 5; ++i) if (n[i]) out += std::format("{}{} {}", out.empty() ? "" : ", ", names[i], n[i]);
+    return out.empty() ? "none" : out;
 }
 
 // The decoding GPU: its vendor ("amd", "nvidia", "intel") for the stats and the host's report,
@@ -266,6 +339,8 @@ struct GuestClientSource::Impl {
     GuestClientDesc desc;
     guest::ShareLink link;
     std::string peerId;
+    // TURN over TLS for libjuice (TurnTunnel.h); before pc, so the peer goes first.
+    std::unique_ptr<guest::TurnTunnel> tunnel;
     std::shared_ptr<rtc::PeerConnection> pc;
     std::shared_ptr<rtc::Track> video, audio;
     std::shared_ptr<rtc::DataChannel> input, feedbackChannel, statsChannel;
@@ -513,9 +588,30 @@ void GuestClientSource::run(GuestClientDesc desc) {
 
     // 2. The peer, with the host's ICE servers.
     rtc::Configuration config;
-    config.iceServers = iceServersFrom(offer.contains("ice") ? offer["ice"] : json());
+    const json ice = offer.contains("ice") ? offer["ice"] : json();
+    config.iceServers = iceServersFrom(ice);
     config.disableAutoNegotiation = true;
     config.mtu = 1280;
+    // libjuice relays over UDP only and takes two TURN servers: the first UDP one, and the
+    // stream one through the tunnel, for a network that blocks UDP to the relay.
+    if (const auto stream = streamTurnFrom(ice); !stream.host.empty() && !envOn("VEYRA_TEST_GUEST_CLIENT_NO_TUNNEL")) {
+        std::string why;
+        p.tunnel = guest::TurnTunnel::open(stream.host, stream.port, stream.tls, why);
+        if (p.tunnel) {
+            bool keptUdp = false;
+            std::erase_if(config.iceServers, [&](const rtc::IceServer& s) {
+                if (s.type != rtc::IceServer::Type::Turn) return false;
+                if (keptUdp) return true;
+                keptUdp = true;
+                return false;
+            });
+            config.iceServers.emplace_back("127.0.0.1", p.tunnel->localPort(), stream.username, stream.credential, rtc::IceServer::RelayType::TurnUdp);
+            log::info("guest-client", std::format("turn over {} to {}:{} through 127.0.0.1:{}", stream.tls ? "tls" : "tcp", stream.host, stream.port, p.tunnel->localPort()));
+        } else log::warn("guest-client", "turn tunnel unavailable: " + why);
+    }
+    // Tests: VEYRA_TEST_GUEST_CLIENT_RELAY_ONLY=1 uses relay candidates only (this PC's direct
+    // paths to a host on the same PC would hide whether the relay works).
+    if (envOn("VEYRA_TEST_GUEST_CLIENT_RELAY_ONLY")) config.iceTransportPolicy = rtc::TransportPolicy::Relay;
     try {
         p.pc = std::make_shared<rtc::PeerConnection>(config);
         auto gate = p.gate;
@@ -614,7 +710,11 @@ void GuestClientSource::run(GuestClientDesc desc) {
             if (!p.audioReady) log::warn("guest-client", "audio output could not start; the stream continues without sound");
         }
 
-        p.pc->setRemoteDescription(rtc::Description(offer["sdp"].get<std::string>(), rtc::Description::Type::Offer));
+        std::string sdp = offer["sdp"].get<std::string>();
+        // The relay-only test also drops the host's own candidates: libjuice still checks every
+        // pair against them, so a host on the same PC would be reached directly.
+        if (envOn("VEYRA_TEST_GUEST_CLIENT_RELAY_ONLY")) sdp = relayCandidatesOnly(sdp);
+        p.pc->setRemoteDescription(rtc::Description(sdp, rtc::Description::Type::Offer));
         p.pc->setLocalDescription(rtc::Description::Type::Answer);
     } catch (const std::exception& e) {
         log::error("guest-client", std::string("peer setup failed: ") + e.what());
@@ -644,14 +744,27 @@ void GuestClientSource::run(GuestClientDesc desc) {
         std::unique_lock lock(p.stateMutex);
         p.stateCv.wait_for(lock, std::chrono::seconds(20), [&] { return p.connected.load() || p.failed.load() || cancelled(); });
     }
-    if (!p.connected) { fail(p.failed ? L"la connexion à l'hôte a échoué (réseau ou pare-feu)" : L"délai dépassé en se connectant à l'hôte"); return; }
+    const auto tunnelState = [&] {
+        if (!p.tunnel) return std::string("none");
+        const auto t = p.tunnel->stats();
+        return std::format("{} (sent {}, received {}){}", t.connected ? "up" : "down", t.sent, t.received, t.error.empty() ? "" : ", " + t.error);
+    };
+    if (!p.connected) {
+        // What each side offered, so the log says whether the relay or the direct path was missing.
+        log::warn("guest-client", std::format("no path to the host after 20 s ({}): local {}, host {}, turn tunnel {}", p.failed ? "failed" : "timeout",
+                                              candidateSummary(p.pc->localDescription()), candidateSummary(p.pc->remoteDescription()), tunnelState()));
+        { std::lock_guard lock(mutex_); stats_.iceFailed = true; }
+        fail(p.failed ? L"la connexion à l'hôte a échoué (réseau ou pare-feu)" : L"délai dépassé en se connectant à l'hôte");
+        return;
+    }
     rtc::Candidate localPair, remotePair;
     std::string path = "?";
     if (p.pc->getSelectedCandidatePair(&localPair, &remotePair)) {
         p.relayed = localPair.type() == rtc::Candidate::Type::Relayed || remotePair.type() == rtc::Candidate::Type::Relayed;
-        path = p.relayed ? "relay" : "direct";
+        path = std::format("{} local={}/{} remote={}/{}", p.relayed ? "relay" : "direct", candidateTypeName(localPair.type()), transportName(localPair.transportType()),
+                           candidateTypeName(remotePair.type()), transportName(remotePair.transportType()));
     }
-    log::info("guest-client", "connected path=" + path);
+    log::info("guest-client", std::format("connected path={} turn tunnel {}", path, tunnelState()));
     p.stopDecode = false;
     p.decodeThread = std::thread([this] { decodeLoop(); });
     p.requestKeyframe();
@@ -1077,6 +1190,7 @@ void GuestClientSource::close() noexcept {
         if (p.audio) p.audio->resetCallbacks();
         if (p.pc) { p.pc->resetCallbacks(); try { p.pc->close(); } catch (...) {} }
         p.input.reset(); p.feedbackChannel.reset(); p.statsChannel.reset(); p.video.reset(); p.audio.reset(); p.pc.reset();
+        p.tunnel.reset();
         p.hardwareDecode = false;
         if (p.decoderOpen) { p.decoder.close(); p.decoderOpen = false; }
     }

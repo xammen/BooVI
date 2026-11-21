@@ -1,11 +1,13 @@
 #include "veyra/ui/GuestJoinModel.h"
 
 #include <QClipboard>
+#include <QDesktopServices>
 #include <QFile>
 #include <QGuiApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSaveFile>
+#include <QUrl>
 
 #include "veyra/Log.h"
 #include "veyra/guest/GuestProtocol.h"
@@ -116,10 +118,13 @@ void GuestJoinModel::updateStream(bool active, const source::GuestClientStats& s
                   {"anticipationConfidence", s.anticipation.confidence}, {"anticipationLagMs", s.anticipation.lagMs},
                   {"anticipationFps", s.anticipation.presentsPerSecond}};
     }
+    // No network path from here: the browser falls back to TURN over TLS on 443 on its own.
+    const bool browser = phase == QLatin1String("failed") && s.iceFailed;
     const bool streaming = active && s.state == source::GuestClientStats::State::Streaming;
     if (streaming && access_) saveAccess(tr("ps5 de %1").arg(QString::fromStdString(s.hostName.empty() ? s.host : s.hostName)));
-    if (phase == phase_ && message == message_ && streaming == streaming_ && stream == stream_) return;
+    if (phase == phase_ && message == message_ && streaming == streaming_ && stream == stream_ && browser == browser_) return;
     phase_ = phase;
+    browser_ = browser;
     message_ = message;
     streaming_ = streaming;
     stream_ = stream;
@@ -128,7 +133,13 @@ void GuestJoinModel::updateStream(bool active, const source::GuestClientStats& s
 
 QVariantMap GuestJoinModel::state() const {
     return {{"phase", phase_}, {"streaming", streaming_}, {"linkValid", linkValid_}, {"host", host_},
-            {"lastLabel", lastHost_}, {"message", message_}, {"stream", stream_}, {"access", access_}, {"saved", saved_}};
+            {"lastLabel", lastHost_}, {"message", message_}, {"stream", stream_}, {"access", access_}, {"saved", saved_}, {"browser", browser_}};
+}
+
+bool GuestJoinModel::openInBrowser() {
+    if (!linkValid_) return false;
+    veyra::log::info("guest-client-ui", "the link opens in the browser");
+    return QDesktopServices::openUrl(QUrl(link_));
 }
 
 } // namespace veyra::ui

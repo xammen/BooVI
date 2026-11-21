@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 
 # BooVI's version: the one place it is set. The EXE's version resource, the app's
 # about line and the release zip's name (scripts/fork/package.ps1) all read it.
-project(veyra VERSION 1.0.1 LANGUAGES C CXX RC)
+project(veyra VERSION 1.0.2 LANGUAGES C CXX RC)
 # Moonlight/Xbox have C sources independently of the optional PS5 backend.
 # Shown in the EXE's version resource and in the package name. CMake versions
 # must be numeric, so a beta marker goes here instead (-DVEYRA_DISPLAY_VERSION=1.1.0beta).
@@ -800,7 +800,11 @@ if(VEYRA_FFMPEG_ROOT AND EXISTS "${VEYRA_FFMPEG_ROOT}/include/libavformat/avform
     # Fork, "rejoindre un partage": a friend's BooVI share joined natively (GuestClientSource.h);
     # its pad goes through the PS5 input thread, so it needs Remote Play too.
     if(VEYRA_ENABLE_REMOTEPLAY)
-      target_sources(veyra_sources PRIVATE src/source/GuestClientSource.cpp include/veyra/source/GuestClientSource.h)
+      target_sources(veyra_sources PRIVATE src/source/GuestClientSource.cpp include/veyra/source/GuestClientSource.h
+        src/guest/TurnTunnel.cpp include/veyra/guest/TurnTunnel.h)
+      # TURN over TLS for libjuice (TurnTunnel.h): OpenSSL, as libdatachannel.
+      find_package(OpenSSL REQUIRED)
+      target_link_libraries(veyra_sources PRIVATE OpenSSL::SSL OpenSSL::Crypto crypt32)
       target_compile_definitions(veyra_sources PUBLIC VEYRA_ENABLE_GUEST_CLIENT=1)
     endif()
     target_link_libraries(veyra_sources PUBLIC veyra_xbox_protocol PRIVATE Opus::opus)

@@ -17,7 +17,7 @@ namespace veyra::ui {
 class GuestJoinModel final : public QObject {
     Q_OBJECT
     // {phase: "idle"|"connecting"|"streaming"|"ended"|"failed", streaming, linkValid, host,
-    //  lastLabel, message, access, saved ("ps5 de <host>", "" without one),
+    //  lastLabel, message, access, saved ("ps5 de <host>", "" without one), browser (offer the browser),
     //  stream{receivedFps, videoMbps, dropped, rttMs, decodeMs, codec, decoder, gpu,
     //  hostToScreenMs, lossPercent, relayed, mode, extendedInput}}
     Q_PROPERTY(QVariantMap state READ state NOTIFY changed)
@@ -36,6 +36,8 @@ public:
     Q_INVOKABLE bool join();
     Q_INVOKABLE bool resumeLast() { return linkValid_ && join(); }
     Q_INVOKABLE void forgetSaved();
+    // The same link in the default browser, when the join found no network path.
+    Q_INVOKABLE bool openInBrowser();
 
 signals:
     void changed();
@@ -44,7 +46,7 @@ signals:
 private:
     LaunchFn launch_;
     QString link_, host_, lastHost_, phase_ = QStringLiteral("idle"), message_;
-    bool linkValid_ = false, streaming_ = false, access_ = false;
+    bool linkValid_ = false, streaming_ = false, access_ = false, browser_ = false;
     QString storeFile_, saved_, savedLink_;
     void saveAccess(const QString& label);
     QVariantMap stream_;

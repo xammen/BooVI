@@ -2825,6 +2825,14 @@
    "en": "open"
   },
   {
+   "fr": "ouvrir dans le navigateur",
+   "src": [
+    "qml/HomePage.qml",
+    "qml/SetupJoin.qml"
+   ],
+   "en": "open in the browser"
+  },
+  {
    "fr": "ouvrir la page",
    "src": [
     "qml/SetupXbox.qml"
@@ -2889,6 +2897,14 @@
     "qml/SetupPs5.qml"
    ],
    "en": "not listed? ip address"
+  },
+  {
+   "fr": "pas de chemin réseau vers ton ami depuis l'application. le navigateur passe souvent quand même.",
+   "src": [
+    "qml/HomePage.qml",
+    "qml/SetupJoin.qml"
+   ],
+   "en": "no network path to your friend from the app. the browser often gets through anyway."
   },
   {
    "fr": "pas de relais : si vos deux box bloquent le direct, la connexion ne passe pas.",

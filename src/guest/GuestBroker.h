@@ -41,6 +41,8 @@ public:
     bool entitled() const;        // the broker knows the owner key
     std::string roomLink() const; // https://<broker host>/<room id>
     std::string error() const;
+    // Guest requests still running past their deadline (answered 503 already): the share is stuck.
+    int overdue() const;
 
     TurnLease requestTurn(std::chrono::milliseconds timeout);
     void endTurn(const std::string& lease);

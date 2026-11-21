@@ -30,6 +30,14 @@ Worker that serves the guest page and relays signaling. User-facing summary: doc
   credentials made with the owner's TURN key (`TURN_KEY_ID`, `TURN_KEY_API_TOKEN`, Worker secrets).
   It hands the lease back (`turn-end`) as soon as the path is direct or the guest leaves; the
   ledger revokes it at Cloudflare and settles it.
+- **Leases nobody hands back** (added 2026-11-21). On 2026-11-20 four `/session` requests stuck at
+  "new peer" kept their leases, 4 × 216 GB, and the month's cap was full from 23:03 on. Since
+  then, a request past its 10 s deadline hands its lease back, and a room whose host has been
+  gone for 3 minutes (`HOST_GONE_MS`, crash or kill) revokes every credential it still holds and
+  settles each up to then. The owner can list the month's leases (`GET /api/turn/leases`, no
+  usernames) and settle an expired one down to when it really ended (`POST /api/turn/settle`,
+  never up); the four stuck leases were settled to their issue time, since their offer never
+  left the host.
 - Other hosts get STUN only, or use their own TURN key from their DPAPI config.
 - **Cap: reservation, not analytics.** A credential is charged its whole TTL at the most a share
   can send (`TURN_RATE_MBPS` = 120) before it is created; a revoked one is refunded down to its

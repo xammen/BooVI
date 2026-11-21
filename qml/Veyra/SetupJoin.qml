@@ -29,6 +29,23 @@ ColumnLayout {
     }
     Connections { target: flow.jm; function onStarted() { flow.started() } }
 
+    // The join found no network path (UDP to the relay blocked, two strict NATs): the browser
+    // also tries TURN over TLS on 443 and often gets through. One click, the same link.
+    RowLayout {
+        visible: flow.st.browser === true
+        Layout.fillWidth: true
+        spacing: 12
+        Text {
+            Layout.fillWidth: true
+            text: qsTr("pas de chemin réseau vers ton ami depuis l'application. le navigateur passe souvent quand même.")
+            wrapMode: Text.WordWrap
+            color: Theme.t2
+            font.family: Theme.fontMono
+            font.pixelSize: Theme.fsMeta
+        }
+        UiButton { text: qsTr("ouvrir dans le navigateur"); size: 32; onClicked: flow.jm.openInBrowser() }
+    }
+
     SetupStep {
         current: flow.step === 0
         title: qsTr("coller le lien de ton ami")

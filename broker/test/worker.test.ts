@@ -1,6 +1,6 @@
 // The broker as a host and a guest see it: rooms, relaying, entitlement, expiry, limits.
 import { env, exports } from "cloudflare:workers";
-import { runDurableObjectAlarm } from "cloudflare:test";
+import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { base64url, roomIdOf } from "../src/ids";
@@ -200,6 +200,39 @@ describe("turn", () => {
     expect(calls[0]).toMatchObject({ auth: "Bearer test-token", body: { ttl: 6666 } });
   });
 
+  it("is revoked once its host has been gone for 3 minutes, not before, not if it came back", async () => {
+    await fake();
+    const h = await host(true);
+    h.send({ t: "turn", n: 1 });
+    expect(await h.next()).toMatchObject({ ok: true });
+    const stub = env.ROOM.get(env.ROOM.idFromName(h.room.id));
+    // killed: no turn-end
+    h.ws.close(1000);
+    await h.closed;
+    await new Promise((r) => setTimeout(r, 50));
+    expect(await runDurableObjectAlarm(stub)).toBe(true);    // too early: waits again
+    expect((await fakeCalls()).filter((c) => c.path.endsWith("/revoke"))).toEqual([]);
+    await runInDurableObject(stub, async (_room, state) => { await state.storage.put("hostGoneMs", Date.now() - 180_001); });
+    expect(await runDurableObjectAlarm(stub)).toBe(true);
+    expect((await fakeCalls()).filter((c) => c.path.endsWith("/revoke"))).toHaveLength(1);
+
+    // the same room's host back within 3 minutes keeps its credential
+    await fake();
+    const again = await connect(`/api/host/${h.room.id}`, { Authorization: `Bearer ${h.room.key}`, "X-Boovi-Owner": OWNER });
+    if (again instanceof Response) throw new Error("refused");
+    await again.next();
+    again.send({ t: "turn", n: 2 });
+    expect(await again.next()).toMatchObject({ ok: true });
+    again.ws.close(1000);
+    await again.closed;
+    await new Promise((r) => setTimeout(r, 50));
+    const back = await connect(`/api/host/${h.room.id}`, { Authorization: `Bearer ${h.room.key}`, "X-Boovi-Owner": OWNER });
+    if (back instanceof Response) throw new Error("refused");
+    expect(await back.next()).toMatchObject({ t: "ready" });
+    await runInDurableObject(stub, async (_room, state) => { expect(await state.storage.get("hostGoneMs")).toBeUndefined(); });
+    expect((await fakeCalls()).filter((c) => c.path.endsWith("/revoke"))).toEqual([]);
+  });
+
   it("stops at the cap", async () => {
     await fake();
     const h = await host(true);
@@ -215,6 +248,17 @@ describe("turn", () => {
     const after = await ledger.status();
     expect(after.chargedBytes).toBeLessThanOrEqual(after.budgetBytes);
     expect(after.chargedBytes).toBeGreaterThanOrEqual(before.chargedBytes);
+  });
+
+  it("lists and settles credentials for the owner only", async () => {
+    expect((await exports.default.fetch("https://broker.test/api/turn/leases")).status).toBe(403);
+    const list = await exports.default.fetch("https://broker.test/api/turn/leases", { headers: { "X-Boovi-Owner": OWNER } });
+    expect(Array.isArray(await list.json())).toBe(true);
+    const post = (body: unknown, owner = true) => exports.default.fetch("https://broker.test/api/turn/settle",
+      { method: "POST", body: JSON.stringify(body), headers: owner ? { "X-Boovi-Owner": OWNER } : {} });
+    expect((await post({ lease: "x", endMs: 0 }, false)).status).toBe(403);
+    expect((await post({ lease: 1 })).status).toBe(400);
+    expect((await post({ lease: "no such lease", endMs: Date.now() })).status).toBe(409);
   });
 
   it("reports the budget to the owner only", async () => {

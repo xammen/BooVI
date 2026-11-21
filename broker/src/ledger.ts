@@ -16,6 +16,7 @@ interface LeaseRow extends Record<string, SqlStorageValue> {
   id: string;
   room: string;
   issued_ms: number;
+  ttl_s: number;
   rate_bps: number;
   charged: number;
   username: string | null;
@@ -25,6 +26,16 @@ interface LeaseRow extends Record<string, SqlStorageValue> {
 export type Issue =
   | { ok: true; lease: string; ttl: number; iceServers: IceServer[] }
   | { ok: false; why: "budget" | "turn" };
+
+// One credential, for the owner: no username, no credential, the room cut to its first 8 characters.
+export interface LeaseView {
+  id: string;
+  room: string;
+  issuedMs: number;
+  ttlS: number;
+  chargedBytes: number;
+  state: LeaseState;
+}
 
 export interface LedgerStatus {
   month: string;
@@ -86,16 +97,46 @@ export class LedgerBook {
   async end(room: string, id: string): Promise<boolean> {
     const lease = this.sql.exec<LeaseRow>("SELECT * FROM lease WHERE id = ? AND room = ?", id, room).toArray()[0];
     if (!lease || lease.state !== "active" || !lease.username) return false;
-    this.sql.exec("UPDATE lease SET state = 'ending' WHERE id = ?", id);
-    const revoked = await this.api.revoke(lease.username);
-    if (!revoked) {
-      this.sql.exec("UPDATE lease SET state = 'kept' WHERE id = ?", id);
+    return this.revoke(lease);
+  }
+
+  // The room's host left and did not come back: what it still holds would stay charged until
+  // it expires (a host that crashed or was killed never says turn-end). Revoke each credential
+  // still alive, a failed revocation included, and charge it up to now. Returns how many ended.
+  async endRoom(room: string): Promise<number> {
+    const rows = this.sql.exec<LeaseRow>("SELECT * FROM lease WHERE room = ? AND state IN ('active', 'kept') AND username IS NOT NULL AND issued_ms + ttl_s * 1000 > ?",
+                                         room, this.now()).toArray();
+    let ended = 0;
+    for (const lease of rows) if (await this.revoke(lease)) ended++;
+    return ended;
+  }
+
+  private async revoke(lease: LeaseRow): Promise<boolean> {
+    this.sql.exec("UPDATE lease SET state = 'ending' WHERE id = ?", lease.id);
+    if (!(await this.api.revoke(lease.username as string))) {
+      this.sql.exec("UPDATE lease SET state = 'kept' WHERE id = ?", lease.id);
       return false;
     }
     const charged = settledCharge({ issuedMs: lease.issued_ms, rateBytesPerSecond: lease.rate_bps, chargedBytes: lease.charged },
                                   this.now(), this.cfg.graceSeconds);
-    this.sql.exec("UPDATE lease SET state = 'ended', charged = ? WHERE id = ?", charged, id);
+    this.sql.exec("UPDATE lease SET state = 'ended', charged = ? WHERE id = ?", charged, lease.id);
     return true;
+  }
+
+  // The owner's correction for a credential that has expired: charged as if it ended at endMs,
+  // never more than it already is. Only an expired one, so a live credential keeps its charge.
+  settle(id: string, endMs: number): LeaseView | null {
+    const lease = this.sql.exec<LeaseRow>("SELECT * FROM lease WHERE id = ?", id).toArray()[0];
+    if (!lease || lease.state === "pending" || lease.issued_ms + lease.ttl_s * 1000 > this.now() || !(endMs >= lease.issued_ms)) return null;
+    const charged = settledCharge({ issuedMs: lease.issued_ms, rateBytesPerSecond: lease.rate_bps, chargedBytes: lease.charged }, endMs, this.cfg.graceSeconds);
+    this.sql.exec("UPDATE lease SET state = 'ended', charged = ? WHERE id = ?", charged, id);
+    return this.leases().find((l) => l.id === id) ?? null;
+  }
+
+  leases(): LeaseView[] {
+    return this.sql.exec<LeaseRow>("SELECT * FROM lease WHERE month = ? ORDER BY issued_ms", monthOf(this.now())).toArray().map((l) => ({
+      id: l.id, room: l.room.slice(0, 8), issuedMs: l.issued_ms, ttlS: l.ttl_s, chargedBytes: l.charged, state: l.state,
+    }));
   }
 
   status(): LedgerStatus {
@@ -124,5 +165,8 @@ export class TurnLedger extends DurableObject<LedgerEnv> {
 
   issue(room: string): Promise<Issue> { return this.book.issue(room); }
   end(room: string, lease: string): Promise<boolean> { return this.book.end(room, lease); }
+  endRoom(room: string): Promise<number> { return this.book.endRoom(room); }
+  settle(lease: string, endMs: number): LeaseView | null { return this.book.settle(lease, endMs); }
+  leases(): LeaseView[] { return this.book.leases(); }
   status(): LedgerStatus { return this.book.status(); }
 }

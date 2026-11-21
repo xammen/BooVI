@@ -55,7 +55,7 @@ int main() {
     {
         RateControl c; c.setLimit(all);
         c.setWish({false, Feed::Smooth120, Size::Native, 100000}, 0);
-        expect(c.current().kbps == 80000, "manuel à fond: the host's upload is the cap");
+        expect(c.current().kbps == maxKbps(Feed::Smooth120, Size::Native), "manuel à fond: the mode's ceiling, under the host's upload");
         c.setLimit({Feed::Smooth60, Size::P1080, 30000});
         expect(c.current().feed == Feed::Smooth60 && c.current().size == Size::P1080 && c.current().kbps == 30000, "the host's maximum bounds the guest's choice");
         c.report(0.05, -1, 2 * s);
@@ -65,6 +65,27 @@ int main() {
         RateControl c; c.setLimit({Feed::Smooth120, Size::P1080, 50000});
         c.linkTested(300000, 0);
         expect(c.current().size == Size::P1080 && c.current().feed == Feed::Smooth120, "a host limited to 1080p never sends native");
+    }
+    {
+        // The friend's evening: a 1.4 Gb/s link test, a software decoder.
+        RateControl c; c.setLimit({Feed::Smooth120, Size::Native, 100000}); c.linkTested(1400000, 0);
+        expect(c.current().feed == Feed::Smooth120 && c.current().size == Size::Native && c.current().kbps <= 52000, "a fast link: fluide 120 native, at its own rate");
+        const Feed feeds[] = {Feed::Smooth60, Feed::Real, Feed::Real, Feed::Real};
+        const Size sizes[] = {Size::Native, Size::Native, Size::P1080, Size::P720};
+        bool order = true;
+        for (int i = 0; i < 4; ++i) {
+            order = order && c.decoderBehind() && c.current().feed == feeds[i] && c.current().size == sizes[i] && c.current().kbps <= defaultKbps(feeds[i], sizes[i]);
+        }
+        expect(order, "a decoder behind: fluide 120 -> 60 -> real, then native -> 1080p -> 720p, each at its own rate");
+        expect(!c.decoderBehind(), "nothing left below real 720p");
+        for (int i = 0; i < 20; ++i) c.report(0, 10, 100 * s + i * 2 * s);
+        expect(c.current().feed == Feed::Real && c.current().size == Size::P720, "a clean link does not climb past what the decoder showed");
+    }
+    {
+        RateControl c; c.setLimit({Feed::Smooth120, Size::Native, 100000});
+        c.setWish({false, Feed::Smooth60, Size::P1080, 100000}, 0);
+        expect(c.current().kbps == maxKbps(Feed::Smooth60, Size::P1080) && c.current().kbps == 30000, "manual 1080p 60 at 100 Mb/s is held to 30 Mb/s");
+        expect(!c.decoderBehind() && c.current().feed == Feed::Smooth60, "a manual choice is not stepped down");
     }
     expect(parseFeed("60", Feed::Real) == Feed::Smooth60 && parseFeed("x", Feed::Real) == Feed::Real, "feed names");
     expect(parseSize("native", Size::P720) == Size::Native, "size names");

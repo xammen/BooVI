@@ -109,6 +109,12 @@ svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width:
 /* the connection card: link test, what arrives, automatique or manuel */
 #net { position: fixed; left: 16px; bottom: 72px; width: min(380px, calc(100vw - 32px)); padding: 14px 16px; z-index: 4; transition: opacity .2s var(--ease), transform .2s var(--ease); }
 #net.off { opacity: 0; transform: translateY(6px); pointer-events: none; }
+/* a slow decoder: what to change in the browser */
+#decodeNotice { position: fixed; right: 16px; bottom: 72px; width: min(380px, calc(100vw - 32px)); padding: 14px 16px; z-index: 4; }
+#decodeNotice.off { display: none; }
+#decodeNotice .head { display: flex; align-items: center; gap: 10px; }
+#decodeNotice p { color: var(--t2); line-height: 1.6; margin: 10px 0 0; font-size: 12px; }
+#decodeNotice b { color: var(--t1); font-weight: 500; }
 #net .head { display: flex; align-items: center; gap: 8px; color: var(--t2); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
 #net .head .grow { flex: 1; }
 #net .head .btn { height: 24px; padding: 0 8px; text-transform: none; letter-spacing: 0; }
@@ -195,6 +201,11 @@ svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width:
 </div>
 
 <div id="banner" class="card"><i class="dot busy"></i><span id="bannerText">reconnexion…</span></div>
+
+<div id="decodeNotice" class="card off" role="status">
+  <div class="head"><span class="tag warn">décodage lent</span><span class="grow"></span><button class="btn" id="decodeClose" title="fermer">fermer</button></div>
+  <p>ton navigateur décode l'image sans la carte graphique, elle arrive en retard. dans les paramètres de chrome ou edge, section <b>système</b>, active <b>« utiliser l'accélération graphique »</b>, puis relance le navigateur.</p>
+</div>
 
 <div id="bar" class="card">
   <button class="btn chip" id="padChip" title="manette"><i class="dot" id="padDot"></i><span id="padText">aucune manette détectée</span></button>
@@ -1469,6 +1480,25 @@ window.addEventListener("gamepaddisconnected", () => toast("manette débranchée
 
 // ---- stats: receive side every second, the latency report to the host every 2 s
 let lastStats = null, kv = {}, reportTick = 0;
+// The decoder: pictures piling up before it (told to the host, which sends a keyframe so the
+// browser drops what waits, and less in automatique), and whether it is a slow one (the notice).
+const decoder = { behindAt: 0, lastJb: -1, slow: 0, noticed: false, hw: -1, impl: "" };
+function decoderCheck(jb, fps, now, inbound) {
+  if (jb > 150 && (jb > decoder.lastJb + 15 || jb > 400) && now - decoder.behindAt > 2000) {
+    decoder.behindAt = now;
+    send("stats", JSON.stringify({ t: "behind", jb, dec: kv.dec, fps }));
+  }
+  decoder.lastJb = jb;
+  // powerEfficientDecoder and decoderImplementation, where the browser exposes them; else the
+  // decode time against the time between pictures.
+  decoder.hw = inbound.powerEfficientDecoder === true ? 1 : inbound.powerEfficientDecoder === false ? 0 : -1;
+  decoder.impl = String(inbound.decoderImplementation || "").slice(0, 40);
+  const soft = decoder.hw === 0 || /ffmpeg|openh264|libavcodec/i.test(decoder.impl);
+  const sent = host && host.fps > 1 ? host.fps : fps;
+  decoder.slow = sent > 1 && kv.dec > 0.75 * 1000 / sent ? decoder.slow + 1 : 0;
+  if (!decoder.noticed && (soft || decoder.slow >= 3)) { decoder.noticed = true; $("decodeNotice").classList.remove("off"); }
+}
+$("decodeClose").onclick = () => $("decodeNotice").classList.add("off");
 async function stats() {
   if (!pc || pc.connectionState !== "connected") return;
   const report = await pc.getStats();
@@ -1502,12 +1532,13 @@ async function stats() {
          path: pair ? (relayed ? "relais cloudflare" : "direct") : "", cand: local && remote ? local.candidateType + "/" + remote.candidateType : "",
          disp: median(win.disp), src: median(win.src), rxdisp: median(win.rxdisp), dec: median(win.dec), net: median(win.net),
          inhost: median(win.inhost), inps5: median(win.inps5) };
+  decoderCheck(jb, fps, now, inbound);
   render();
   if (!$("net").classList.contains("off") && !probe.on) renderNet();
   if (++reportTick % 2 === 0) {
     send("stats", JSON.stringify({ t: "rep", disp: kv.disp, src: kv.src, rxdisp: kv.rxdisp, dec: kv.dec, net: kv.net, inhost: kv.inhost, inps5: kv.inps5,
                                    rtt: netRtt, fps, kbps, loss, jb, drop: dropped, n: win.disp.length, test: testOn ? 1 : 0,
-                                   pad: lastPad ? lastPad.name : "", map: lastPad ? lastPad.kind : "none", ...lab.report() }));
+                                   pad: lastPad ? lastPad.name : "", map: lastPad ? lastPad.kind : "none", hw: decoder.hw, decimpl: decoder.impl, ...lab.report() }));
     for (const k in win) win[k] = [];
   }
 }

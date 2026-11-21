@@ -25,8 +25,12 @@ using json = nlohmann::json;
 namespace {
 
 constexpr int kMaxRequests = 8;                       // guest requests handled at once, as the local server
+constexpr int64_t kDeadlineMs = 10000;                 // a request still running this long is answered 503
 constexpr auto kPingEvery = std::chrono::seconds(25);  // the room answers "pong" without waking
 constexpr auto kSilentFor = std::chrono::seconds(70);  // nothing heard this long: the socket is dead
+
+// Only the paths a guest may ask for are named in the log.
+const char* pathName(const std::string& path) { return path == "/session" ? "/session" : path == "/answer" ? "/answer" : "other"; }
 
 std::wstring widen(const std::string& s) {
     if (s.empty()) return {};
@@ -162,35 +166,106 @@ struct GuestBroker::Impl : std::enable_shared_from_this<GuestBroker::Impl> {
             // Too late for its guest: hand it straight back.
             if (in.value("ok", false) && in.contains("lease") && in["lease"].is_string()) sendEnd(in["lease"].get<std::string>());
         } else if (t == "turn-end" && !in.value("ok", false)) {
-            veyra::log::warn("guest-broker", "a turn lease was not revoked: it is charged until it expires");
+            veyra::log::warn("guest-broker", "a turn lease was not ended: already handed back, or charged until it expires");
         }
     }
 
+    // One guest request in flight. Whoever sets `answered` first replies: the handler, or the
+    // deadline when the handler is still running at kDeadlineMs.
+    struct Call {
+        std::string guest;
+        json id;
+        const char* path = "other";
+        int64_t startMs = 0;
+        std::atomic<bool> answered{false};
+        std::atomic<const char*> stage{"queued"};
+        bool overdue = false;                        // under m
+        std::string lease;                           // under m: the TURN lease it took
+    };
+    std::vector<std::shared_ptr<Call>> calls;        // under m
+    int overdue = 0;                                 // calls past their deadline whose handler still runs
+
+    void reply(const std::string& guest, const json& id, int status, const std::string& body) {
+        const json out{{"id", id}, {"status", status}, {"body", body}};
+        socket.send(json{{"t", "msg"}, {"g", guest}, {"d", out.dump()}}.dump());
+    }
+
     // A guest's request, on its own thread: /session may wait for the host's ICE gathering.
+    // Every request gets a reply and a log line (path, status, time), never silence.
     void serve(std::string guest, std::string ip, std::string text) {
+        const json in = json::parse(text, nullptr, false);
+        if (!in.is_object() || !in.contains("id") || !in.contains("path") || !in["path"].is_string()) {
+            veyra::log::warn("guest-broker", "request without id or path: nothing to answer");
+            return;
+        }
+        auto call = std::make_shared<Call>();
+        call->guest = std::move(guest);
+        call->id = in["id"];
+        call->path = pathName(in["path"].get<std::string>());
+        call->startMs = nowMs();
+        int busy = 0, stuck = 0;
         {
             std::lock_guard lock(m);
-            if (active >= kMaxRequests) return;
-            ++active;
+            if (active >= kMaxRequests) { busy = active; stuck = overdue; }
+            else { ++active; calls.push_back(call); }
         }
-        std::thread([self = shared_from_this(), guest = std::move(guest), ip = std::move(ip), text = std::move(text)] {
-            const json in = json::parse(text, nullptr, false);
-            if (in.is_object() && in.contains("id") && in.contains("path") && in["path"].is_string()) {
-                HttpRequest request;
-                request.method = "POST";
-                request.path = in["path"].get<std::string>();
-                request.body = in.contains("body") ? in["body"].dump() : "{}";
-                request.source = ip;
-                HttpResponse response;
-                try { response = self->handler(request); }
-                catch (const std::exception& e) { veyra::log::error("guest-broker", e.what()); response = {500, "text/plain", "error"}; }
-                const json reply{{"id", in["id"]}, {"status", response.status}, {"body", response.body}};
-                self->socket.send(json{{"t", "msg"}, {"g", guest}, {"d", reply.dump()}}.dump());
+        if (busy) {
+            reply(call->guest, call->id, 503, R"({"error":"l'hôte est occupé, réessaie dans un instant","state":"busy"})");
+            veyra::log::warn("guest-broker", std::format("{} 503 busy ({} requests running, {} past their deadline)", call->path, busy, stuck));
+            return;
+        }
+        std::thread([self = shared_from_this(), call, ip = std::move(ip), in] {
+            HttpRequest request;
+            request.method = "POST";
+            request.path = in["path"].get<std::string>();
+            request.body = in.contains("body") ? in["body"].dump() : "{}";
+            request.source = ip;
+            request.stage = &call->stage;
+            request.onLease = [s = self.get(), call](const std::string& id) { s->holdLease(*call, id); };
+            HttpResponse response;
+            try { response = self->handler(request); }
+            catch (const std::exception& e) { veyra::log::error("guest-broker", e.what()); response = {500, "text/plain", "error"}; }
+            const int64_t ms = nowMs() - call->startMs;
+            if (!call->answered.exchange(true)) {
+                self->reply(call->guest, call->id, response.status, response.body);
+                veyra::log::info("guest-broker", std::format("{} {} {} ms", call->path, response.status, ms));
+            } else {
+                veyra::log::warn("guest-broker", std::format("{} finished after {} ms with {}, too late: the guest had a 503", call->path, ms, response.status));
             }
             std::lock_guard lock(self->m);
+            if (call->overdue) --self->overdue;
+            std::erase(self->calls, call);
             --self->active;
             self->cv.notify_all();
         }).detach();
+    }
+
+    // A call's TURN lease; one taken after its deadline goes straight back.
+    void holdLease(Call& c, const std::string& id) {
+        bool late;
+        { std::lock_guard lock(m); c.lease = id; late = c.overdue; }
+        if (late) { sendEnd(id); veyra::log::warn("guest-broker", "a turn lease taken past the deadline is handed back"); }
+    }
+
+    // Calls past their deadline: the guest gets a 503 now, the log says where the handler is,
+    // and the TURN lease it holds goes back (a handler stuck for good would keep it charged).
+    void enforceDeadlines() {
+        std::vector<std::shared_ptr<Call>> late;
+        std::vector<std::string> leases;
+        {
+            std::lock_guard lock(m);
+            for (const auto& c : calls)
+                if (nowMs() - c->startMs >= kDeadlineMs && !c->answered.exchange(true)) {
+                    late.push_back(c); c->overdue = true; ++overdue;
+                    if (!c->lease.empty()) leases.push_back(c->lease);
+                }
+        }
+        for (const auto& c : late) {
+            reply(c->guest, c->id, 503, R"({"error":"l'hôte ne répond pas, réessaie","state":"stuck"})");
+            veyra::log::error("guest-broker", std::format("{} still running after {} ms at \"{}\": answered 503", c->path, nowMs() - c->startMs, c->stage.load()));
+        }
+        for (const auto& lease : leases) sendEnd(lease);
+        if (!leases.empty()) veyra::log::warn("guest-broker", std::format("{} turn lease(s) of late requests handed back", leases.size()));
     }
 
     void sendEnd(const std::string& lease) {
@@ -202,17 +277,24 @@ struct GuestBroker::Impl : std::enable_shared_from_this<GuestBroker::Impl> {
         }
     }
 
+    // Request deadlines every 250 ms, the room's ping every kPingEvery.
     void keepaliveLoop() {
         SetThreadDescription(GetCurrentThread(), L"Guest broker ping");
+        int64_t pingedMs = nowMs();
         std::unique_lock lock(m);
         while (running) {
-            cv.wait_for(lock, kPingEvery, [&] { return !running.load(); });
-            if (!running || phase != BrokerPhase::Connected) continue;
+            cv.wait_for(lock, std::chrono::milliseconds(250), [&] { return !running.load(); });
+            if (!running) break;
+            const bool connected = phase == BrokerPhase::Connected;
             lock.unlock();
-            if (nowMs() - heardMs.load() > std::chrono::duration_cast<std::chrono::milliseconds>(kSilentFor).count()) {
-                veyra::log::warn("guest-broker", "room silent, reconnecting");
-                socket.close();
-            } else socket.send("ping");
+            enforceDeadlines();
+            if (connected && nowMs() - pingedMs >= std::chrono::duration_cast<std::chrono::milliseconds>(kPingEvery).count()) {
+                pingedMs = nowMs();
+                if (nowMs() - heardMs.load() > std::chrono::duration_cast<std::chrono::milliseconds>(kSilentFor).count()) {
+                    veyra::log::warn("guest-broker", "room silent, reconnecting");
+                    socket.close();
+                } else socket.send("ping");
+            }
             lock.lock();
         }
     }
@@ -267,6 +349,7 @@ void GuestBroker::stop() {
 }
 
 BrokerPhase GuestBroker::phase() const { std::lock_guard lock(p_->m); return p_->phase; }
+int GuestBroker::overdue() const { std::lock_guard lock(p_->m); return p_->overdue; }
 bool GuestBroker::entitled() const { std::lock_guard lock(p_->m); return p_->entitled; }
 std::string GuestBroker::error() const { std::lock_guard lock(p_->m); return p_->error; }
 

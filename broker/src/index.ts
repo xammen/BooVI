@@ -4,6 +4,9 @@
 //                          X-Boovi-Owner: <owner key> for the owner's TURN relay.
 //   GET /api/room/<room>   a guest's socket (the page, or a BooVI client).
 //   GET /api/turn          the month's TURN budget, for the owner key's holder.
+//   GET /api/turn/leases   the month's credentials (no username), for the owner.
+//   POST /api/turn/settle  {lease, endMs}: the owner's correction for an expired credential
+//                          whose host never handed it back.
 //   GET /api/legacy        the room an old https://<host>/?a=… link opens (LEGACY_ROOM).
 // Share secrets never come here: they ride in the link's fragment and travel to the host
 // inside the room's messages, which the Worker relays without reading.
@@ -64,10 +67,17 @@ export default {
       if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") return json(426, { error: "websocket only" });
       return kind === "host" ? host(request, env, room, ip) : guest(request, env, room, ip);
     }
-    if (kind === "turn" && !room) {
+    if (kind === "turn" && !rest.length) {
       if (!isOwner(request, env)) return json(403, { error: "owner key required" });
       const ledger = env.LEDGER.get(env.LEDGER.idFromName("ledger"));
-      return json(200, { ...(await ledger.status()), config: budgetConfig(env) });
+      if (!room) return json(200, { ...(await ledger.status()), config: budgetConfig(env) });
+      if (room === "leases") return json(200, await ledger.leases());
+      if (room === "settle" && request.method === "POST") {
+        const body = await request.json().catch(() => null) as { lease?: unknown; endMs?: unknown } | null;
+        if (typeof body?.lease !== "string" || typeof body.endMs !== "number") return json(400, { error: "lease and endMs expected" });
+        const settled = await ledger.settle(body.lease, body.endMs);
+        return settled ? json(200, settled) : json(409, { error: "no such expired lease" });
+      }
     }
     if (kind === "legacy" && !room) {
       return env.LEGACY_ROOM && isRoomId(env.LEGACY_ROOM) ? json(200, { room: env.LEGACY_ROOM }) : json(404, { error: "no legacy room" });

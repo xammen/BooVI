@@ -46,6 +46,7 @@ struct GuestClientStats {
     std::string decoder;              // "d3d12va", "software", "software(after d3d12va)"; empty before the first picture
     std::string gpu;                  // the decoding GPU's vendor: "amd", "nvidia", "intel"
     bool relayed = false;             // the selected pair goes through a TURN relay
+    bool iceFailed = false;           // Failed because no network path was found: the browser may still get through
     bool extendedInput = false;       // the host takes the extended pad message
     std::string controlMode;          // the host's choice: "guest", "together", "watch"
     uint64_t units = 0, decoded = 0, dropped = 0, decodeErrors = 0, keyframeRequests = 0, inputsSent = 0;
